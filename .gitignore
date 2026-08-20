@@ -21,3 +21,4 @@ dist-ssr/
 .DS_Store
 local-secrets/
 npm-debug.log*
+static/spa-kira-cursores-web.zip
