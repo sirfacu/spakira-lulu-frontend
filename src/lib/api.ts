@@ -17,22 +17,27 @@ let meCache: {
 } | null = null;
 
 export function getApiBase(): string {
+  if (typeof import.meta !== "undefined" && import.meta.env?.VITE_API_URL) {
+    return String(import.meta.env.VITE_API_URL).replace(/\/$/, "");
+  }
   if (typeof window !== "undefined") {
-    const { protocol, hostname } = window.location;
+    const { protocol, hostname, port } = window.location;
     const localish =
       hostname === "localhost" ||
       hostname === "127.0.0.1" ||
       hostname === "0.0.0.0" ||
       /^\d{1,3}(?:\.\d{1,3}){3}$/.test(hostname);
+    // Panel vía Apache (:80/:443) → API en subdominio api.* (mismo Host-header mapping)
+    if (
+      hostname === "spakira.e-mac.co" ||
+      ((port === "" || port === "80" || port === "443") && !localish)
+    ) {
+      return `${protocol}//api.${hostname.replace(/^www\./, "")}`;
+    }
     if (localish) {
       return `${protocol}//${hostname}:9001`;
     }
-  }
-  if (typeof import.meta !== "undefined" && import.meta.env?.VITE_API_URL) {
-    return String(import.meta.env.VITE_API_URL).replace(/\/$/, "");
-  }
-  if (typeof window !== "undefined") {
-    const { protocol, hostname } = window.location;
+    // Dev directo en :9000 sin proxy
     return `${protocol}//${hostname}:9001`;
   }
   return "http://127.0.0.1:9001";

@@ -43,3 +43,7 @@ Si el proyecto sigue vinculado en lovable.dev, desconectalo desde su UI
 > Si en el pasado este repo estaba conectado a Lovable, evitá reescribir
 > historia ya publicada (force-push / rebase de commits remotos) mientras
 > ese vínculo exista.
+
+## Workspace padre
+
+Si abrís `/facu/learning-n8n/kirajiro/` en Cursor, el mapa multi-repo está en `../AGENTS.md` (o `/facu/learning-n8n/kirajiro/AGENTS.md`).
