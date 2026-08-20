@@ -1,0 +1,78 @@
+/* Spa Kira - Cursores personalizados
+   PNG en /spa-kira-cursores-web/ (48x48). Hotspot 8 8.
+*/
+
+:root {
+  --kira-purple: #6B3FA0;
+  --kira-dark-purple: #563080;
+  --kira-pink: #E8A8C8;
+}
+
+/* Cursor general */
+body {
+  cursor: url("/spa-kira-cursores-web/kira-normal.png") 8 8, auto;
+}
+
+/* Botones, enlaces y elementos interactivos */
+button,
+a,
+[role="button"],
+input[type="button"],
+input[type="submit"] {
+  cursor: url("/spa-kira-cursores-web/kira-pointer.png") 8 8, pointer;
+}
+
+/* Enlaces */
+a:hover {
+  cursor: url("/spa-kira-cursores-web/kira-link.png") 8 8, pointer;
+}
+
+/* Click / elementos activos */
+button:active,
+[role="button"]:active {
+  cursor: url("/spa-kira-cursores-web/kira-click.png") 8 8, pointer;
+}
+
+/* Arrastrar */
+[draggable="true"] {
+  cursor: url("/spa-kira-cursores-web/kira-move.png") 8 8, move;
+}
+
+/* Texto */
+input:not([type="button"]):not([type="submit"]),
+textarea {
+  cursor: url("/spa-kira-cursores-web/kira-text.png") 8 8, text;
+}
+
+/* Selección de mascota */
+.kira-pet-select {
+  cursor: url("/spa-kira-cursores-web/kira-pet.png") 8 8, pointer;
+}
+
+/* Calendario */
+.kira-calendar {
+  cursor: url("/spa-kira-cursores-web/kira-calendar.png") 8 8, pointer;
+}
+
+/* Guardar */
+.kira-save {
+  cursor: url("/spa-kira-cursores-web/kira-save.png") 8 8, pointer;
+}
+
+/* Eliminar */
+.kira-delete {
+  cursor: url("/spa-kira-cursores-web/kira-delete.png") 8 8, pointer;
+}
+
+/* Acción no permitida */
+.kira-disabled,
+[aria-disabled="true"],
+:disabled {
+  cursor: url("/spa-kira-cursores-web/kira-not-allowed.png") 8 8, not-allowed;
+}
+
+/* Cargando */
+.is-loading,
+.loading {
+  cursor: url("/spa-kira-cursores-web/kira-loading.png") 8 8, wait;
+}

@@ -1,0 +1,20 @@
+/** Precio publicado = costo × (1 + margen%). Alineado con backend/app/stock.py */
+
+export function suggestedSale(cost: number, marginPct: number): number {
+  return Math.round((Number(cost) || 0) * (1 + (Number(marginPct) || 0) / 100));
+}
+
+export function marginFromPrices(cost: number, sale: number): number {
+  const c = Number(cost) || 0;
+  if (c <= 0) return 0;
+  return Math.round((((Number(sale) || 0) - c) / c) * 10000) / 100;
+}
+
+export function unitPriceFromPack(salePack: number, packSize: number): number {
+  const size = Number(packSize) || 1;
+  return Math.round((Number(salePack) || 0) / (size > 0 ? size : 1));
+}
+
+export function isShoppable(channel: string | null | undefined): boolean {
+  return channel === "externo" || channel === "interno_externo" || !channel;
+}

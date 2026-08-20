@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+# Bloquea push directo a main/master.
+branch="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")"
+# También inspeccionar refs que se pushean
+while read -r local_ref local_sha remote_ref remote_sha; do
+  case "$remote_ref" in
+    refs/heads/main|refs/heads/master)
+      echo "❌ Push directo a ${remote_ref#refs/heads/} bloqueado. Usá un PR."
+      exit 1
+      ;;
+  esac
+done
+if [ "$branch" = "main" ] || [ "$branch" = "master" ]; then
+  echo "❌ Push desde rama '$branch' bloqueado. Usá un PR."
+  exit 1
+fi
+exit 0

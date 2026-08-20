@@ -1,0 +1,328 @@
+import { useEffect, useState } from "react";
+import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
+import { toast } from "sonner";
+import {
+  activateAccount,
+  getApiBase,
+  getToken,
+  login,
+  registerAccount,
+  roleFromAccessToken,
+  seedMeCache,
+  setToken,
+} from "@/lib/api";
+import { BrandMark } from "@/components/brand";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { ArrowLeft } from "lucide-react";
+import { homeForRole, permissionsFor } from "@/lib/roles";
+
+export const Route = createFileRoute("/auth")({
+  validateSearch: (search: Record<string, unknown>) => ({
+    token: typeof search.token === "string" ? search.token : undefined,
+    google_token: typeof search.google_token === "string" ? search.google_token : undefined,
+    role: typeof search.role === "string" ? search.role : undefined,
+    google_error: typeof search.google_error === "string" ? search.google_error : undefined,
+    need_profile: search.need_profile === "1" || search.need_profile === true,
+  }),
+  head: () => ({
+    meta: [
+      { title: "Ingresar al panel | Spa Kira" },
+      {
+        name: "description",
+        content:
+          "Acceso al panel administrativo de Spa Kira: agenda, mascotas, propietarios, inventario y ventas.",
+      },
+      { property: "og:title", content: "Ingresar al panel | Spa Kira" },
+      {
+        property: "og:description",
+        content: "Acceso del personal al sistema de gestión de Spa Kira.",
+      },
+    ],
+  }),
+  beforeLoad: () => {
+    if (typeof window !== "undefined" && getToken()) {
+      // already logged in — panel guard will confirm token
+    }
+  },
+  component: AuthPage,
+});
+
+type Mode = "login" | "register" | "activate";
+
+function GoogleGIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" aria-hidden>
+      <path
+        fill="#4285F4"
+        d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
+      />
+      <path
+        fill="#34A853"
+        d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
+      />
+      <path
+        fill="#FBBC05"
+        d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"
+      />
+      <path
+        fill="#EA4335"
+        d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
+      />
+    </svg>
+  );
+}
+
+function destAfterAuth(role: string | undefined, profileComplete?: boolean, needProfile?: boolean) {
+  if (permissionsFor(role).isCliente && (needProfile || profileComplete === false)) {
+    return "/panel/completar";
+  }
+  return homeForRole(role);
+}
+
+function AuthPage() {
+  const navigate = useNavigate();
+  const search = Route.useSearch();
+  const { token: tokenFromUrl, google_token, role: roleFromUrl, google_error, need_profile } = search;
+  const initialMode: Mode = tokenFromUrl ? "activate" : "login";
+  const [mode, setMode] = useState<Mode>(initialMode);
+  const [email, setEmail] = useState("");
+  const [fullName, setFullName] = useState("");
+  const [password, setPassword] = useState("");
+  const [token, setActToken] = useState(tokenFromUrl ?? "");
+  const [loading, setLoading] = useState(false);
+  const [googleReady, setGoogleReady] = useState(true);
+  const [googleHint, setGoogleHint] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (google_error) {
+      toast.error(google_error);
+      void navigate({ to: "/auth", search: {}, replace: true });
+    }
+  }, [google_error, navigate]);
+
+  useEffect(() => {
+    if (!google_token) return;
+    setToken(google_token);
+    const role = roleFromUrl || roleFromAccessToken(google_token);
+    seedMeCache({
+      access_token: google_token,
+      email: "",
+      role: role || "cliente",
+      profile_complete: !need_profile,
+    });
+    toast.success(permissionsFor(role).isStaff ? "Sesión iniciada con Google" : "Entraste con Google");
+    void navigate({
+      to: destAfterAuth(role, undefined, need_profile),
+      search: {},
+      replace: true,
+    });
+  }, [google_token, roleFromUrl, need_profile, navigate]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const ac = new AbortController();
+    const kill = window.setTimeout(() => ac.abort(), 2000);
+    void (async () => {
+      try {
+        const res = await fetch(`${getApiBase()}/auth/google/login/status`, { signal: ac.signal });
+        if (!res.ok) return;
+        const data = (await res.json()) as { configured?: boolean };
+        if (!cancelled) {
+          setGoogleReady(!!data.configured);
+          setGoogleHint(data.configured ? null : "Google no está configurado en el servidor.");
+        }
+      } catch {
+        /* el botón Google queda habilitado; el click falla con toast si no hay API */
+      }
+    })();
+    return () => {
+      cancelled = true;
+      window.clearTimeout(kill);
+      ac.abort();
+    };
+  }, []);
+
+  const title = mode === "register" ? "Crear cuenta" : mode === "activate" ? "Activar cuenta" : "Ingresar";
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    try {
+      if (mode === "login") {
+        const data = await login(email, password);
+        await navigate({
+          to: destAfterAuth(data.role, data.profile_complete),
+          replace: true,
+        });
+        return;
+      }
+      if (mode === "register") {
+        const data = await registerAccount(email, fullName.trim() || email.split("@")[0]!, password);
+        toast.success("Cuenta creada");
+        await navigate({
+          to: destAfterAuth(data.role, data.profile_complete),
+          replace: true,
+        });
+        return;
+      }
+      const data = await activateAccount(token, password, fullName || undefined);
+      toast.success("Cuenta activada");
+      await navigate({
+        to: destAfterAuth(data.role, data.profile_complete),
+        replace: true,
+      });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "No fue posible continuar");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const googleLoginUrl = `${getApiBase()}/auth/google/login/start`;
+
+  return (
+    <div className="spa-canvas flex min-h-screen items-center justify-center bg-background px-4 py-12">
+      <div className="w-full max-w-md">
+        <Link
+          to="/"
+          className="mb-6 inline-flex items-center gap-2 text-sm text-muted-foreground transition-colors hover:text-primary"
+        >
+          <ArrowLeft className="h-4 w-4" /> Volver al sitio
+        </Link>
+
+        <div className="card-soft paw-pattern overflow-hidden p-8">
+          <div className="relative">
+            <BrandMark size="auth" />
+            <div className="gold-rule mx-auto my-6 max-w-[12rem]" />
+            <h2 className="text-center font-display text-2xl font-bold text-primary">{title}</h2>
+            <p className="mt-1 text-center text-sm text-muted-foreground">
+              Panel · Spa Kira
+            </p>
+
+            {mode !== "activate" ? (
+              <div className="mt-6 space-y-3">
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="h-12 w-full rounded-xl border-border bg-card text-base font-medium text-foreground hover:bg-secondary/50"
+                  disabled={!googleReady || loading}
+                  onClick={() => {
+                    window.location.href = googleLoginUrl;
+                  }}
+                >
+                  <GoogleGIcon className="mr-2 h-5 w-5" />
+                  Continuar con Google
+                </Button>
+                {!googleReady && googleHint ? (
+                  <p className="text-center text-[11px] text-muted-foreground">{googleHint}</p>
+                ) : null}
+                <p className="pt-1 text-center text-xs text-muted-foreground">
+                  O continuá con tu correo:
+                </p>
+              </div>
+            ) : null}
+
+            <form onSubmit={submit} className="mt-4 space-y-4">
+              {mode === "activate" ? (
+                <div className="space-y-2">
+                  <Label htmlFor="token">Token de activación</Label>
+                  <Input
+                    id="token"
+                    required
+                    value={token}
+                    onChange={(e) => setActToken(e.target.value)}
+                    placeholder="Pegá el token del correo / log"
+                    className="h-12 rounded-xl"
+                  />
+                </div>
+              ) : null}
+
+              {mode !== "activate" ? (
+                <div className="space-y-2">
+                  <Label htmlFor="email">Correo</Label>
+                  <Input
+                    id="email"
+                    type="email"
+                    required
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="tu@gmail.com"
+                    className="h-12 rounded-xl"
+                  />
+                </div>
+              ) : null}
+
+              {mode !== "login" ? (
+                <div className="space-y-2">
+                  <Label htmlFor="fullName">Nombre</Label>
+                  <Input
+                    id="fullName"
+                    required={mode === "register"}
+                    value={fullName}
+                    onChange={(e) => setFullName(e.target.value)}
+                    placeholder="Tu nombre"
+                    className="h-12 rounded-xl"
+                  />
+                </div>
+              ) : null}
+
+              <div className="space-y-2">
+                <Label htmlFor="password">Contraseña</Label>
+                <Input
+                  id="password"
+                  type="password"
+                  required
+                  minLength={6}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="••••••••"
+                  className="h-12 rounded-xl"
+                />
+              </div>
+
+              <Button type="submit" disabled={loading} className="h-12 w-full rounded-xl text-base">
+                {loading
+                  ? "Un momento…"
+                  : mode === "activate"
+                    ? "Activar e ingresar"
+                    : mode === "register"
+                      ? "Registrarse"
+                      : "Ingresar"}
+              </Button>
+            </form>
+
+            {mode !== "activate" ? (
+              <p className="mt-4 text-center text-sm text-muted-foreground">
+                {mode === "login" ? (
+                  <>
+                    ¿No tenés cuenta?{" "}
+                    <button
+                      type="button"
+                      className="font-medium text-primary underline-offset-2 hover:underline"
+                      onClick={() => setMode("register")}
+                    >
+                      Registrarse
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    ¿Ya tenés cuenta?{" "}
+                    <button
+                      type="button"
+                      className="font-medium text-primary underline-offset-2 hover:underline"
+                      onClick={() => setMode("login")}
+                    >
+                      Ingresar
+                    </button>
+                  </>
+                )}
+              </p>
+            ) : null}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}

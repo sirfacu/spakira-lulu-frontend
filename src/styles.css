@@ -1,0 +1,297 @@
+@import "tailwindcss" source(none);
+@source "../src";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+/*
+ * Spa Kira — sistema de diseño.
+ * Paleta derivada del logo: violeta profundo, lavanda, rosa fucsia y dorado,
+ * sobre fondos lila muy claros. Todos los colores en oklch.
+ */
+
+@theme inline {
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --radius-2xl: calc(var(--radius) + 8px);
+  --radius-3xl: calc(var(--radius) + 12px);
+  --radius-4xl: calc(var(--radius) + 16px);
+
+  --font-sans: "Poppins", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Playfair Display", Georgia, serif;
+  --font-script: "Great Vibes", cursive;
+
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-ring-offset-background: var(--background);
+
+  --color-lavender: var(--lavender);
+  --color-lavender-foreground: var(--lavender-foreground);
+  --color-blush: var(--blush);
+  --color-blush-foreground: var(--blush-foreground);
+  --color-gold: var(--gold);
+  --color-gold-foreground: var(--gold-foreground);
+  --color-mint: var(--mint);
+  --color-mint-foreground: var(--mint-foreground);
+  --color-sky: var(--sky);
+  --color-sky-foreground: var(--sky-foreground);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+
+  --shadow-soft: 0 1px 2px oklch(0.4 0.12 300 / 0.04), 0 8px 24px oklch(0.4 0.12 300 / 0.07);
+  --shadow-lift: 0 2px 6px oklch(0.4 0.12 300 / 0.06), 0 18px 40px oklch(0.4 0.12 300 / 0.12);
+  --shadow-glow: 0 10px 40px oklch(0.62 0.2 350 / 0.25);
+}
+
+:root {
+  --radius: 0.9rem;
+
+  --background: oklch(0.985 0.008 320);
+  --foreground: oklch(0.28 0.06 300);
+
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.28 0.06 300);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.28 0.06 300);
+
+  --primary: oklch(0.44 0.145 302);
+  --primary-foreground: oklch(0.99 0.005 320);
+
+  --secondary: oklch(0.955 0.02 315);
+  --secondary-foreground: oklch(0.38 0.12 302);
+
+  --muted: oklch(0.965 0.012 320);
+  --muted-foreground: oklch(0.53 0.05 305);
+
+  --accent: oklch(0.63 0.2 349);
+  --accent-foreground: oklch(0.99 0.005 320);
+
+  --destructive: oklch(0.6 0.21 22);
+  --destructive-foreground: oklch(0.99 0.005 320);
+
+  --border: oklch(0.92 0.018 315);
+  --input: oklch(0.92 0.018 315);
+  --ring: oklch(0.63 0.13 305);
+
+  --lavender: oklch(0.72 0.1 305);
+  --lavender-foreground: oklch(0.99 0.005 320);
+  --blush: oklch(0.93 0.045 350);
+  --blush-foreground: oklch(0.42 0.16 349);
+  --gold: oklch(0.75 0.12 85);
+  --gold-foreground: oklch(0.28 0.06 300);
+  --mint: oklch(0.78 0.11 160);
+  --mint-foreground: oklch(0.3 0.08 160);
+  --sky: oklch(0.79 0.1 225);
+  --sky-foreground: oklch(0.3 0.08 240);
+  --warning: oklch(0.78 0.14 70);
+  --warning-foreground: oklch(0.3 0.08 70);
+  --success: oklch(0.66 0.14 155);
+  --success-foreground: oklch(0.99 0.005 320);
+
+  --chart-1: oklch(0.5 0.16 302);
+  --chart-2: oklch(0.66 0.19 349);
+  --chart-3: oklch(0.75 0.12 85);
+  --chart-4: oklch(0.72 0.1 260);
+  --chart-5: oklch(0.7 0.12 175);
+
+  --sidebar: oklch(0.99 0.008 320);
+  --sidebar-foreground: oklch(0.34 0.07 302);
+  --sidebar-primary: oklch(0.44 0.145 302);
+  --sidebar-primary-foreground: oklch(0.99 0.005 320);
+  --sidebar-accent: oklch(0.955 0.025 320);
+  --sidebar-accent-foreground: oklch(0.38 0.13 302);
+  --sidebar-border: oklch(0.93 0.02 315);
+  --sidebar-ring: oklch(0.63 0.13 305);
+}
+
+.dark {
+  --background: oklch(0.19 0.04 300);
+  --foreground: oklch(0.96 0.01 320);
+  --card: oklch(0.24 0.05 300);
+  --card-foreground: oklch(0.96 0.01 320);
+  --popover: oklch(0.24 0.05 300);
+  --popover-foreground: oklch(0.96 0.01 320);
+  --primary: oklch(0.72 0.13 305);
+  --primary-foreground: oklch(0.18 0.04 300);
+  --secondary: oklch(0.29 0.05 300);
+  --secondary-foreground: oklch(0.96 0.01 320);
+  --muted: oklch(0.29 0.05 300);
+  --muted-foreground: oklch(0.72 0.04 310);
+  --accent: oklch(0.66 0.19 349);
+  --accent-foreground: oklch(0.99 0.005 320);
+  --border: oklch(1 0 0 / 12%);
+  --input: oklch(1 0 0 / 16%);
+  --ring: oklch(0.68 0.12 305);
+  --sidebar: oklch(0.22 0.045 300);
+  --sidebar-foreground: oklch(0.94 0.01 320);
+  --sidebar-primary: oklch(0.72 0.13 305);
+  --sidebar-primary-foreground: oklch(0.18 0.04 300);
+  --sidebar-accent: oklch(0.29 0.05 300);
+  --sidebar-accent-foreground: oklch(0.96 0.01 320);
+  --sidebar-border: oklch(1 0 0 / 12%);
+  --sidebar-ring: oklch(0.68 0.12 305);
+}
+
+@layer base {
+  * {
+    border-color: var(--color-border);
+  }
+
+  html,
+  body {
+    cursor: url("/spa-kira-cursores-web/kira-normal.png") 8 8, auto;
+  }
+
+  body {
+    background-color: var(--color-background);
+    color: var(--color-foreground);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  h1,
+  h2,
+  h3 {
+    letter-spacing: -0.015em;
+  }
+}
+
+/* Debe ir en utilities para ganar a Tailwind (cursor-pointer → pointer). */
+@layer utilities {
+  .cursor-auto {
+    cursor: url("/spa-kira-cursores-web/kira-normal.png") 8 8, auto;
+  }
+  .cursor-default {
+    cursor: url("/spa-kira-cursores-web/kira-normal.png") 8 8, auto;
+  }
+  .cursor-pointer {
+    cursor: url("/spa-kira-cursores-web/kira-pointer.png") 8 8, pointer;
+  }
+  .cursor-text {
+    cursor: url("/spa-kira-cursores-web/kira-text.png") 8 8, text;
+  }
+  .cursor-move {
+    cursor: url("/spa-kira-cursores-web/kira-move.png") 8 8, move;
+  }
+  .cursor-not-allowed {
+    cursor: url("/spa-kira-cursores-web/kira-not-allowed.png") 8 8, not-allowed;
+  }
+  .cursor-wait,
+  .is-loading,
+  .loading {
+    cursor: url("/spa-kira-cursores-web/kira-loading.png") 8 8, wait;
+  }
+
+  a,
+  button,
+  [role="button"],
+  label[for],
+  select,
+  summary {
+    cursor: url("/spa-kira-cursores-web/kira-pointer.png") 8 8, pointer;
+  }
+  a:hover {
+    cursor: url("/spa-kira-cursores-web/kira-link.png") 8 8, pointer;
+  }
+  button:active,
+  [role="button"]:active {
+    cursor: url("/spa-kira-cursores-web/kira-click.png") 8 8, pointer;
+  }
+  [draggable="true"] {
+    cursor: url("/spa-kira-cursores-web/kira-move.png") 8 8, move;
+  }
+  input,
+  textarea,
+  [contenteditable="true"] {
+    cursor: url("/spa-kira-cursores-web/kira-text.png") 8 8, text;
+  }
+  :disabled,
+  [aria-disabled="true"] {
+    cursor: url("/spa-kira-cursores-web/kira-not-allowed.png") 8 8, not-allowed;
+  }
+
+  .kira-pet-select {
+    cursor: url("/spa-kira-cursores-web/kira-pet.png") 8 8, pointer;
+  }
+  .kira-calendar {
+    cursor: url("/spa-kira-cursores-web/kira-calendar.png") 8 8, pointer;
+  }
+  .kira-save {
+    cursor: url("/spa-kira-cursores-web/kira-save.png") 8 8, pointer;
+  }
+  .kira-delete {
+    cursor: url("/spa-kira-cursores-web/kira-delete.png") 8 8, pointer;
+  }
+}
+
+/* Fondo con acuarela lila y huellas sutiles, como el logo */
+@utility spa-canvas {
+  background-image:
+    radial-gradient(1100px 520px at 8% -10%, oklch(0.9 0.06 320 / 0.55), transparent 70%),
+    radial-gradient(900px 500px at 100% 0%, oklch(0.9 0.05 290 / 0.5), transparent 70%),
+    radial-gradient(700px 400px at 50% 110%, oklch(0.93 0.05 350 / 0.45), transparent 70%);
+}
+
+@utility paw-pattern {
+  position: relative;
+  &::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    opacity: 0.5;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120' viewBox='0 0 120 120'%3E%3Cg fill='%23a78bc8' fill-opacity='0.14'%3E%3Cellipse cx='30' cy='36' rx='7' ry='9'/%3E%3Cellipse cx='45' cy='28' rx='6.5' ry='8.5'/%3E%3Cellipse cx='60' cy='30' rx='6.5' ry='8.5'/%3E%3Cellipse cx='73' cy='40' rx='6' ry='8'/%3E%3Cellipse cx='51' cy='58' rx='17' ry='14'/%3E%3C/g%3E%3C/svg%3E");
+  }
+}
+
+@utility gold-rule {
+  height: 1px;
+  background: linear-gradient(
+    to right,
+    transparent,
+    var(--color-gold),
+    transparent
+  );
+}
+
+@utility card-soft {
+  background-color: var(--color-card);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-2xl);
+  box-shadow: var(--shadow-soft);
+}
