@@ -6,15 +6,12 @@ import { AppShell } from "@/components/app-shell";
 import { SectionCard, Empty } from "@/components/ui-kit";
 import { BrandMark } from "@/components/brand";
 import { EmailTemplatesPanel, MailConfigPanel } from "@/components/config-email-panels";
+import { ConfigUsersPanel } from "@/components/config-users-panel";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
 import {
-  appUsersQuery,
-  inviteAppUser,
-  patchAppUser,
-  resetAppUserPassword,
   auditQuery,
   getBusinessSettings,
   patchBusinessSettings,
@@ -46,17 +43,10 @@ type CorreosSub = "plantillas" | "smtp";
 function Configuracion() {
   const { user } = useRouteContext({ from: "/_authenticated" });
   const isAdmin = permissionsFor(user?.role).isAdmin;
-  const users = useQuery({ ...appUsersQuery, enabled: isAdmin });
   const audit = useQuery({ ...auditQuery, enabled: isAdmin });
   const qc = useQueryClient();
   const [tab, setTab] = useState<ConfigTab>("general");
-  const [email, setEmail] = useState("");
-  const [fullName, setFullName] = useState("");
-  const [role, setRole] = useState("colaborador");
   const [correosSub, setCorreosSub] = useState<CorreosSub>("plantillas");
-  const [resetFor, setResetFor] = useState<{ id: string; email: string } | null>(null);
-  const [newPassword, setNewPassword] = useState("");
-  const [newPassword2, setNewPassword2] = useState("");
   const business = useQuery({ queryKey: ["business-settings"], queryFn: getBusinessSettings });
   const [tradeName, setTradeName] = useState("Spa Kira");
   const [slogan, setSlogan] = useState("Luxury pet grooming · Canina y felina");
@@ -104,50 +94,6 @@ function Configuracion() {
       void qc.invalidateQueries({ queryKey: ["staff"] });
     },
     onError: (e: Error) => toast.error(e.message),
-  });
-
-  const inviteMut = useMutation({
-    mutationFn: () =>
-      inviteAppUser({
-        email: email.trim(),
-        full_name: fullName.trim() || "Usuario Spa Kira",
-        role,
-      }),
-    onSuccess: async (res) => {
-      toast.success(res.message);
-      setEmail("");
-      setFullName("");
-      await qc.invalidateQueries({ queryKey: ["app-users"] });
-      await qc.invalidateQueries({ queryKey: ["staff"] });
-    },
-    onError: (err: Error) => toast.error(err.message),
-  });
-
-  const roleMut = useMutation({
-    mutationFn: ({ id, nextRole }: { id: string; nextRole: string }) =>
-      patchAppUser(id, { role: nextRole }),
-    onSuccess: async () => {
-      toast.success("Rol actualizado");
-      await qc.invalidateQueries({ queryKey: ["app-users"] });
-      await qc.invalidateQueries({ queryKey: ["staff"] });
-    },
-    onError: (err: Error) => toast.error(err.message),
-  });
-
-  const resetMut = useMutation({
-    mutationFn: () => {
-      if (!resetFor) throw new Error("Sin usuario");
-      if (newPassword.length < 6) throw new Error("La clave debe tener al menos 6 caracteres");
-      if (newPassword !== newPassword2) throw new Error("Las claves no coinciden");
-      return resetAppUserPassword(resetFor.id, newPassword);
-    },
-    onSuccess: async (res) => {
-      toast.success(`Clave restablecida para ${res.email}`);
-      setResetFor(null);
-      setNewPassword("");
-      setNewPassword2("");
-    },
-    onError: (err: Error) => toast.error(err.message),
   });
 
   const tabs: { id: ConfigTab; label: string; adminOnly?: boolean }[] = [
@@ -339,105 +285,7 @@ function Configuracion() {
 
       {tab === "usuarios" && isAdmin ? (
         <div className="grid gap-6">
-          <SectionCard title="Usuarios del panel">
-            <p className="mb-4 text-sm text-muted-foreground">
-              Al agregar un usuario se envía un correo de activación. El rol{" "}
-              <strong>Usuario</strong> ve Mis mascotas y Mi agenda. El rol{" "}
-              <strong>Staff</strong> (antes Colaborador) también crea ficha en el menú Staff.{" "}
-              <strong>Admin</strong> lo asignás acá. Podés restablecer la clave si no entra solo
-              con Google.
-            </p>
-            <div className="grid gap-3 sm:grid-cols-4">
-              <div className="space-y-2 sm:col-span-2">
-                <Label>Correo</Label>
-                <Input
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  className="h-11 rounded-xl"
-                  placeholder="nuevo@spakira.local"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Nombre</Label>
-                <Input
-                  value={fullName}
-                  onChange={(e) => setFullName(e.target.value)}
-                  className="h-11 rounded-xl"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Rol</Label>
-                <select
-                  className="flex h-11 w-full rounded-xl border border-input bg-background px-3 text-sm"
-                  value={role}
-                  onChange={(e) => setRole(e.target.value)}
-                >
-                  <option value="cliente">Usuario</option>
-                  <option value="colaborador">Staff</option>
-                  <option value="admin">Admin</option>
-                </select>
-              </div>
-            </div>
-            <Button
-              className="mt-4 rounded-xl"
-              disabled={!email.trim() || inviteMut.isPending}
-              onClick={() => inviteMut.mutate()}
-            >
-              Agregar usuario
-            </Button>
-
-            <ul className="mt-6 divide-y divide-border rounded-2xl border border-border">
-              {(users.data ?? []).map((u) => (
-                <li
-                  key={u.id}
-                  className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 text-sm"
-                >
-                  <div className="min-w-0">
-                    <p className="truncate font-medium">{u.full_name}</p>
-                    <p className="truncate text-xs text-muted-foreground">{u.email}</p>
-                  </div>
-                  <div className="flex flex-wrap items-center gap-3">
-                    <select
-                      className="h-9 rounded-xl border border-input bg-background px-2 text-xs"
-                      value={u.role}
-                      disabled={roleMut.isPending}
-                      onChange={(e) => {
-                        const next = e.target.value;
-                        if (next === u.role) return;
-                        roleMut.mutate({ id: u.id, nextRole: next });
-                      }}
-                    >
-                      <option value="cliente">Usuario</option>
-                      <option value="colaborador">Staff</option>
-                      <option value="admin">Admin</option>
-                    </select>
-                    {u.auth_provider === "google" ? (
-                      <span className="text-xs text-muted-foreground">Google</span>
-                    ) : (
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        className="h-9 rounded-xl text-xs"
-                        onClick={() => {
-                          setResetFor({ id: u.id, email: u.email });
-                          setNewPassword("");
-                          setNewPassword2("");
-                        }}
-                      >
-                        Restablecer clave
-                      </Button>
-                    )}
-                    <span className="text-xs text-muted-foreground">
-                      {u.active ? "Activo" : "Pendiente activación"}
-                    </span>
-                  </div>
-                </li>
-              ))}
-              {!users.data?.length ? <Empty message="Sin usuarios." /> : null}
-            </ul>
-          </SectionCard>
+          <ConfigUsersPanel currentUserId={user?.id} />
 
           <SectionCard title="Auditoría de acciones">
             <p className="mb-4 text-sm text-muted-foreground">
@@ -481,55 +329,6 @@ function Configuracion() {
               ) : null}
             </div>
           </SectionCard>
-        </div>
-      ) : null}
-
-      {resetFor ? (
-        <div className="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4">
-          <div className="w-full max-w-md rounded-3xl border border-border bg-card p-6 shadow-lift">
-            <h3 className="font-display text-lg font-bold text-primary">Restablecer clave</h3>
-            <p className="mt-1 text-sm text-muted-foreground">{resetFor.email}</p>
-            <div className="mt-4 space-y-3">
-              <div className="space-y-2">
-                <Label>Nueva clave</Label>
-                <Input
-                  type="password"
-                  className="h-11 rounded-xl"
-                  value={newPassword}
-                  onChange={(e) => setNewPassword(e.target.value)}
-                  autoComplete="new-password"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Repetir clave</Label>
-                <Input
-                  type="password"
-                  className="h-11 rounded-xl"
-                  value={newPassword2}
-                  onChange={(e) => setNewPassword2(e.target.value)}
-                  autoComplete="new-password"
-                />
-              </div>
-            </div>
-            <div className="mt-5 flex justify-end gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                className="rounded-xl"
-                onClick={() => setResetFor(null)}
-              >
-                Cancelar
-              </Button>
-              <Button
-                type="button"
-                className="rounded-xl"
-                disabled={resetMut.isPending}
-                onClick={() => resetMut.mutate()}
-              >
-                Guardar clave
-              </Button>
-            </div>
-          </div>
         </div>
       ) : null}
     </AppShell>

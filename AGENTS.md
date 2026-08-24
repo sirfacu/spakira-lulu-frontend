@@ -34,6 +34,8 @@ Usuarios locales de prueba:
 - `admin@spakira.local` / `AdminKira2026!`
 - `colaborador@spakira.local` / `ColaboradorKira2026!`
 
+**Auth:** Admin y Staff solo locales (invitar / correo+clave). Google solo entra o registra como `cliente`.
+
 Contexto de roles/módulos, ver vs editar, staff↔cliente y comandos locales: `docs/contexto-roles-permisos.md`.
 
 Si el proyecto sigue vinculado en lovable.dev, desconectalo desde su UI
