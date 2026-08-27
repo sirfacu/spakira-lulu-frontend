@@ -755,6 +755,30 @@ export type BusinessSettings = {
   updated_at?: string | null;
 };
 
+export type HomeNewsItem = {
+  id: string;
+  kind: "html" | "image";
+  title: string;
+  html?: string | null;
+  image_url?: string | null;
+  active?: boolean;
+  sort?: number;
+};
+
+export type HomeVideoItem = {
+  id: string;
+  title: string;
+  embed_url: string;
+  active?: boolean;
+  sort?: number;
+};
+
+export type HomeContent = {
+  news: HomeNewsItem[];
+  client_videos: HomeVideoItem[];
+  updated_at?: string | null;
+};
+
 export type PublicBusinessSettings = Pick<
   BusinessSettings,
   | "trade_name"
@@ -781,6 +805,21 @@ export async function getPublicBusinessSettings() {
 
 export async function patchBusinessSettings(input: Partial<BusinessSettings>) {
   return api<BusinessSettings>("/settings/business", { method: "PATCH", body: input });
+}
+
+export async function getPublicHomeContent() {
+  return api<HomeContent>("/settings/home/public", { auth: false });
+}
+
+export async function getHomeContent() {
+  return api<HomeContent>("/settings/home");
+}
+
+export async function putHomeContent(input: {
+  news?: HomeNewsItem[];
+  client_videos?: HomeVideoItem[];
+}) {
+  return api<HomeContent>("/settings/home", { method: "PUT", body: input });
 }
 
 export type MailSettings = {

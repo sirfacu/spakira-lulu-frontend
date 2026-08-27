@@ -8,6 +8,7 @@ import { BrandMark } from "@/components/brand";
 import { EmailTemplatesPanel, MailConfigPanel } from "@/components/config-email-panels";
 import { ConfigUsersPanel } from "@/components/config-users-panel";
 import { ConfigBusinessHoursPanel } from "@/components/config-business-hours-panel";
+import { ConfigHomePanel } from "@/components/config-home-panel";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
@@ -38,7 +39,7 @@ export const Route = createFileRoute("/_authenticated/panel/configuracion")({
   component: Configuracion,
 });
 
-type ConfigTab = "general" | "correos" | "usuarios" | "escaner";
+type ConfigTab = "general" | "inicio" | "correos" | "usuarios" | "escaner";
 type CorreosSub = "plantillas" | "smtp";
 
 const AUDIT_PAGE_SIZE = 10;
@@ -139,6 +140,7 @@ function Configuracion() {
 
   const tabs: { id: ConfigTab; label: string; adminOnly?: boolean }[] = [
     { id: "general", label: "General" },
+    { id: "inicio", label: "Inicio", adminOnly: true },
     { id: "correos", label: "Correos", adminOnly: true },
     { id: "usuarios", label: "Usuarios", adminOnly: true },
     { id: "escaner", label: "Escáner", adminOnly: true },
@@ -325,6 +327,8 @@ function Configuracion() {
           {isAdmin ? <ConfigBusinessHoursPanel /> : null}
         </div>
       ) : null}
+
+      {tab === "inicio" && isAdmin ? <ConfigHomePanel /> : null}
 
       {tab === "escaner" && isAdmin ? (
         <SectionCard title="Lector de código de barras">

@@ -295,3 +295,8 @@
   border-radius: var(--radius-2xl);
   box-shadow: var(--shadow-soft);
 }
+
+/* Carrusel interactivo (scroll + flechas); el autoplay lo maneja JS */
+.home-chip-scroller {
+  scroll-snap-type: x proximity;
+}
