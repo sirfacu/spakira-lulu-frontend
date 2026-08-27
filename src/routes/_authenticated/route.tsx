@@ -27,7 +27,10 @@ export const Route = createFileRoute("/_authenticated")({
       if (err && typeof err === "object" && "to" in err) throw err;
       if (err && typeof err === "object" && "href" in err) throw err;
       logout();
-      throw redirect({ to: "/auth", search: { google_error: "Sesión inválida. Volvé a ingresar." } });
+      throw redirect({
+        to: "/auth",
+        search: { auth_error: "Sesión inválida. Volvé a ingresar." },
+      });
     }
   },
   component: () => <Outlet />,
