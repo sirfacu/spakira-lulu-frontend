@@ -32,7 +32,13 @@ const PATH_TO_MODULE: Record<string, string> = Object.fromEntries(
 /** Fallback si /auth/me aún no trae modules. */
 export const ROLE_TABS: Record<AppRole, readonly string[]> = {
   admin: PANEL_MODULES.map((m) => m.path),
-  colaborador: ["/panel/agenda", "/panel/mascotas", "/panel/propietarios", "/panel/precios"],
+  colaborador: [
+    "/panel/agenda",
+    "/panel/mascotas",
+    "/panel/propietarios",
+    "/panel/precios",
+    "/panel/inventario",
+  ],
   cliente: ["/panel/agenda", "/panel/mascotas", "/panel/precios"],
 } as const;
 
