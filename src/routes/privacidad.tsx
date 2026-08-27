@@ -1,5 +1,10 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
-import { LegalLayout, PRIVACY_PDF, TERMS_PDF } from "@/components/legal-layout";
+import { createFileRoute } from "@tanstack/react-router";
+import {
+  DEFAULT_TERMS_PATH,
+  LegalLayout,
+  resolveLegalHref,
+  usePublicBusiness,
+} from "@/components/legal-layout";
 
 export const Route = createFileRoute("/privacidad")({
   head: () => ({
@@ -8,7 +13,7 @@ export const Route = createFileRoute("/privacidad")({
       {
         name: "description",
         content:
-          "Política de tratamiento de datos personales de Spa Kira Luxury, conforme a la Ley 1581 de 2012 (Colombia).",
+          "Política de tratamiento de datos personales de Spa Kira, conforme a la Ley 1581 de 2012 (Colombia).",
       },
     ],
   }),
@@ -16,15 +21,34 @@ export const Route = createFileRoute("/privacidad")({
 });
 
 function PrivacidadPage() {
+  const { data: biz } = usePublicBusiness();
+  const trade = biz?.trade_name?.trim() || "Spa Kira";
+  const place = biz?.address?.trim() || "Bogotá, Colombia";
+  const email = biz?.contact_email?.trim() || "spakiraluxury@e-mac.co";
+  const site = (biz?.site_url?.trim() || "https://spakira.e-mac.co").replace(/\/$/, "");
+  const termsHref = resolveLegalHref(biz?.terms_url, DEFAULT_TERMS_PATH);
+  const pdfHref = biz?.privacy_pdf_url?.trim() || null;
+  const wa = biz?.whatsapp?.trim();
+
   return (
-    <LegalLayout title="Política de privacidad y tratamiento de datos personales" pdfHref={PRIVACY_PDF}>
+    <LegalLayout
+      title="Política de privacidad y tratamiento de datos personales"
+      pdfHref={pdfHref}
+      biz={biz ?? null}
+    >
       <h2>1. Responsable del tratamiento</h2>
       <p>
         El responsable del tratamiento de los datos personales es{" "}
-        <strong>Spa Kira Luxury</strong> (en adelante, “Spa Kira”), con operación en
-        Bogotá, Colombia. Canal de contacto para habeas data y soporte:{" "}
-        <a href="mailto:spakiraluxury@e-mac.co">spakiraluxury@e-mac.co</a>. Sitio web:{" "}
-        <a href="https://spakira.e-mac.co">https://spakira.e-mac.co</a>.
+        <strong>{trade}</strong> (en adelante, “Spa Kira”), con operación en {place}.
+        Canal de contacto para habeas data y soporte:{" "}
+        <a href={`mailto:${email}`}>{email}</a>
+        {wa ? (
+          <>
+            {" "}
+            · WhatsApp: <span>{wa}</span>
+          </>
+        ) : null}
+        . Sitio web: <a href={site}>{site}</a>.
       </p>
       <h2>2. Marco normativo</h2>
       <p>
@@ -45,12 +69,17 @@ function PrivacidadPage() {
           Datos de agenda de Google Calendar solo si un miembro del personal autoriza
           expresamente la integración de calendario (flujo distinto al login).
         </li>
-        <li>Datos técnicos de navegación (IP, dispositivo, registros de error) para seguridad y operación del sitio.</li>
+        <li>
+          Datos técnicos de navegación (IP, dispositivo, registros de error) para
+          seguridad y operación del sitio.
+        </li>
       </ul>
       <h2>4. Finalidades</h2>
-      <p>Tratamos los datos para: crear y administrar tu cuenta; agendar y prestar servicios;
-        facturación y comunicaciones operativas; cumplimiento legal; seguridad de la plataforma;
-        y, con tu autorización, comunicaciones comerciales.</p>
+      <p>
+        Tratamos los datos para: crear y administrar tu cuenta; agendar y prestar
+        servicios; facturación y comunicaciones operativas; cumplimiento legal;
+        seguridad de la plataforma; y, con tu autorización, comunicaciones comerciales.
+      </p>
       <h2>5. Autorización y bases</h2>
       <p>
         El tratamiento se fundamenta en tu autorización (al registrarte, iniciar sesión o
@@ -67,10 +96,9 @@ function PrivacidadPage() {
       <h2>7. Derechos de los titulares (ARCO y habeas data)</h2>
       <p>
         Podés conocer, actualizar, rectificar y suprimir tus datos, y revocar la
-        autorización, escribiendo a{" "}
-        <a href="mailto:spakiraluxury@e-mac.co">spakiraluxury@e-mac.co</a> con el asunto
-        “Habeas data”. Responderemos en los plazos de la Ley 1581 de 2012. También
-        podés acudir a la SIC.
+        autorización, escribiendo a <a href={`mailto:${email}`}>{email}</a> con el
+        asunto “Habeas data”. Responderemos en los plazos de la Ley 1581 de 2012.
+        También podés acudir a la SIC.
       </p>
       <h2>8. Conservación y seguridad</h2>
       <p>
@@ -85,13 +113,18 @@ function PrivacidadPage() {
       </p>
       <h2>10. Cambios</h2>
       <p>
-        Publicaremos la versión vigente en esta URL y en el{" "}
-        <a href={PRIVACY_PDF}>PDF</a>. El uso continuado del sitio tras un cambio
-        sustancial implica conocimiento de la nueva versión.
+        Publicaremos la versión vigente en esta URL
+        {pdfHref ? (
+          <>
+            {" "}
+            y, si está disponible, en el <a href={pdfHref}>PDF</a>
+          </>
+        ) : null}
+        . El uso continuado del sitio tras un cambio sustancial implica conocimiento de
+        la nueva versión.
       </p>
       <p>
-        Ver también:{" "}
-        <Link to="/terminos">Términos y condiciones</Link>.
+        Ver también: <a href={termsHref}>Términos y condiciones</a>.
       </p>
     </LegalLayout>
   );

@@ -14,6 +14,12 @@ import {
 import { BrandMark } from "@/components/brand";
 import { LoginSplash } from "@/components/login-splash";
 import { KiraLoader } from "@/components/kira-loader";
+import {
+  DEFAULT_PRIVACY_PATH,
+  DEFAULT_TERMS_PATH,
+  resolveLegalHref,
+  usePublicBusiness,
+} from "@/components/legal-layout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -121,6 +127,7 @@ function AuthPage() {
   const [ticketBusy, setTicketBusy] = useState(false);
   /** Evita re-disparar el canje; no meter ticketBusy en deps (se auto-cancela el fetch). */
   const ticketStarted = useRef(false);
+  const { data: bizLegal } = usePublicBusiness();
 
   const finishSplash = useCallback(() => {
     if (!splashTo) return;
@@ -413,13 +420,19 @@ function AuthPage() {
               </p>
             ) : null}
             <p className="mt-6 text-center text-xs text-muted-foreground">
-              <Link to="/privacidad" className="underline-offset-2 hover:underline">
+              <a
+                href={resolveLegalHref(bizLegal?.privacy_url, DEFAULT_PRIVACY_PATH)}
+                className="underline-offset-2 hover:underline"
+              >
                 Privacidad
-              </Link>
+              </a>
               {" · "}
-              <Link to="/terminos" className="underline-offset-2 hover:underline">
+              <a
+                href={resolveLegalHref(bizLegal?.terms_url, DEFAULT_TERMS_PATH)}
+                className="underline-offset-2 hover:underline"
+              >
                 Términos
-              </Link>
+              </a>
             </p>
           </div>
         </div>

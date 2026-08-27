@@ -59,6 +59,13 @@ function Configuracion() {
   const [slogan, setSlogan] = useState("Luxury pet grooming · Canina y felina");
   const [address, setAddress] = useState("Bogotá, Colombia");
   const [whatsapp, setWhatsapp] = useState("+57 310 555 1234");
+  const [contactEmail, setContactEmail] = useState("spakiraluxury@e-mac.co");
+  const [siteUrl, setSiteUrl] = useState("https://spakira.e-mac.co");
+  const [legalFrom, setLegalFrom] = useState("2026-08-26");
+  const [privacyUrl, setPrivacyUrl] = useState("https://spakira.e-mac.co/privacidad");
+  const [termsUrl, setTermsUrl] = useState("https://spakira.e-mac.co/terminos");
+  const [privacyPdf, setPrivacyPdf] = useState("/legal/politica-privacidad.pdf");
+  const [termsPdf, setTermsPdf] = useState("/legal/terminos-condiciones.pdf");
   const [scannerOn, setScannerOn] = useState(false);
   const [scannerMode, setScannerMode] = useState("keyboard");
   const [scannerSuffix, setScannerSuffix] = useState("");
@@ -69,6 +76,13 @@ function Configuracion() {
     setSlogan(business.data.slogan || "");
     setAddress(business.data.address || "");
     setWhatsapp(business.data.whatsapp || "");
+    setContactEmail(business.data.contact_email || "");
+    setSiteUrl(business.data.site_url || "");
+    setLegalFrom((business.data.legal_effective_from || "").slice(0, 10));
+    setPrivacyUrl(business.data.privacy_url || "");
+    setTermsUrl(business.data.terms_url || "");
+    setPrivacyPdf(business.data.privacy_pdf_url || "");
+    setTermsPdf(business.data.terms_pdf_url || "");
     setScannerOn(!!business.data.barcode_scanner_enabled);
     setScannerMode(business.data.barcode_scanner_mode || "keyboard");
     setScannerSuffix(business.data.barcode_suffix || "");
@@ -85,6 +99,26 @@ function Configuracion() {
     onSuccess: async () => {
       toast.success("Identidad del negocio guardada");
       await qc.invalidateQueries({ queryKey: ["business-settings"] });
+      await qc.invalidateQueries({ queryKey: ["business-settings-public"] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const legalMut = useMutation({
+    mutationFn: () =>
+      patchBusinessSettings({
+        contact_email: contactEmail.trim(),
+        site_url: siteUrl.trim(),
+        legal_effective_from: legalFrom.trim() || null,
+        privacy_url: privacyUrl.trim(),
+        terms_url: termsUrl.trim(),
+        privacy_pdf_url: privacyPdf.trim(),
+        terms_pdf_url: termsPdf.trim(),
+      }),
+    onSuccess: async () => {
+      toast.success("Enlaces legales actualizados");
+      await qc.invalidateQueries({ queryKey: ["business-settings"] });
+      await qc.invalidateQueries({ queryKey: ["business-settings-public"] });
     },
     onError: (e: Error) => toast.error(e.message),
   });
@@ -164,6 +198,90 @@ function Configuracion() {
               ) : null}
             </div>
           </SectionCard>
+
+          {isAdmin ? (
+            <SectionCard title="Legal y enlaces públicos">
+              <p className="mb-4 text-sm text-muted-foreground">
+                Las páginas HTML viven en <code className="text-xs">/privacidad</code> y{" "}
+                <code className="text-xs">/terminos</code> (no cambies esas rutas en Google OAuth).
+                Acá editás el contacto y los links que se muestran en el sitio; los textos legales
+                toman nombre, dirección y correo de esta config en vivo.
+              </p>
+              <div className="grid gap-4">
+                <div className="space-y-2">
+                  <Label>Correo de contacto / habeas data</Label>
+                  <Input
+                    value={contactEmail}
+                    onChange={(e) => setContactEmail(e.target.value)}
+                    className="h-11 rounded-xl"
+                    type="email"
+                    placeholder="spakiraluxury@e-mac.co"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>URL del sitio</Label>
+                  <Input
+                    value={siteUrl}
+                    onChange={(e) => setSiteUrl(e.target.value)}
+                    className="h-11 rounded-xl"
+                    placeholder="https://spakira.e-mac.co"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Vigencia legal (desde)</Label>
+                  <Input
+                    value={legalFrom}
+                    onChange={(e) => setLegalFrom(e.target.value)}
+                    className="h-11 rounded-xl"
+                    type="date"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Link política de privacidad</Label>
+                  <Input
+                    value={privacyUrl}
+                    onChange={(e) => setPrivacyUrl(e.target.value)}
+                    className="h-11 rounded-xl"
+                    placeholder="https://spakira.e-mac.co/privacidad"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Link términos y condiciones</Label>
+                  <Input
+                    value={termsUrl}
+                    onChange={(e) => setTermsUrl(e.target.value)}
+                    className="h-11 rounded-xl"
+                    placeholder="https://spakira.e-mac.co/terminos"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>PDF privacidad (opcional)</Label>
+                  <Input
+                    value={privacyPdf}
+                    onChange={(e) => setPrivacyPdf(e.target.value)}
+                    className="h-11 rounded-xl"
+                    placeholder="/legal/politica-privacidad.pdf — vacío = ocultar"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>PDF términos (opcional)</Label>
+                  <Input
+                    value={termsPdf}
+                    onChange={(e) => setTermsPdf(e.target.value)}
+                    className="h-11 rounded-xl"
+                    placeholder="/legal/terminos-condiciones.pdf — vacío = ocultar"
+                  />
+                </div>
+                <Button
+                  className="rounded-xl"
+                  disabled={legalMut.isPending}
+                  onClick={() => legalMut.mutate()}
+                >
+                  Guardar legal y enlaces
+                </Button>
+              </div>
+            </SectionCard>
+          ) : null}
 
           {isAdmin ? (
             <SectionCard title="Datos de prueba (agenda)">
@@ -255,6 +373,7 @@ function Configuracion() {
                   .then(async () => {
                     toast.success("Escáner guardado");
                     await qc.invalidateQueries({ queryKey: ["business-settings"] });
+                    await qc.invalidateQueries({ queryKey: ["business-settings-public"] });
                   })
                   .catch((e: Error) => toast.error(e.message))
               }
