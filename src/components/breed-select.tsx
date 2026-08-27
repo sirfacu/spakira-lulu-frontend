@@ -1,12 +1,28 @@
-/** Select / picker de raza con miniatura y búsqueda (desde 3 letras). */
+/** Autocomplete de raza: digitar → opciones → elegir y se cierra. */
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 import type { Breed } from "@/lib/spa-queries";
 
 function breedThumb(b: Pick<Breed, "species" | "image_url" | "name">) {
   if (b.image_url) return b.image_url;
   return b.species === "gato" ? "/breeds/defaults/cat.svg" : "/breeds/defaults/dog.svg";
+}
+
+/** Preferí la ficha con foto / grupo si hay duplicados por nombre. */
+function dedupeBreeds(options: Breed[]): Breed[] {
+  const byName = new Map<string, Breed>();
+  for (const b of options) {
+    const key = b.name.trim().toLowerCase();
+    const prev = byName.get(key);
+    if (!prev) {
+      byName.set(key, b);
+      continue;
+    }
+    const score = (x: Breed) => (x.image_url ? 2 : 0) + (x.breed_group ? 1 : 0);
+    if (score(b) > score(prev)) byName.set(key, b);
+  }
+  return [...byName.values()];
 }
 
 type Props = {
@@ -57,107 +73,135 @@ export function BreedSelect({ value, onChange, options, className, id, disabled 
   );
 }
 
-/** Lista custom con miniaturas + filtro por texto (≥3 letras). */
+/** Digitar (≥3 letras) → lista corta → al elegir queda solo el nombre. */
 export function BreedPickerList({
   value,
   onChange,
   options,
   className,
+  disabled,
 }: Props) {
-  const [query, setQuery] = useState("");
+  const unique = useMemo(() => dedupeBreeds(options), [options]);
+  const selected = unique.find((b) => b.id === value) ?? options.find((b) => b.id === value);
+
+  const [query, setQuery] = useState(selected?.name ?? "");
+  const [open, setOpen] = useState(false);
+  const wrapRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) setQuery(selected?.name ?? "");
+  }, [selected?.name, selected?.id, open]);
+
+  useEffect(() => {
+    const onDoc = (e: MouseEvent) => {
+      if (!wrapRef.current?.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, []);
+
   const q = query.trim().toLowerCase();
-  const filtering = q.length >= 3;
+  const filtering = open && q.length >= 3;
 
   const visible = useMemo(() => {
-    if (!filtering) return options;
-    return options.filter(
-      (b) =>
-        b.name.toLowerCase().includes(q) ||
-        (b.breed_group || "").toLowerCase().includes(q) ||
-        (b.species || "").toLowerCase().includes(q),
-    );
-  }, [options, filtering, q]);
+    if (!filtering) return [];
+    return unique
+      .filter((b) => b.name.toLowerCase().includes(q))
+      .slice(0, 12);
+  }, [unique, filtering, q]);
 
-  const selected = options.find((b) => b.id === value);
+  const pick = (id: string, name: string) => {
+    onChange(id);
+    setQuery(name);
+    setOpen(false);
+  };
 
   return (
-    <div className={cn("space-y-2", className)}>
+    <div ref={wrapRef} className={cn("relative", className)}>
       <input
-        type="search"
+        type="text"
+        disabled={disabled}
         value={query}
-        onChange={(e) => setQuery(e.target.value)}
-        placeholder="Escribí al menos 3 letras para filtrar…"
-        className="flex h-11 w-full rounded-xl border border-input bg-background px-3 text-sm"
+        autoComplete="off"
+        placeholder="Escribí al menos 3 letras…"
+        className="flex h-11 w-full rounded-xl border border-input bg-background px-3 pr-16 text-sm"
         aria-label="Buscar raza"
+        aria-expanded={filtering}
+        aria-autocomplete="list"
+        onFocus={() => setOpen(true)}
+        onChange={(e) => {
+          const next = e.target.value;
+          setQuery(next);
+          setOpen(true);
+          if (selected && next.trim().toLowerCase() !== selected.name.toLowerCase()) {
+            onChange("");
+          }
+        }}
       />
-      {selected ? (
-        <p className="text-xs text-muted-foreground">
-          Seleccionada: <span className="font-medium text-foreground">{selected.name}</span>
-        </p>
-      ) : null}
-      {!filtering ? (
-        <p className="text-[11px] text-muted-foreground">
-          Podés elegir de la lista o filtrar escribiendo 3 o más letras.
-        </p>
-      ) : null}
-      <div
-        className="max-h-56 overflow-y-auto rounded-xl border border-input bg-background"
-        role="listbox"
-        aria-label="Razas"
-      >
+      {value || query ? (
         <button
           type="button"
-          role="option"
-          aria-selected={!value}
-          className={cn(
-            "flex w-full items-center gap-3 px-3 py-2 text-left text-sm hover:bg-secondary/60",
-            !value && "bg-primary/10 text-primary",
-          )}
-          onClick={() => onChange("")}
+          className="absolute right-2 top-1/2 -translate-y-1/2 rounded-lg px-2 py-1 text-xs text-muted-foreground hover:bg-muted"
+          onClick={() => {
+            onChange("");
+            setQuery("");
+            setOpen(true);
+          }}
         >
-          <span className="grid h-8 w-8 place-items-center rounded-lg bg-muted text-xs">—</span>
-          Sin raza
+          Limpiar
         </button>
-        {visible.map((b) => (
-          <button
-            key={b.id}
-            type="button"
-            role="option"
-            aria-selected={value === b.id}
-            className={cn(
-              "flex w-full items-center gap-3 px-3 py-2 text-left text-sm hover:bg-secondary/60",
-              value === b.id && "bg-primary/10 text-primary",
-            )}
-            onClick={() => onChange(b.id)}
-          >
-            <img
-              src={breedThumb(b)}
-              alt=""
-              className="h-8 w-8 rounded-lg object-cover"
-              loading="lazy"
-              onError={(e) => {
-                (e.currentTarget as HTMLImageElement).src =
-                  b.species === "gato" ? "/breeds/defaults/cat.svg" : "/breeds/defaults/dog.svg";
-              }}
-            />
-            <span className="min-w-0 flex-1 truncate">
-              <span className="block truncate font-medium">{b.name}</span>
-              {b.breed_group ? (
-                <span className="block truncate text-[11px] text-muted-foreground">
-                  {b.breed_group}
-                </span>
-              ) : (
-                <span className="block text-[11px] capitalize text-muted-foreground">{b.species}</span>
-              )}
-            </span>
-          </button>
-        ))}
-        {filtering && !visible.length ? (
-          <p className="px-3 py-4 text-center text-sm text-muted-foreground">
-            Ninguna raza coincide con “{query.trim()}”.
-          </p>
-        ) : null}
-      </div>
+      ) : null}
+
+      {filtering ? (
+        <ul
+          role="listbox"
+          className="absolute z-20 mt-1 max-h-56 w-full overflow-y-auto rounded-xl border border-input bg-card py-1 shadow-md"
+        >
+          <li>
+            <button
+              type="button"
+              role="option"
+              className="flex w-full px-3 py-2 text-left text-sm text-muted-foreground hover:bg-secondary/60"
+              onClick={() => pick("", "")}
+            >
+              Sin raza
+            </button>
+          </li>
+          {visible.map((b) => (
+            <li key={b.id}>
+              <button
+                type="button"
+                role="option"
+                aria-selected={value === b.id}
+                className={cn(
+                  "flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-secondary/60",
+                  value === b.id && "bg-primary/10 text-primary",
+                )}
+                onClick={() => pick(b.id, b.name)}
+              >
+                <img
+                  src={breedThumb(b)}
+                  alt=""
+                  className="h-6 w-6 shrink-0 rounded-md object-cover"
+                  loading="lazy"
+                  onError={(e) => {
+                    (e.currentTarget as HTMLImageElement).src =
+                      b.species === "gato"
+                        ? "/breeds/defaults/cat.svg"
+                        : "/breeds/defaults/dog.svg";
+                  }}
+                />
+                <span className="truncate font-medium">{b.name}</span>
+              </button>
+            </li>
+          ))}
+          {!visible.length ? (
+            <li className="px-3 py-3 text-center text-sm text-muted-foreground">
+              Sin coincidencias
+            </li>
+          ) : null}
+        </ul>
+      ) : null}
     </div>
   );
 }
