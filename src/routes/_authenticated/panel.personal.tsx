@@ -205,7 +205,7 @@ function Personal() {
   const deleteMut = useMutation({
     mutationFn: (id: string) => deleteStaff(id),
     onSuccess: async () => {
-      toast.success("Ya no es Staff (quedó como Usuario)");
+      toast.success("Colaborador eliminado. Ya no puede ingresar; el histórico queda anonimizado.");
       setSelected(null);
       await qc.invalidateQueries({ queryKey: ["staff"] });
       await qc.invalidateQueries({ queryKey: ["app-users"] });
@@ -1185,7 +1185,7 @@ function Personal() {
             ¿Eliminar a <span className="text-accent">{pendingDelete?.name}</span>?
           </>
         }
-        description="Se quitará este integrante del staff."
+        description="Dejará de poder ingresar. El histórico de citas/nómina se conserva con un nombre anonimizado (no queda como Usuario loginable)."
         onConfirm={() => {
           if (pendingDelete) deleteMut.mutate(pendingDelete.id);
         }}

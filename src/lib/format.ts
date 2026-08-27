@@ -5,6 +5,19 @@ export const cop = (value: number | null | undefined) =>
     maximumFractionDigits: 0,
   }).format(Number(value ?? 0));
 
+/** Rango de referencia (apreciación); si min=max muestra un solo valor. */
+export const copRange = (
+  min: number | null | undefined,
+  max: number | null | undefined,
+  fallback?: number | null,
+) => {
+  const a = min != null ? Number(min) : fallback != null ? Number(fallback) : null;
+  const b = max != null ? Number(max) : a;
+  if (a == null) return "Según apreciación";
+  if (b == null || a === b) return cop(a);
+  return `${cop(a)} – ${cop(b)}`;
+};
+
 export const shortDate = (iso: string) =>
   new Date(iso).toLocaleDateString("es-CO", { day: "2-digit", month: "short" });
 

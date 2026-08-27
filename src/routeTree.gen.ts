@@ -12,6 +12,9 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/route'
 import { Route as AuthRouteImport } from './routes/auth'
+import { Route as HomeRouteImport } from './routes/home'
+import { Route as PrivacidadRouteImport } from './routes/privacidad'
+import { Route as TerminosRouteImport } from './routes/terminos'
 import { Route as AuthenticatedPanelIndexRouteImport } from './routes/_authenticated/panel.index'
 import { Route as AuthenticatedPanelAgendaRouteImport } from './routes/_authenticated/panel.agenda'
 import { Route as AuthenticatedPanelCompletarRouteImport } from './routes/_authenticated/panel.completar'
@@ -38,6 +41,21 @@ const AuthenticatedRouteRoute = AuthenticatedRouteRouteImport.update({
 const AuthRoute = AuthRouteImport.update({
   id: '/auth',
   path: '/auth',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const HomeRoute = HomeRouteImport.update({
+  id: '/home',
+  path: '/home',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PrivacidadRoute = PrivacidadRouteImport.update({
+  id: '/privacidad',
+  path: '/privacidad',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const TerminosRoute = TerminosRouteImport.update({
+  id: '/terminos',
+  path: '/terminos',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AuthenticatedPanelIndexRoute = AuthenticatedPanelIndexRouteImport.update({
@@ -120,6 +138,9 @@ const AuthenticatedPanelVentasRoute =
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
+  '/home': typeof HomeRoute
+  '/privacidad': typeof PrivacidadRoute
+  '/terminos': typeof TerminosRoute
   '/panel/agenda': typeof AuthenticatedPanelAgendaRoute
   '/panel/completar': typeof AuthenticatedPanelCompletarRoute
   '/panel/configuracion': typeof AuthenticatedPanelConfiguracionRoute
@@ -137,6 +158,9 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
+  '/home': typeof HomeRoute
+  '/privacidad': typeof PrivacidadRoute
+  '/terminos': typeof TerminosRoute
   '/panel/agenda': typeof AuthenticatedPanelAgendaRoute
   '/panel/completar': typeof AuthenticatedPanelCompletarRoute
   '/panel/configuracion': typeof AuthenticatedPanelConfiguracionRoute
@@ -156,6 +180,9 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/_authenticated': typeof AuthenticatedRouteRouteWithChildren
   '/auth': typeof AuthRoute
+  '/home': typeof HomeRoute
+  '/privacidad': typeof PrivacidadRoute
+  '/terminos': typeof TerminosRoute
   '/_authenticated/panel/agenda': typeof AuthenticatedPanelAgendaRoute
   '/_authenticated/panel/completar': typeof AuthenticatedPanelCompletarRoute
   '/_authenticated/panel/configuracion': typeof AuthenticatedPanelConfiguracionRoute
@@ -175,6 +202,9 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/auth'
+    | '/home'
+    | '/privacidad'
+    | '/terminos'
     | '/panel/agenda'
     | '/panel/completar'
     | '/panel/configuracion'
@@ -192,6 +222,9 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/auth'
+    | '/home'
+    | '/privacidad'
+    | '/terminos'
     | '/panel/agenda'
     | '/panel/completar'
     | '/panel/configuracion'
@@ -210,6 +243,9 @@ export interface FileRouteTypes {
     | '/'
     | '/_authenticated'
     | '/auth'
+    | '/home'
+    | '/privacidad'
+    | '/terminos'
     | '/_authenticated/panel/agenda'
     | '/_authenticated/panel/completar'
     | '/_authenticated/panel/configuracion'
@@ -229,6 +265,9 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AuthenticatedRouteRoute: typeof AuthenticatedRouteRouteWithChildren
   AuthRoute: typeof AuthRoute
+  HomeRoute: typeof HomeRoute
+  PrivacidadRoute: typeof PrivacidadRoute
+  TerminosRoute: typeof TerminosRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -252,6 +291,27 @@ declare module '@tanstack/react-router' {
       path: '/auth'
       fullPath: '/auth'
       preLoaderRoute: typeof AuthRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/home': {
+      id: '/home'
+      path: '/home'
+      fullPath: '/home'
+      preLoaderRoute: typeof HomeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/privacidad': {
+      id: '/privacidad'
+      path: '/privacidad'
+      fullPath: '/privacidad'
+      preLoaderRoute: typeof PrivacidadRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/terminos': {
+      id: '/terminos'
+      path: '/terminos'
+      fullPath: '/terminos'
+      preLoaderRoute: typeof TerminosRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/_authenticated/panel/': {
@@ -387,6 +447,9 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AuthenticatedRouteRoute: AuthenticatedRouteRouteWithChildren,
   AuthRoute: AuthRoute,
+  HomeRoute: HomeRoute,
+  PrivacidadRoute: PrivacidadRoute,
+  TerminosRoute: TerminosRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

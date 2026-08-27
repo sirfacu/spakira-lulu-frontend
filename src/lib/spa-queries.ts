@@ -59,6 +59,8 @@ export type Breed = {
   name: string;
   species: string;
   active: boolean;
+  image_url?: string | null;
+  breed_group?: string | null;
 };
 
 export type StorePurchase = {
@@ -164,9 +166,13 @@ export type Service = {
   name: string;
   description: string | null;
   price: number;
+  price_min?: number | null;
+  price_max?: number | null;
+  price_note?: string | null;
   duration_min: number;
   image_url: string | null;
   is_public: boolean;
+  is_addon?: boolean;
   sort_order: number;
   publish_at?: string | null;
   /** Actividades (admin / matching): bano, secado, color, … */
@@ -261,7 +267,13 @@ export type AppUser = {
 /** Landing (sin auth). */
 export const publicServicesQuery = queryOptions({
   queryKey: ["services", "public"],
-  queryFn: () => api<Service[]>("/services/public", { auth: false }),
+  queryFn: async () => {
+    try {
+      return await api<Service[]>("/services/public", { auth: false });
+    } catch {
+      return [];
+    }
+  },
 });
 
 /** Alias usado por la landing. */
@@ -540,11 +552,60 @@ export type AuditEntry = {
   meta?: unknown;
 };
 
-export const auditQuery = queryOptions({
-  queryKey: ["audit"],
-  queryFn: () => api<AuditEntry[]>("/audit?limit=80"),
-});
+export type AuditPage = {
+  items: AuditEntry[];
+  total: number;
+  limit: number;
+  offset: number;
+};
 
+export function auditQuery(limit = 10, offset = 0) {
+  return queryOptions({
+    queryKey: ["audit", limit, offset],
+    queryFn: () => api<AuditPage>(`/audit?limit=${limit}&offset=${offset}`),
+  });
+}
+
+export type BusinessHourDay = {
+  weekday: number;
+  label: string;
+  is_open: boolean;
+  open_time: string;
+  close_time: string;
+  slots_per_hour: number;
+};
+
+export async function getBusinessHours() {
+  return api<{ days: BusinessHourDay[] }>("/settings/business-hours");
+}
+
+export async function putBusinessHours(days: Omit<BusinessHourDay, "label">[]) {
+  return api<{ days: BusinessHourDay[] }>("/settings/business-hours", {
+    method: "PUT",
+    body: { days },
+  });
+}
+
+export type NextSlot = {
+  starts_at: string;
+  starts_at_local?: string;
+  band_end_local?: string;
+  slots_used: number;
+  slots_per_hour: number;
+  weekday: number;
+  label: string;
+};
+
+export async function fetchNextAppointmentSlot(opts?: {
+  service_id?: string;
+  duration_min?: number;
+}) {
+  const q = new URLSearchParams();
+  if (opts?.service_id) q.set("service_id", opts.service_id);
+  if (opts?.duration_min != null) q.set("duration_min", String(opts.duration_min));
+  const qs = q.toString();
+  return api<NextSlot>(`/appointments/next-slot${qs ? `?${qs}` : ""}`);
+}
 export function petHistoryQuery(petId: string) {
   return queryOptions({
     queryKey: ["pets", petId, "history"],
@@ -737,6 +798,19 @@ export async function resetAppUserPassword(id: string, password: string) {
   });
 }
 
+export async function forceActivateAppUser(id: string, password: string) {
+  return api<{ ok: boolean; email: string; message: string }>(
+    `/auth/users/${id}/force-activate`,
+    { method: "POST", body: { password } },
+  );
+}
+
+export async function deleteAppUser(id: string) {
+  return api<{ ok: boolean; message: string; label?: string }>(`/auth/users/${id}`, {
+    method: "DELETE",
+  });
+}
+
 export async function fetchRoleModules() {
   return api<{
     profiles: { role: string; label: string; modules: string[] }[];
@@ -892,6 +966,7 @@ export async function completeAppointment(
   id: string,
   input: {
     include_service?: boolean;
+    service_price?: number;
     lines?: { name: string; quantity: number; unit_price: number }[];
     notes?: string | null;
   },

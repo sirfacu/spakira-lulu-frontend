@@ -30,6 +30,7 @@ function newKey() {
 
 export function FinishAppointmentDialog({ appointment, open, onOpenChange, onDone }: Props) {
   const [includeService, setIncludeService] = useState(true);
+  const [servicePrice, setServicePrice] = useState("");
   const [query, setQuery] = useState("");
   const [lines, setLines] = useState<Line[]>([]);
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -53,6 +54,11 @@ export function FinishAppointmentDialog({ appointment, open, onOpenChange, onDon
   useEffect(() => {
     if (!open || !appointment?.id) return;
     setIncludeService(true);
+    setServicePrice(
+      appointment.price != null && Number(appointment.price) > 0
+        ? String(Math.round(Number(appointment.price)))
+        : "",
+    );
     setQuery("");
     setConfirmOpen(false);
     setCustomPrice("");
@@ -96,7 +102,9 @@ export function FinishAppointmentDialog({ appointment, open, onOpenChange, onDon
     !suggestions.some((s) => s.name.toLowerCase() === query.trim().toLowerCase());
 
   const miscTotal = lines.reduce((sum, l) => sum + l.unit_price * l.quantity, 0);
-  const serviceTotal = includeService ? Number(appointment?.price ?? 0) : 0;
+  const parsedService = Number(servicePrice);
+  const serviceTotal =
+    includeService && Number.isFinite(parsedService) && parsedService >= 0 ? parsedService : 0;
   const grandTotal = serviceTotal + miscTotal;
 
   const addCatalogItem = (item: MiscCatalogItem) => {
@@ -145,6 +153,13 @@ export function FinishAppointmentDialog({ appointment, open, onOpenChange, onDon
       toast.error("Confirmá el servicio o agregá al menos un artículo");
       return;
     }
+    if (includeService) {
+      const n = Number(servicePrice);
+      if (!Number.isFinite(n) || n < 0 || servicePrice.trim() === "") {
+        toast.error("Indicá el valor cobrado del servicio (según apreciación)");
+        return;
+      }
+    }
     setConfirmOpen(true);
   };
 
@@ -154,6 +169,7 @@ export function FinishAppointmentDialog({ appointment, open, onOpenChange, onDon
     try {
       const res = await completeAppointment(appointment.id, {
         include_service: includeService,
+        ...(includeService ? { service_price: Number(servicePrice) } : {}),
         lines: lines.map((l) => ({
           name: l.name,
           quantity: l.quantity,
@@ -207,20 +223,31 @@ export function FinishAppointmentDialog({ appointment, open, onOpenChange, onDon
           </div>
 
           <div className="space-y-5 px-6 py-5">
-            <label className="flex cursor-pointer items-center gap-3 rounded-2xl border border-border bg-card px-4 py-3 text-sm shadow-soft">
-              <input
-                type="checkbox"
-                className="h-4 w-4 accent-primary"
-                checked={includeService}
-                onChange={(e) => setIncludeService(e.target.checked)}
-              />
-              <span className="min-w-0 flex-1">
-                Incluir servicio en la factura
-                <span className="mt-0.5 block text-xs text-muted-foreground">
-                  {appointment.services?.name ?? "Servicio prestado"}
+            <label className="flex cursor-pointer flex-col gap-3 rounded-2xl border border-border bg-card px-4 py-3 text-sm shadow-soft sm:flex-row sm:items-center">
+              <div className="flex min-w-0 flex-1 items-center gap-3">
+                <input
+                  type="checkbox"
+                  className="h-4 w-4 accent-primary"
+                  checked={includeService}
+                  onChange={(e) => setIncludeService(e.target.checked)}
+                />
+                <span className="min-w-0 flex-1">
+                  Incluir servicio en la factura
+                  <span className="mt-0.5 block text-xs text-muted-foreground">
+                    {appointment.services?.name ?? "Servicio prestado"} · valor según apreciación
+                  </span>
                 </span>
-              </span>
-              <span className="font-semibold text-accent">{cop(appointment.price)}</span>
+              </div>
+              <Input
+                type="number"
+                min={0}
+                step={1000}
+                disabled={!includeService}
+                className="h-10 w-full rounded-xl sm:w-36"
+                placeholder="Cobrado $"
+                value={servicePrice}
+                onChange={(e) => setServicePrice(e.target.value)}
+              />
             </label>
 
             <div>
