@@ -1,7 +1,9 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Bath, Scissors, Sparkles, Heart, Clock, Instagram, Facebook } from "lucide-react";
 import { BrandMark, PawIcon, LOGO_SRC } from "@/components/brand";
+import { ChipRail } from "@/components/home-chip-rail";
 import {
   DEFAULT_PRIVACY_PATH,
   DEFAULT_TERMS_PATH,
@@ -9,7 +11,13 @@ import {
   usePublicBusiness,
 } from "@/components/legal-layout";
 import { Button } from "@/components/ui/button";
-import { servicesQuery } from "@/lib/spa-queries";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { getPublicHomeContent, servicesQuery, type HomeNewsItem } from "@/lib/spa-queries";
 import { cop } from "@/lib/format";
 import { fetchMe, getToken, logout } from "@/lib/api";
 import { homeForRole, permissionsFor } from "@/lib/roles";
@@ -64,6 +72,11 @@ function Landing() {
     enabled: loggedIn,
     retry: false,
   });
+  const homeContent = useQuery({
+    queryKey: ["home-content-public"],
+    queryFn: getPublicHomeContent,
+    retry: false,
+  });
   const publicServices = services.filter((s) => {
     if (!s.is_public) return false;
     if (!s.publish_at) return true;
@@ -76,37 +89,65 @@ function Landing() {
   const termsHref = resolveLegalHref(bizLegal?.terms_url, DEFAULT_TERMS_PATH);
   const privacyPdf = bizLegal?.privacy_pdf_url?.trim();
   const termsPdf = bizLegal?.terms_pdf_url?.trim();
+  const news = homeContent.data?.news ?? [];
+  const videos = homeContent.data?.client_videos ?? [];
+  const [preview, setPreview] = useState<HomeNewsItem | null>(null);
+
+  const authCta = staff ? (
+    <Button asChild size="sm" className="rounded-xl shadow-glow">
+      <Link to={panelTo}>Ir al panel</Link>
+    </Button>
+  ) : me.data ? (
+    <Button asChild size="sm" className="rounded-xl shadow-glow">
+      <Link to={panelTo}>Mis mascotas</Link>
+    </Button>
+  ) : (
+    <Button asChild size="sm" className="rounded-xl shadow-glow">
+      <Link to="/auth">Ingresa aquí</Link>
+    </Button>
+  );
 
   return (
     <div className="spa-canvas min-h-screen bg-background">
-      {me.data ? (
-        <div className="border-b border-border bg-card/80 px-5 py-3 text-sm">
-          <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3">
-            <p className="text-muted-foreground">
-              Sesión: <span className="font-medium text-foreground">{me.data.email}</span>
-              {staff ? " · personal" : " · usuario (Mis mascotas y Mi agenda)"}
-            </p>
-            <div className="flex flex-wrap gap-2">
-              <Button asChild size="sm" className="rounded-xl">
-                <Link to={panelTo}>Ir al panel</Link>
-              </Button>
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                className="rounded-xl"
-                onClick={() => {
-                  logout();
-                  window.location.assign("/auth");
-                }}
-              >
-                Cerrar sesión
-              </Button>
-            </div>
+      <header className="sticky top-0 z-30 border-b border-border/70 bg-card/80 backdrop-blur-md">
+        <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-5 py-3">
+          <Link to="/home" className="min-w-0">
+            <BrandMark
+              compact
+              tagline={false}
+              tradeName={bizLegal?.trade_name}
+              slogan={bizLegal?.slogan}
+            />
+          </Link>
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            {me.data ? (
+              <>
+                <p className="hidden text-xs text-muted-foreground sm:block">
+                  {me.data.email}
+                  {staff ? " · personal" : " · usuario"}
+                </p>
+                {authCta}
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="rounded-xl"
+                  onClick={() => {
+                    logout();
+                    window.location.assign("/auth");
+                  }}
+                >
+                  Salir
+                </Button>
+              </>
+            ) : (
+              authCta
+            )}
           </div>
         </div>
-      ) : null}
-      <section className="mx-auto grid max-w-6xl items-center gap-10 px-5 pb-16 pt-10 lg:grid-cols-[1.05fr_1fr]">
+      </header>
+
+      <section className="mx-auto grid max-w-6xl items-center gap-10 px-5 pb-12 pt-10 lg:grid-cols-[1.05fr_1fr]">
         <div>
           <span className="inline-flex items-center gap-2 rounded-full bg-blush px-4 py-1.5 text-xs font-semibold uppercase tracking-[0.16em] text-blush-foreground">
             <PawIcon className="h-3.5 w-3.5" /> Canina y felina
@@ -119,26 +160,10 @@ function Landing() {
             Grooming de lujo con productos hipoalergénicos, estilistas certificados y un trato
             paciente. Cada visita termina con moño, perfume y una foto de antes y después.
           </p>
-          <div className="mt-8 flex flex-wrap gap-3">
-            {staff ? (
-              <Button asChild size="lg" className="h-13 rounded-xl px-7 text-base shadow-glow">
-                <Link to={panelTo}>Ir al panel</Link>
-              </Button>
-            ) : me.data ? (
-              <Button asChild size="lg" className="h-13 rounded-xl px-7 text-base shadow-glow">
-                <Link to={panelTo}>Mis mascotas</Link>
-              </Button>
-            ) : (
-              <Button asChild size="lg" className="h-13 rounded-xl px-7 text-base shadow-glow">
-                <Link to="/auth">Ingresa aquí</Link>
-              </Button>
-            )}
-          </div>
           {me.data && !staff ? (
             <p className="mt-4 max-w-lg text-sm text-muted-foreground">
               Entraste como <strong>Usuario</strong>. En el panel ves{" "}
-              <strong>Mis mascotas</strong> y <strong>Mi agenda</strong> para registrar a tu
-              peludo y pedir turno.
+              <strong>Mis mascotas</strong> y <strong>Mi agenda</strong>.
             </p>
           ) : null}
 
@@ -165,7 +190,78 @@ function Landing() {
         </div>
       </section>
 
-      <section id="precios" className="mx-auto max-w-6xl px-5 pb-24">
+      {news.length > 0 ? (
+        <section className="border-y border-border/60 bg-card/40 py-10">
+          <div className="mx-auto max-w-6xl px-5">
+            <div className="mb-6 text-center">
+              <span className="font-script text-3xl text-accent">Novedades</span>
+              <h2 className="font-display text-2xl font-bold text-primary sm:text-3xl">
+                Ideas y noticias
+              </h2>
+              <div className="gold-rule mx-auto mt-3 max-w-xs" />
+            </div>
+            <ChipRail stepPx={320}>
+              {news.map((item) => (
+                <article
+                  key={item.id}
+                  className="card-soft flex w-[280px] shrink-0 flex-col overflow-hidden sm:w-[320px]"
+                >
+                  {item.kind === "image" && item.image_url ? (
+                    <img
+                      src={item.image_url}
+                      alt={item.title}
+                      className="h-40 w-full object-cover"
+                      loading="lazy"
+                    />
+                  ) : null}
+                  <div className="flex flex-1 flex-col gap-2 p-4">
+                    <h3 className="font-display text-lg font-bold text-primary">{item.title}</h3>
+                    {item.kind === "html" && item.html ? (
+                      <div
+                        className="prose prose-sm line-clamp-4 max-w-none text-muted-foreground prose-p:my-1"
+                        dangerouslySetInnerHTML={{ __html: item.html }}
+                      />
+                    ) : null}
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="mt-auto h-10 w-full rounded-xl"
+                      onClick={() => setPreview(item)}
+                    >
+                      Ver nota
+                    </Button>
+                  </div>
+                </article>
+              ))}
+            </ChipRail>
+          </div>
+        </section>
+      ) : null}
+
+      <Dialog open={!!preview} onOpenChange={(open) => !open && setPreview(null)}>
+        <DialogContent className="max-h-[85vh] max-w-lg overflow-y-auto rounded-2xl">
+          <DialogHeader>
+            <DialogTitle className="font-display text-2xl text-primary">
+              {preview?.title}
+            </DialogTitle>
+          </DialogHeader>
+          {preview?.kind === "image" && preview.image_url ? (
+            <img
+              src={preview.image_url}
+              alt={preview.title}
+              className="mt-2 max-h-[50vh] w-full rounded-xl object-contain"
+            />
+          ) : null}
+          {preview?.kind === "html" && preview.html ? (
+            <div
+              className="prose prose-sm mt-2 max-w-none text-foreground prose-headings:font-display"
+              dangerouslySetInnerHTML={{ __html: preview.html }}
+            />
+          ) : null}
+        </DialogContent>
+      </Dialog>
+
+      <section id="precios" className="mx-auto max-w-6xl px-5 py-16">
         <div className="text-center">
           <span className="font-script text-3xl text-accent">Nuestros</span>
           <h2 className="font-display text-3xl font-bold text-primary sm:text-4xl">
@@ -179,44 +275,82 @@ function Landing() {
             Los rituales y precios se publican en esta misma página.
           </p>
         ) : (
-        <div className="mt-10 grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
-          {publicServices.map((s) => (
-            <article
-              key={s.id}
-              className="card-soft group flex flex-col overflow-hidden transition-all duration-300 hover:-translate-y-1.5 hover:shadow-lift"
-            >
-              <div className="relative h-40 overflow-hidden bg-secondary">
-                {s.image_url ? (
-                  <img
-                    src={s.image_url}
-                    alt={`Servicio ${s.name} en Spa Kira`}
-                    loading="lazy"
-                    className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
-                  />
-                ) : null}
-                <span className="absolute right-3 top-3 inline-flex items-center gap-1 rounded-full bg-card/90 px-2.5 py-1 text-[11px] font-medium text-primary backdrop-blur">
-                  <Clock className="h-3 w-3" /> {s.duration_min} min
-                </span>
-              </div>
-              <div className="flex flex-1 flex-col p-5">
-                <h3 className="font-display text-lg font-bold text-primary">{s.name}</h3>
-                <p className="mt-2 flex-1 text-sm leading-relaxed text-muted-foreground">
-                  {s.description}
-                </p>
-                <p className="mt-4 font-display text-2xl font-bold text-accent">{cop(s.price)}</p>
-                <Button asChild className="mt-4 h-11 w-full rounded-xl">
-                  <Link to="/auth">Agendar</Link>
-                </Button>
-              </div>
-            </article>
-          ))}
-        </div>
+          <div className="mt-10">
+            <ChipRail stepPx={280}>
+              {publicServices.map((s) => (
+                <article
+                  key={s.id}
+                  className="card-soft group flex w-[260px] shrink-0 flex-col overflow-hidden sm:w-[280px]"
+                >
+                  <div className="relative h-36 overflow-hidden bg-secondary">
+                    {s.image_url ? (
+                      <img
+                        src={s.image_url}
+                        alt={`Servicio ${s.name} en Spa Kira`}
+                        loading="lazy"
+                        className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
+                      />
+                    ) : null}
+                    <span className="absolute right-3 top-3 inline-flex items-center gap-1 rounded-full bg-card/90 px-2.5 py-1 text-[11px] font-medium text-primary backdrop-blur">
+                      <Clock className="h-3 w-3" /> {s.duration_min} min
+                    </span>
+                  </div>
+                  <div className="flex flex-1 flex-col p-4">
+                    <h3 className="font-display text-lg font-bold text-primary">{s.name}</h3>
+                    <p className="mt-2 line-clamp-3 flex-1 text-sm leading-relaxed text-muted-foreground">
+                      {s.description}
+                    </p>
+                    <p className="mt-3 font-display text-xl font-bold text-accent">{cop(s.price)}</p>
+                    <Button asChild className="mt-3 h-10 w-full rounded-xl">
+                      <Link to="/auth">Agendar</Link>
+                    </Button>
+                  </div>
+                </article>
+              ))}
+            </ChipRail>
+          </div>
         )}
       </section>
 
+      {videos.length > 0 ? (
+        <section className="border-t border-border/60 bg-card/35 py-16">
+          <div className="mx-auto max-w-6xl px-5">
+            <div className="mb-8 text-center">
+              <span className="font-script text-3xl text-accent">Testimonios</span>
+              <h2 className="font-display text-3xl font-bold text-primary sm:text-4xl">
+                Nuestros clientes dicen
+              </h2>
+              <div className="gold-rule mx-auto mt-4 max-w-xs" />
+            </div>
+            <ChipRail stepPx={340}>
+              {videos.map((v) => (
+                <figure
+                  key={v.id}
+                  className="card-soft w-[300px] shrink-0 overflow-hidden sm:w-[360px]"
+                >
+                  <div className="aspect-video bg-secondary">
+                    <iframe
+                      title={v.title}
+                      src={v.embed_url}
+                      className="h-full w-full border-0"
+                      loading="lazy"
+                      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                      allowFullScreen
+                    />
+                  </div>
+                  <figcaption className="px-4 py-3 text-sm font-medium text-primary">
+                    {v.title}
+                  </figcaption>
+                </figure>
+              ))}
+            </ChipRail>
+          </div>
+        </section>
+      ) : null}
+
       <footer className="border-t border-border bg-card/60">
         <div className="mx-auto flex max-w-6xl flex-col items-center gap-3 px-5 py-10 text-center">
-          <BrandMark />
+          <BrandMark tradeName={bizLegal?.trade_name} slogan={bizLegal?.slogan} />
           <p className="text-sm text-muted-foreground">
             Luxury pet grooming · Canina y felina · Bogotá
           </p>
