@@ -13,6 +13,7 @@ import {
 } from "@/lib/api";
 import { BrandMark } from "@/components/brand";
 import { LoginSplash } from "@/components/login-splash";
+import { KiraLoader } from "@/components/kira-loader";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -20,13 +21,26 @@ import { ArrowLeft } from "lucide-react";
 import { homeForRole, permissionsFor } from "@/lib/roles";
 
 export const Route = createFileRoute("/auth")({
-  validateSearch: (search: Record<string, unknown>) => ({
-    token: typeof search.token === "string" ? search.token : undefined,
-    google_token: typeof search.google_token === "string" ? search.google_token : undefined,
-    role: typeof search.role === "string" ? search.role : undefined,
-    google_error: typeof search.google_error === "string" ? search.google_error : undefined,
-    need_profile: search.need_profile === "1" || search.need_profile === true,
-  }),
+  validateSearch: (search: Record<string, unknown>) => {
+    const out: {
+      token?: string;
+      google_token?: string;
+      google_ticket?: string;
+      role?: string;
+      google_error?: string;
+      auth_error?: string;
+      need_profile?: true;
+    } = {};
+    if (typeof search.token === "string") out.token = search.token;
+    if (typeof search.google_token === "string") out.google_token = search.google_token;
+    if (typeof search.google_ticket === "string") out.google_ticket = search.google_ticket;
+    if (typeof search.role === "string") out.role = search.role;
+    if (typeof search.google_error === "string") out.google_error = search.google_error;
+    if (typeof search.auth_error === "string") out.auth_error = search.auth_error;
+    // Solo serializar need_profile cuando es true (evita ?need_profile=false en la URL).
+    if (search.need_profile === "1" || search.need_profile === true) out.need_profile = true;
+    return out;
+  },
   head: () => ({
     meta: [
       { title: "Ingresar al panel | Spa Kira" },
@@ -85,7 +99,15 @@ function destAfterAuth(role: string | undefined, profileComplete?: boolean, need
 function AuthPage() {
   const navigate = useNavigate();
   const search = Route.useSearch();
-  const { token: tokenFromUrl, google_token, role: roleFromUrl, google_error, need_profile } = search;
+  const {
+    token: tokenFromUrl,
+    google_token,
+    google_ticket,
+    role: roleFromUrl,
+    google_error,
+    auth_error,
+    need_profile,
+  } = search;
   const initialMode: Mode = tokenFromUrl ? "activate" : "login";
   const [mode, setMode] = useState<Mode>(initialMode);
   const [email, setEmail] = useState("");
@@ -96,35 +118,102 @@ function AuthPage() {
   const [googleReady, setGoogleReady] = useState(true);
   const [googleHint, setGoogleHint] = useState<string | null>(null);
   const [splashTo, setSplashTo] = useState<string | null>(null);
+  const [ticketBusy, setTicketBusy] = useState(false);
 
   const finishSplash = useCallback(() => {
     if (!splashTo) return;
     const dest = splashTo;
     setSplashTo(null);
-    // href: destino dinámico post-login (evita NotFound → /home si `to` tipado falla).
     void navigate({ href: dest, replace: true });
   }, [splashTo, navigate]);
 
-  useEffect(() => {
-    if (google_error) {
-      toast.error(google_error);
-      void navigate({ to: "/auth", search: {}, replace: true });
-    }
-  }, [google_error, navigate]);
+  const applySession = useCallback(
+    (opts: {
+      access_token: string;
+      email?: string;
+      role?: string;
+      need_profile?: boolean;
+      profile_complete?: boolean;
+    }) => {
+      setToken(opts.access_token);
+      const role = opts.role || roleFromAccessToken(opts.access_token) || "cliente";
+      const needProf =
+        opts.need_profile === true ||
+        opts.profile_complete === false ||
+        need_profile === true;
+      seedMeCache({
+        access_token: opts.access_token,
+        email: opts.email || "",
+        role,
+        profile_complete: !needProf,
+      });
+      setSplashTo(destAfterAuth(role, opts.profile_complete, needProf));
+    },
+    [need_profile],
+  );
 
   useEffect(() => {
-    if (!google_token) return;
-    setToken(google_token);
-    const role = roleFromUrl || roleFromAccessToken(google_token);
-    seedMeCache({
-      access_token: google_token,
-      email: "",
-      role: role || "cliente",
-      profile_complete: !need_profile,
-    });
-    setSplashTo(destAfterAuth(role, undefined, need_profile));
+    const err = google_error || auth_error;
+    if (!err) return;
+    toast.error(err);
     void navigate({ to: "/auth", search: {}, replace: true });
-  }, [google_token, roleFromUrl, need_profile, navigate]);
+  }, [google_error, auth_error, navigate]);
+
+  // Ticket corto post-Google (preferido; no lleva JWT en la URL).
+  useEffect(() => {
+    if (!google_ticket || ticketBusy) return;
+    let cancelled = false;
+    setTicketBusy(true);
+    void (async () => {
+      try {
+        const res = await fetch(
+          `${getApiBase()}/auth/google/login/finish?ticket=${encodeURIComponent(google_ticket)}`,
+        );
+        const body = (await res.json().catch(() => ({}))) as {
+          detail?: string;
+          access_token?: string;
+          role?: string;
+          email?: string;
+          need_profile?: boolean;
+          profile_complete?: boolean;
+        };
+        if (!res.ok || !body.access_token) {
+          throw new Error(body.detail || "No se pudo completar el login con Google");
+        }
+        if (cancelled) return;
+        applySession({
+          access_token: body.access_token,
+          email: body.email,
+          role: body.role,
+          need_profile: body.need_profile,
+          profile_complete: body.profile_complete,
+        });
+        void navigate({ to: "/auth", search: {}, replace: true });
+      } catch (err) {
+        if (!cancelled) {
+          toast.error(err instanceof Error ? err.message : "Login Google falló");
+          void navigate({ to: "/auth", search: {}, replace: true });
+        }
+      } finally {
+        if (!cancelled) setTicketBusy(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [google_ticket, ticketBusy, applySession, navigate]);
+
+  // Legacy: JWT en query (por si quedó un redirect viejo).
+  useEffect(() => {
+    if (!google_token || google_ticket) return;
+    applySession({
+      access_token: google_token,
+      role: roleFromUrl,
+      need_profile: need_profile === true,
+      profile_complete: need_profile === true ? false : undefined,
+    });
+    void navigate({ to: "/auth", search: {}, replace: true });
+  }, [google_token, google_ticket, roleFromUrl, need_profile, applySession, navigate]);
 
   useEffect(() => {
     let cancelled = false;
@@ -182,7 +271,8 @@ function AuthPage() {
 
   return (
     <div className="spa-canvas flex min-h-screen items-center justify-center bg-background px-4 py-12">
-      {splashTo ? <LoginSplash onDone={finishSplash} /> : null}
+      {ticketBusy ? <KiraLoader variant="fullscreen" label="cargando tu experiencia" /> : null}
+      {splashTo && !ticketBusy ? <LoginSplash onDone={finishSplash} /> : null}
       <div className="w-full max-w-md">
         <Link
           to="/"
@@ -206,7 +296,7 @@ function AuthPage() {
                   type="button"
                   variant="outline"
                   className="h-12 w-full rounded-xl border-border bg-card text-base font-medium text-foreground hover:bg-secondary/50"
-                  disabled={!googleReady || loading}
+                  disabled={!googleReady || loading || ticketBusy}
                   onClick={() => {
                     window.location.href = googleLoginUrl;
                   }}
@@ -281,7 +371,7 @@ function AuthPage() {
                 />
               </div>
 
-              <Button type="submit" disabled={loading} className="h-12 w-full rounded-xl text-base">
+              <Button type="submit" disabled={loading || ticketBusy} className="h-12 w-full rounded-xl text-base">
                 {loading
                   ? "Un momento…"
                   : mode === "activate"
