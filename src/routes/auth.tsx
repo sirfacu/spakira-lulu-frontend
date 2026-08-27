@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
 import { toast } from "sonner";
 import {
@@ -119,6 +119,8 @@ function AuthPage() {
   const [googleHint, setGoogleHint] = useState<string | null>(null);
   const [splashTo, setSplashTo] = useState<string | null>(null);
   const [ticketBusy, setTicketBusy] = useState(false);
+  /** Evita re-disparar el canje; no meter ticketBusy en deps (se auto-cancela el fetch). */
+  const ticketStarted = useRef(false);
 
   const finishSplash = useCallback(() => {
     if (!splashTo) return;
@@ -161,7 +163,8 @@ function AuthPage() {
 
   // Ticket corto post-Google (preferido; no lleva JWT en la URL).
   useEffect(() => {
-    if (!google_ticket || ticketBusy) return;
+    if (!google_ticket || ticketStarted.current) return;
+    ticketStarted.current = true;
     let cancelled = false;
     setTicketBusy(true);
     void (async () => {
@@ -195,13 +198,13 @@ function AuthPage() {
           void navigate({ to: "/auth", search: {}, replace: true });
         }
       } finally {
-        if (!cancelled) setTicketBusy(false);
+        setTicketBusy(false);
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, [google_ticket, ticketBusy, applySession, navigate]);
+  }, [google_ticket, applySession, navigate]);
 
   // Legacy: JWT en query (por si quedó un redirect viejo).
   useEffect(() => {
