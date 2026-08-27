@@ -154,7 +154,7 @@ function Agenda() {
   const perms = permissionsFor(user?.role);
   const qc = useQueryClient();
   const search = useSearch({ from: "/_authenticated/panel/agenda" });
-  const navigate = useNavigate({ from: "/_authenticated/panel/agenda" });
+  const navigate = useNavigate();
   const appts = useQuery(appointmentsQuery);
   const staff = useQuery({ ...staffQuery, enabled: perms.isStaff });
   const pets = useQuery(petsQuery);
@@ -348,7 +348,12 @@ function Agenda() {
         toast.error(e instanceof Error ? e.message : "No se encontró un turno libre");
       } finally {
         if (!cancelled) {
-          void navigate({ search: { google: search.google, service: undefined }, replace: true });
+          // Usar fullPath /panel/agenda (nunca el id /_authenticated/...), o la URL queda rota.
+          void navigate({
+            to: "/panel/agenda",
+            search: { google: search.google, service: undefined },
+            replace: true,
+          });
         }
       }
     })();

@@ -17,8 +17,16 @@ import { installLocalClientLogging, logError } from "@/lib/local-client-logging"
 
 function NotFoundComponent() {
   // Sesión viva + ruta desconocida → panel (evita “login ok → marketing home”).
-  if (typeof window !== "undefined" && window.localStorage.getItem("spakira_lulu_token")) {
-    throw redirect({ href: "/panel" });
+  if (typeof window !== "undefined") {
+    const path = window.location.pathname;
+    // Si algún navigate dejó el id de ruta en la URL, corregir al fullPath real.
+    if (path.startsWith("/_authenticated")) {
+      const fixed = path.replace(/^\/_authenticated/, "") || "/panel";
+      throw redirect({ href: `${fixed}${window.location.search}` });
+    }
+    if (window.localStorage.getItem("spakira_lulu_token")) {
+      throw redirect({ href: "/panel" });
+    }
   }
   throw redirect({ href: "/home" });
 }
@@ -47,6 +55,14 @@ function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
         <div className="mt-6 flex flex-wrap justify-center gap-2">
           <button
             onClick={() => {
+              if (typeof window !== "undefined") {
+                const path = window.location.pathname;
+                if (path.startsWith("/_authenticated")) {
+                  const fixed = path.replace(/^\/_authenticated/, "") || "/panel/agenda";
+                  window.location.assign(`${fixed}${window.location.search}`);
+                  return;
+                }
+              }
               router.invalidate();
               reset();
             }}
