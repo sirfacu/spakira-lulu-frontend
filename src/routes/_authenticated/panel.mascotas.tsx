@@ -38,14 +38,13 @@ import {
   updatePet,
   deletePet,
   createOwner,
-  createStorePurchase,
   reorderPets,
   type Pet,
 } from "@/lib/spa-queries";
 import { shortDate, statusMeta, time, cop, ageLabelFromLifeDate } from "@/lib/format";
 import { requirePathAccess } from "@/lib/route-access";
 import { permissionsFor } from "@/lib/roles";
-import { uploadPhoto } from "@/lib/api";
+import { uploadPhoto, resolveMediaUrl } from "@/lib/api";
 import { petCardAgeText, petDetailLifeText, petToFormFields } from "@/lib/entity-forms";
 import { cn } from "@/lib/utils";
 
@@ -104,8 +103,6 @@ type PetForm = {
   notes: string;
   owner_id_1: string;
   owner_id_2: string;
-  misc_item: string;
-  misc_price: string;
 };
 
 const emptyForm = (): PetForm => ({
@@ -125,12 +122,10 @@ const emptyForm = (): PetForm => ({
     notes: null,
   }),
   sex: "Hembra",
-  misc_item: "",
-  misc_price: "",
 });
 
 function petToForm(p: Pet): PetForm {
-  return { ...petToFormFields(p), misc_item: "", misc_price: "" };
+  return { ...petToFormFields(p) };
 }
 
 function Mascotas() {
@@ -266,8 +261,11 @@ function Mascotas() {
   });
 
   const breedOptions = useMemo(
-    () => (breeds.data ?? []).filter((b) => b.active),
-    [breeds.data],
+    () =>
+      (breeds.data ?? []).filter(
+        (b) => b.active && (!form.species || b.species === form.species),
+      ),
+    [breeds.data, form.species],
   );
 
   const lastBath = (petId: string) =>
@@ -384,23 +382,6 @@ function Mascotas() {
     },
   });
 
-  const miscMut = useMutation({
-    mutationFn: () =>
-      createStorePurchase({
-        item_name: form.misc_item.trim(),
-        pet_id: selected?.id,
-        owner_id: selected?.owner_id,
-        quantity: 1,
-        unit_price: Number(form.misc_price || 0),
-      }),
-    onSuccess: async () => {
-      toast.success("Compra miscelánea registrada");
-      setForm((f) => ({ ...f, misc_item: "", misc_price: "" }));
-      await qc.invalidateQueries({ queryKey: ["pets", selected?.id, "history"] });
-    },
-    onError: (err: Error) => toast.error(err.message),
-  });
-
   const ownerLabel = (p: Pet) => {
     const names = (p.owners_list ?? [])
       .filter((o): o is NonNullable<typeof o> => !!o?.full_name)
@@ -497,12 +478,15 @@ function Mascotas() {
               >
                 <div className="relative h-44 overflow-hidden bg-secondary">
                   <img
-                    src={p.photo_url || PET_PLACEHOLDER}
+                    src={resolveMediaUrl(p.photo_url) || PET_PLACEHOLDER}
                     alt={`${p.name}, ${p.breed ?? "mascota"}`}
                     loading="lazy"
                     className={`h-full w-full object-cover transition-transform duration-500 group-hover:scale-105 ${
                       p.photo_url ? "" : "object-contain p-6 opacity-80 grayscale"
                     }`}
+                    onError={(e) => {
+                      (e.currentTarget as HTMLImageElement).src = PET_PLACEHOLDER;
+                    }}
                   />
                   {perms.canReorderPets ? (
                     <div
@@ -617,11 +601,15 @@ function Mascotas() {
             <div>
               <div className="relative h-48 overflow-hidden bg-secondary">
                 <img
-                  src={selected.photo_url || PET_PLACEHOLDER}
+                  src={resolveMediaUrl(selected.photo_url) || PET_PLACEHOLDER}
                   alt={selected.name}
                   className={`h-full w-full object-cover ${
                     selected.photo_url ? "" : "object-contain p-8 opacity-80 grayscale"
                   }`}
+                  onError={(e) => {
+                    (e.currentTarget as HTMLImageElement).src = PET_PLACEHOLDER;
+                    e.currentTarget.classList.add("object-contain", "p-8", "opacity-80", "grayscale");
+                  }}
                 />
                 <button
                   onClick={() => setSelected(null)}
@@ -725,31 +713,6 @@ function Mascotas() {
                     <Empty message="Aún no hay servicios registrados." />
                   ) : null}
                 </ul>
-
-                {perms.isStaff ? (
-                  <div className="mt-4 grid gap-2 rounded-2xl border border-dashed border-border p-4 sm:grid-cols-[1fr_120px_auto]">
-                    <Input
-                      placeholder="Artículo de tienda (misceláneo)"
-                      value={form.misc_item}
-                      onChange={(e) => setForm((f) => ({ ...f, misc_item: e.target.value }))}
-                      className="h-10 rounded-xl"
-                    />
-                    <Input
-                      placeholder="Precio"
-                      type="number"
-                      value={form.misc_price}
-                      onChange={(e) => setForm((f) => ({ ...f, misc_price: e.target.value }))}
-                      className="h-10 rounded-xl"
-                    />
-                    <Button
-                      className="rounded-xl"
-                      disabled={!form.misc_item.trim() || miscMut.isPending}
-                      onClick={() => miscMut.mutate()}
-                    >
-                      Agregar
-                    </Button>
-                  </div>
-                ) : null}
               </div>
             </div>
           ) : null}
@@ -769,6 +732,23 @@ function Mascotas() {
                 onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
                 className="h-11 rounded-xl"
               />
+            </div>
+            <div className="space-y-2 sm:col-span-2">
+              <Label>Especie</Label>
+              <select
+                className="flex h-11 w-full rounded-xl border border-input bg-background px-3 text-sm"
+                value={form.species === "gato" ? "gato" : "perro"}
+                onChange={(e) =>
+                  setForm((f) => ({
+                    ...f,
+                    species: e.target.value === "gato" ? "gato" : "perro",
+                    breed_id: "",
+                  }))
+                }
+              >
+                <option value="perro">Perro</option>
+                <option value="gato">Gato</option>
+              </select>
             </div>
             <div className="space-y-2 sm:col-span-2">
               <Label>Raza</Label>
@@ -921,12 +901,15 @@ function Mascotas() {
               <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
                 <div className="relative h-24 w-24 shrink-0 overflow-hidden rounded-2xl bg-muted">
                   <img
-                    src={form.photo_url || PET_PLACEHOLDER}
+                    src={resolveMediaUrl(form.photo_url) || PET_PLACEHOLDER}
                     alt=""
                     className={
                       "h-full w-full object-cover " +
                       (form.photo_url ? "" : "object-contain p-3 opacity-80 grayscale")
                     }
+                    onError={(e) => {
+                      (e.currentTarget as HTMLImageElement).src = PET_PLACEHOLDER;
+                    }}
                   />
                 </div>
                 <div className="min-w-0 flex-1 space-y-2">
@@ -936,11 +919,10 @@ function Mascotas() {
                     ) : (
                       <ImagePlus className="h-4 w-4" />
                     )}
-                    {uploadingPhoto ? "Subiendo…" : "Subir desde el dispositivo"}
+                    {uploadingPhoto ? "Subiendo…" : "Elegir archivo o galería"}
                     <input
                       type="file"
                       accept="image/jpeg,image/png,image/webp,image/gif"
-                      capture="environment"
                       className="sr-only"
                       disabled={uploadingPhoto}
                       onChange={(e) => {
@@ -950,6 +932,9 @@ function Mascotas() {
                       }}
                     />
                   </label>
+                  <p className="text-[11px] text-muted-foreground">
+                    En el celular abre la galería o archivos (no fuerza la cámara).
+                  </p>
                   <Input
                     value={form.photo_url}
                     onChange={(e) => setForm((f) => ({ ...f, photo_url: e.target.value }))}
@@ -1092,11 +1077,14 @@ function Mascotas() {
           {welcomePet ? (
             <div className="flex flex-col items-center text-center">
               <img
-                src={welcomePet.photo_url || PET_PLACEHOLDER}
+                src={resolveMediaUrl(welcomePet.photo_url) || PET_PLACEHOLDER}
                 alt={welcomePet.name}
                 className={`mb-5 h-28 w-28 rounded-full object-cover shadow-soft ring-4 ring-primary/10 ${
                   welcomePet.photo_url ? "" : "object-contain p-4 opacity-80 grayscale"
                 }`}
+                onError={(e) => {
+                  (e.currentTarget as HTMLImageElement).src = PET_PLACEHOLDER;
+                }}
               />
               <h2 className="font-display text-2xl font-bold leading-snug text-primary">
                 ¡Hola! Bienvenid

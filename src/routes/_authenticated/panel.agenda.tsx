@@ -534,14 +534,22 @@ function Agenda() {
 
       const emailed = (data.email_notifications ?? []).filter((n) => n.sent).length;
       const emailTargets = (data.owner_emails ?? []).length;
+      const emailFails = (data.email_notifications ?? []).filter((n) => !n.sent);
       if (emailed > 0) {
         toast.success(
           `Cita creada. Correo de confirmación a ${emailed} dueño${emailed > 1 ? "s" : ""}.`,
         );
       } else if (emailTargets > 0) {
-        toast.success(
-          "Cita creada. Correo registrado en log (SMTP no configurado) para los dueños con email.",
+        const reason = (emailFails[0] as { reason?: string } | undefined)?.reason;
+        toast.warning(
+          reason === "sin_email"
+            ? "Cita creada, pero el humano no tiene correo en la ficha."
+            : reason === "smtp_ausente" || reason === "mail_log_only"
+              ? "Cita creada. El correo no se envió: SMTP no configurado (Configuración → Correo)."
+              : "Cita creada. El correo no se envió (revisá SMTP en Configuración → Correo).",
         );
+      } else if (emailFails.some((n) => (n as { reason?: string }).reason === "sin_email")) {
+        toast.warning("Cita creada. No hay correo en el humano de compañía para notificar.");
       } else if (data.google?.synced) {
         toast.success("Cita creada y enviada a Google Calendar");
       } else if (data.google?.error) {

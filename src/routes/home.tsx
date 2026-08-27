@@ -134,7 +134,7 @@ function Landing() {
                   className="rounded-xl"
                   onClick={() => {
                     logout();
-                    window.location.assign("/auth");
+                    window.location.assign("/home");
                   }}
                 >
                   Salir
