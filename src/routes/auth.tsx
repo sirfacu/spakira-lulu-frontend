@@ -101,8 +101,8 @@ function AuthPage() {
     if (!splashTo) return;
     const dest = splashTo;
     setSplashTo(null);
-    // Destino dinámico post-login (precios / agenda / completar / panel).
-    void navigate({ to: dest as "/panel", replace: true });
+    // href: destino dinámico post-login (evita NotFound → /home si `to` tipado falla).
+    void navigate({ href: dest, replace: true });
   }, [splashTo, navigate]);
 
   useEffect(() => {
@@ -158,15 +158,18 @@ function AuthPage() {
     try {
       if (mode === "login") {
         const data = await login(email, password);
+        toast.success("Ingreso correcto");
         setSplashTo(destAfterAuth(data.role, data.profile_complete));
         return;
       }
       if (mode === "register") {
         const data = await registerAccount(email, fullName.trim() || email.split("@")[0]!, password);
+        toast.success("Cuenta creada");
         setSplashTo(destAfterAuth(data.role, data.profile_complete));
         return;
       }
       const data = await activateAccount(token, password, fullName || undefined);
+      toast.success("Cuenta activada");
       setSplashTo(destAfterAuth(data.role, data.profile_complete));
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "No fue posible continuar");

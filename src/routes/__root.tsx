@@ -16,6 +16,10 @@ import { KiraLoader } from "@/components/kira-loader";
 import { installLocalClientLogging, logError } from "@/lib/local-client-logging";
 
 function NotFoundComponent() {
+  // Sesión viva + ruta desconocida → panel (evita “login ok → marketing home”).
+  if (typeof window !== "undefined" && window.localStorage.getItem("spakira_lulu_token")) {
+    throw redirect({ href: "/panel" });
+  }
   throw redirect({ href: "/home" });
 }
 

@@ -5,7 +5,7 @@ import { homeForRole, permissionsFor } from "@/lib/roles";
 export const Route = createFileRoute("/_authenticated")({
   ssr: false,
   beforeLoad: async ({ location }) => {
-    if (!getToken()) throw redirect({ to: "/" });
+    if (!getToken()) throw redirect({ to: "/auth" });
     try {
       const user = await fetchMe();
       const path = location.pathname;
@@ -20,13 +20,14 @@ export const Route = createFileRoute("/_authenticated")({
         (path === "/panel" || path === "/panel/") &&
         homeForRole(user.role, user.modules) !== "/panel"
       ) {
-        throw redirect({ to: homeForRole(user.role, user.modules) });
+        throw redirect({ href: homeForRole(user.role, user.modules) });
       }
       return { user };
     } catch (err) {
       if (err && typeof err === "object" && "to" in err) throw err;
+      if (err && typeof err === "object" && "href" in err) throw err;
       logout();
-      throw redirect({ to: "/" });
+      throw redirect({ to: "/auth", search: { google_error: "Sesión inválida. Volvé a ingresar." } });
     }
   },
   component: () => <Outlet />,
