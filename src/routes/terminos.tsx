@@ -1,5 +1,10 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
-import { LegalLayout, PRIVACY_PDF, TERMS_PDF } from "@/components/legal-layout";
+import { createFileRoute } from "@tanstack/react-router";
+import {
+  DEFAULT_PRIVACY_PATH,
+  LegalLayout,
+  resolveLegalHref,
+  usePublicBusiness,
+} from "@/components/legal-layout";
 
 export const Route = createFileRoute("/terminos")({
   head: () => ({
@@ -8,7 +13,7 @@ export const Route = createFileRoute("/terminos")({
       {
         name: "description",
         content:
-          "Términos y condiciones de uso de Spa Kira Luxury y de la plataforma web, conforme a la legislación colombiana.",
+          "Términos y condiciones de uso de Spa Kira y de la plataforma web, conforme a la legislación colombiana.",
       },
     ],
   }),
@@ -16,19 +21,27 @@ export const Route = createFileRoute("/terminos")({
 });
 
 function TerminosPage() {
+  const { data: biz } = usePublicBusiness();
+  const trade = biz?.trade_name?.trim() || "Spa Kira";
+  const place = biz?.address?.trim() || "Bogotá, Colombia";
+  const email = biz?.contact_email?.trim() || "spakiraluxury@e-mac.co";
+  const site = (biz?.site_url?.trim() || "https://spakira.e-mac.co").replace(/\/$/, "");
+  const privacyHref = resolveLegalHref(biz?.privacy_url, DEFAULT_PRIVACY_PATH);
+  const pdfTerms = biz?.terms_pdf_url?.trim() || null;
+  const pdfPrivacy = biz?.privacy_pdf_url?.trim() || null;
+
   return (
-    <LegalLayout title="Términos y condiciones de uso" pdfHref={TERMS_PDF}>
+    <LegalLayout title="Términos y condiciones de uso" pdfHref={pdfTerms} biz={biz ?? null}>
       <h2>1. Aceptación</h2>
       <p>
-        Estos términos regulan el uso del sitio{" "}
-        <a href="https://spakira.e-mac.co">https://spakira.e-mac.co</a> y de los
-        servicios de grooming de <strong>Spa Kira Luxury</strong> en Bogotá, Colombia.
-        Al registrarte, iniciar sesión o agendar, aceptás estas condiciones y la{" "}
-        <Link to="/privacidad">Política de privacidad</Link>.
+        Estos términos regulan el uso del sitio <a href={site}>{site}</a> y de los
+        servicios de grooming de <strong>{trade}</strong> en {place}. Al registrarte,
+        iniciar sesión o agendar, aceptás estas condiciones y la{" "}
+        <a href={privacyHref}>Política de privacidad</a>.
       </p>
       <h2>2. El servicio</h2>
       <p>
-        Spa Kira ofrece servicios de estética y cuidado para mascotas (baño, corte,
+        {trade} ofrece servicios de estética y cuidado para mascotas (baño, corte,
         deslanado y afines). La plataforma permite consultar información, gestionar
         citas y, para el personal, operar el panel administrativo. Los precios
         publicados pueden cambiar; rige el valor confirmado al agendar.
@@ -38,12 +51,12 @@ function TerminosPage() {
         Sos responsable de la confidencialidad de tu cuenta. El botón “Continuar con
         Google” usa OAuth solo para identificar tu correo y nombre (login). La
         conexión de Google Calendar, si existe, es un permiso aparte y voluntario del
-        personal. Spa Kira no garantiza la disponibilidad ininterrumpida de Google.
+        personal. {trade} no garantiza la disponibilidad ininterrumpida de Google.
       </p>
       <h2>4. Citas, cancelaciones y mascotas</h2>
       <p>
         El titular declara que la información de la mascota es veraz y que está
-        autorizado a solicitar el servicio. Spa Kira puede rechazar o reprogramar una
+        autorizado a solicitar el servicio. {trade} puede rechazar o reprogramar una
         cita por razones de seguridad, salud animal o fuerza mayor. Las reglas de
         cancelación o no-show se comunican al agendar o en el local.
       </p>
@@ -51,17 +64,17 @@ function TerminosPage() {
       <p>
         Aplican las normas de protección al consumidor (Ley 1480 de 2011) en lo
         pertinente a la prestación del servicio en Colombia. Reclamos:{" "}
-        <a href="mailto:spakiraluxury@e-mac.co">spakiraluxury@e-mac.co</a>.
+        <a href={`mailto:${email}`}>{email}</a>.
       </p>
       <h2>6. Propiedad intelectual</h2>
       <p>
-        Marca, logo, textos y software de la plataforma son de Spa Kira o de sus
+        Marca, logo, textos y software de la plataforma son de {trade} o de sus
         licenciantes. No está permitido copiar, extraer o usar el sistema con fines
         distintos al servicio contratado.
       </p>
       <h2>7. Limitación</h2>
       <p>
-        La plataforma se ofrece “tal cual”. Spa Kira no responde por interrupciones de
+        La plataforma se ofrece “tal cual”. {trade} no responde por interrupciones de
         internet, de Google o de terceros, ni por daños indirectos, salvo dolo o culpa
         grave según la ley colombiana.
       </p>
@@ -73,12 +86,16 @@ function TerminosPage() {
       </p>
       <h2>9. Contacto</h2>
       <p>
-        Spa Kira Luxury · Bogotá, Colombia ·{" "}
-        <a href="mailto:spakiraluxury@e-mac.co">spakiraluxury@e-mac.co</a>
+        {trade} · {place} · <a href={`mailto:${email}`}>{email}</a>
       </p>
-      <p>
-        PDF: <a href={TERMS_PDF}>términos</a> · <a href={PRIVACY_PDF}>privacidad</a>.
-      </p>
+      {pdfTerms || pdfPrivacy ? (
+        <p>
+          PDF opcional:{" "}
+          {pdfTerms ? <a href={pdfTerms}>términos</a> : null}
+          {pdfTerms && pdfPrivacy ? " · " : null}
+          {pdfPrivacy ? <a href={pdfPrivacy}>privacidad</a> : null}.
+        </p>
+      ) : null}
     </LegalLayout>
   );
 }

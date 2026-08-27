@@ -745,11 +745,38 @@ export type BusinessSettings = {
   barcode_scanner_enabled?: boolean;
   barcode_scanner_mode?: string;
   barcode_suffix?: string;
+  contact_email?: string | null;
+  site_url?: string | null;
+  legal_effective_from?: string | null;
+  privacy_url?: string | null;
+  terms_url?: string | null;
+  privacy_pdf_url?: string | null;
+  terms_pdf_url?: string | null;
   updated_at?: string | null;
 };
 
+export type PublicBusinessSettings = Pick<
+  BusinessSettings,
+  | "trade_name"
+  | "slogan"
+  | "address"
+  | "whatsapp"
+  | "logo_url"
+  | "contact_email"
+  | "site_url"
+  | "legal_effective_from"
+  | "privacy_url"
+  | "terms_url"
+  | "privacy_pdf_url"
+  | "terms_pdf_url"
+>;
+
 export async function getBusinessSettings() {
   return api<BusinessSettings>("/settings/business");
+}
+
+export async function getPublicBusinessSettings() {
+  return api<PublicBusinessSettings>("/settings/business/public", { auth: false });
 }
 
 export async function patchBusinessSettings(input: Partial<BusinessSettings>) {

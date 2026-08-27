@@ -2,6 +2,12 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { Bath, Scissors, Sparkles, Heart, Clock, Instagram, Facebook } from "lucide-react";
 import { BrandMark, PawIcon, LOGO_SRC } from "@/components/brand";
+import {
+  DEFAULT_PRIVACY_PATH,
+  DEFAULT_TERMS_PATH,
+  resolveLegalHref,
+  usePublicBusiness,
+} from "@/components/legal-layout";
 import { Button } from "@/components/ui/button";
 import { servicesQuery } from "@/lib/spa-queries";
 import { cop } from "@/lib/format";
@@ -65,6 +71,11 @@ function Landing() {
   });
   const staff = permissionsFor(me.data?.role).isStaff;
   const panelTo = homeForRole(me.data?.role);
+  const { data: bizLegal } = usePublicBusiness();
+  const privacyHref = resolveLegalHref(bizLegal?.privacy_url, DEFAULT_PRIVACY_PATH);
+  const termsHref = resolveLegalHref(bizLegal?.terms_url, DEFAULT_TERMS_PATH);
+  const privacyPdf = bizLegal?.privacy_pdf_url?.trim();
+  const termsPdf = bizLegal?.terms_pdf_url?.trim();
 
   return (
     <div className="spa-canvas min-h-screen bg-background">
@@ -241,18 +252,22 @@ function Landing() {
             </a>
           </div>
           <p className="mt-4 flex flex-wrap justify-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
-            <Link to="/privacidad" className="hover:text-primary hover:underline">
+            <a href={privacyHref} className="hover:text-primary hover:underline">
               Privacidad
-            </Link>
-            <Link to="/terminos" className="hover:text-primary hover:underline">
+            </a>
+            <a href={termsHref} className="hover:text-primary hover:underline">
               Términos
-            </Link>
-            <a href="/legal/politica-privacidad.pdf" className="hover:text-primary hover:underline">
-              Privacidad (PDF)
             </a>
-            <a href="/legal/terminos-condiciones.pdf" className="hover:text-primary hover:underline">
-              Términos (PDF)
-            </a>
+            {privacyPdf ? (
+              <a href={privacyPdf} className="hover:text-primary hover:underline">
+                Privacidad (PDF)
+              </a>
+            ) : null}
+            {termsPdf ? (
+              <a href={termsPdf} className="hover:text-primary hover:underline">
+                Términos (PDF)
+              </a>
+            ) : null}
           </p>
         </div>
       </footer>
