@@ -12,8 +12,8 @@ ENV NITRO_PRESET=node-server \
     VITE_API_URL=$VITE_API_URL
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
-# Build SSR/node server + assets (static/ se copia como publicDir)
-RUN npm run build
+# publicDir a veces no queda en el output de Nitro; copiamos static al public servido
+RUN npm run build && mkdir -p .output/public && cp -a static/. .output/public/
 
 # ---- runtime ----
 FROM node:22-alpine AS runtime

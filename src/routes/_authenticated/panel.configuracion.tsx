@@ -7,6 +7,7 @@ import { SectionCard, Empty } from "@/components/ui-kit";
 import { BrandMark } from "@/components/brand";
 import { EmailTemplatesPanel, MailConfigPanel } from "@/components/config-email-panels";
 import { ConfigUsersPanel } from "@/components/config-users-panel";
+import { ConfigBusinessHoursPanel } from "@/components/config-business-hours-panel";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
@@ -40,13 +41,19 @@ export const Route = createFileRoute("/_authenticated/panel/configuracion")({
 type ConfigTab = "general" | "correos" | "usuarios" | "escaner";
 type CorreosSub = "plantillas" | "smtp";
 
+const AUDIT_PAGE_SIZE = 10;
+
 function Configuracion() {
   const { user } = useRouteContext({ from: "/_authenticated" });
   const isAdmin = permissionsFor(user?.role).isAdmin;
-  const audit = useQuery({ ...auditQuery, enabled: isAdmin });
   const qc = useQueryClient();
   const [tab, setTab] = useState<ConfigTab>("general");
   const [correosSub, setCorreosSub] = useState<CorreosSub>("plantillas");
+  const [auditPage, setAuditPage] = useState(0);
+  const audit = useQuery({
+    ...auditQuery(AUDIT_PAGE_SIZE, auditPage * AUDIT_PAGE_SIZE),
+    enabled: isAdmin && tab === "usuarios",
+  });
   const business = useQuery({ queryKey: ["business-settings"], queryFn: getBusinessSettings });
   const [tradeName, setTradeName] = useState("Spa Kira");
   const [slogan, setSlogan] = useState("Luxury pet grooming · Canina y felina");
@@ -126,7 +133,8 @@ function Configuracion() {
 
       
       {tab === "general" ? (
-        <div className="grid gap-6 lg:grid-cols-2">
+        <div className="grid gap-6">
+          <div className="grid gap-6 lg:grid-cols-2">
           <SectionCard title="Identidad del negocio">
             <BrandMark compact tagline tradeName={tradeName} slogan={slogan} />
             <div className="mt-5 grid gap-4">
@@ -194,6 +202,9 @@ function Configuracion() {
               </p>
             </div>
           </SectionCard>
+          </div>
+
+          {isAdmin ? <ConfigBusinessHoursPanel /> : null}
         </div>
       ) : null}
 
@@ -289,8 +300,8 @@ function Configuracion() {
 
           <SectionCard title="Auditoría de acciones">
             <p className="mb-4 text-sm text-muted-foreground">
-              Registro de altas, cambios y bajas en el panel (mascotas, humanos, servicios, citas,
-              etc.). Google Calendar no define el rol: el rol vive en el usuario del panel.
+              Registro de altas, cambios y bajas en el panel. Se muestran de a {AUDIT_PAGE_SIZE}{" "}
+              acciones.
             </p>
             <div className="overflow-x-auto rounded-2xl border border-border">
               <table className="w-full min-w-[640px] text-sm">
@@ -303,7 +314,7 @@ function Configuracion() {
                   </tr>
                 </thead>
                 <tbody>
-                  {(audit.data ?? []).map((a) => (
+                  {(audit.data?.items ?? []).map((a) => (
                     <tr key={a.id} className="border-b border-border/60 last:border-0">
                       <td className="px-4 py-2.5 text-muted-foreground">
                         {a.created_at ? `${shortDate(a.created_at)} ${time(a.created_at)}` : "—"}
@@ -322,12 +333,46 @@ function Configuracion() {
                   ))}
                 </tbody>
               </table>
-              {!audit.data?.length ? (
+              {!audit.isLoading && !(audit.data?.items?.length) ? (
                 <div className="p-4">
                   <Empty message="Aún no hay eventos de auditoría." />
                 </div>
               ) : null}
             </div>
+            {(() => {
+              const total = audit.data?.total ?? 0;
+              const pages = Math.max(1, Math.ceil(total / AUDIT_PAGE_SIZE));
+              if (total <= AUDIT_PAGE_SIZE) return null;
+              return (
+                <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-sm">
+                  <p className="text-muted-foreground">
+                    {total} eventos · página {auditPage + 1} de {pages}
+                  </p>
+                  <div className="flex gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="rounded-xl"
+                      disabled={auditPage <= 0 || audit.isFetching}
+                      onClick={() => setAuditPage((p) => Math.max(0, p - 1))}
+                    >
+                      Anterior
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="rounded-xl"
+                      disabled={auditPage + 1 >= pages || audit.isFetching}
+                      onClick={() => setAuditPage((p) => p + 1)}
+                    >
+                      Siguiente
+                    </Button>
+                  </div>
+                </div>
+              );
+            })()}
           </SectionCard>
         </div>
       ) : null}

@@ -3,8 +3,9 @@
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { Search } from "lucide-react";
+import { Search, Trash2 } from "lucide-react";
 import { SectionCard, Empty } from "@/components/ui-kit";
+import { KiraLoader } from "@/components/kira-loader";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
@@ -21,6 +22,8 @@ import {
   inviteAppUser,
   patchAppUser,
   resetAppUserPassword,
+  forceActivateAppUser,
+  deleteAppUser,
   type AppUser,
 } from "@/lib/spa-queries";
 import { displayRole, normalizeRole, type AppRole } from "@/lib/roles";
@@ -70,6 +73,10 @@ export function ConfigUsersPanel({ currentUserId }: { currentUserId?: string }) 
   const [role, setRole] = useState<AppRole>("colaborador");
   const [q, setQ] = useState("");
   const [rolePending, setRolePending] = useState<RolePending | null>(null);
+  const [deletePending, setDeletePending] = useState<AppUser | null>(null);
+  const [activateFor, setActivateFor] = useState<AppUser | null>(null);
+  const [activatePassword, setActivatePassword] = useState("");
+  const [activatePassword2, setActivatePassword2] = useState("");
   const [resetFor, setResetFor] = useState<{ id: string; email: string } | null>(null);
   const [newPassword, setNewPassword] = useState("");
   const [newPassword2, setNewPassword2] = useState("");
@@ -136,6 +143,35 @@ export function ConfigUsersPanel({ currentUserId }: { currentUserId?: string }) 
       setResetFor(null);
       setNewPassword("");
       setNewPassword2("");
+    },
+    onError: (err: Error) => toast.error(err.message),
+  });
+
+  const deleteMut = useMutation({
+    mutationFn: (id: string) => deleteAppUser(id),
+    onSuccess: async (res) => {
+      toast.success(res.message || "Usuario eliminado");
+      setDeletePending(null);
+      await qc.invalidateQueries({ queryKey: ["app-users"] });
+      await qc.invalidateQueries({ queryKey: ["staff"] });
+    },
+    onError: (err: Error) => toast.error(err.message),
+  });
+
+  const activateMut = useMutation({
+    mutationFn: () => {
+      if (!activateFor) throw new Error("Sin usuario");
+      if (activatePassword.length < 6) throw new Error("La clave debe tener al menos 6 caracteres");
+      if (activatePassword !== activatePassword2) throw new Error("Las claves no coinciden");
+      return forceActivateAppUser(activateFor.id, activatePassword);
+    },
+    onSuccess: async (res) => {
+      toast.success(res.message || `Activado: ${res.email}`);
+      setActivateFor(null);
+      setActivatePassword("");
+      setActivatePassword2("");
+      await qc.invalidateQueries({ queryKey: ["app-users"] });
+      await qc.invalidateQueries({ queryKey: ["staff"] });
     },
     onError: (err: Error) => toast.error(err.message),
   });
@@ -216,9 +252,7 @@ export function ConfigUsersPanel({ currentUserId }: { currentUserId?: string }) 
           />
         </div>
 
-        {users.isLoading ? (
-          <p className="mt-4 text-sm text-muted-foreground">Cargando usuarios…</p>
-        ) : null}
+        {users.isLoading ? <KiraLoader variant="inline" /> : null}
         {users.isError ? (
           <p className="mt-4 text-sm text-destructive">
             {(users.error as Error)?.message || "No se pudieron cargar los usuarios."}
@@ -295,6 +329,32 @@ export function ConfigUsersPanel({ currentUserId }: { currentUserId?: string }) 
                       Restablecer clave
                     </Button>
                   )}
+                  {!u.active && u.auth_provider !== "google" ? (
+                    <Button
+                      type="button"
+                      size="sm"
+                      className="h-9 rounded-xl text-xs"
+                      onClick={() => {
+                        setActivateFor(u);
+                        setActivatePassword("");
+                        setActivatePassword2("");
+                      }}
+                    >
+                      Activar
+                    </Button>
+                  ) : null}
+                  {!isSelf ? (
+                    <Button
+                      type="button"
+                      variant="destructive"
+                      size="sm"
+                      className="h-9 rounded-xl text-xs"
+                      onClick={() => setDeletePending(u)}
+                    >
+                      <Trash2 className="mr-1 h-3.5 w-3.5" />
+                      Eliminar
+                    </Button>
+                  ) : null}
                 </div>
               </li>
             );
@@ -355,6 +415,105 @@ export function ConfigUsersPanel({ currentUserId }: { currentUserId?: string }) 
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <Dialog
+        open={!!deletePending}
+        onOpenChange={(open) => {
+          if (!open) setDeletePending(null);
+        }}
+      >
+        <DialogContent className="rounded-3xl sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Eliminar cuenta</DialogTitle>
+            <DialogDescription>
+              {deletePending
+                ? `${deletePending.full_name || deletePending.email} dejará de poder ingresar.`
+                : null}
+            </DialogDescription>
+          </DialogHeader>
+          <ul className="list-disc space-y-1.5 pl-5 text-sm text-muted-foreground">
+            <li>No podrá volver a loguearse.</li>
+            <li>
+              Nombre y correo se anonimizan (ej. «Ex-colaborador #12») para el histórico de citas y
+              ventas.
+            </li>
+            <li>Los registros operativos se conservan con ese seudónimo.</li>
+          </ul>
+          <DialogFooter className="gap-2 sm:gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              className="rounded-xl"
+              onClick={() => setDeletePending(null)}
+            >
+              Cancelar
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              className="rounded-xl"
+              disabled={deleteMut.isPending || !deletePending}
+              onClick={() => {
+                if (!deletePending) return;
+                deleteMut.mutate(deletePending.id);
+              }}
+            >
+              {deleteMut.isPending ? "Eliminando…" : "Eliminar cuenta"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {activateFor ? (
+        <div className="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4">
+          <div className="w-full max-w-md rounded-3xl border border-border bg-card p-6 shadow-lift">
+            <h3 className="font-display text-lg font-bold text-primary">Activar cuenta</h3>
+            <p className="mt-1 text-sm text-muted-foreground">
+              {activateFor.email} — definí la clave con la que va a ingresar (sin esperar el correo).
+            </p>
+            <div className="mt-4 space-y-3">
+              <div className="space-y-2">
+                <Label>Clave</Label>
+                <Input
+                  type="password"
+                  className="h-11 rounded-xl"
+                  value={activatePassword}
+                  onChange={(e) => setActivatePassword(e.target.value)}
+                  autoComplete="new-password"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Repetir clave</Label>
+                <Input
+                  type="password"
+                  className="h-11 rounded-xl"
+                  value={activatePassword2}
+                  onChange={(e) => setActivatePassword2(e.target.value)}
+                  autoComplete="new-password"
+                />
+              </div>
+            </div>
+            <div className="mt-5 flex justify-end gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                className="rounded-xl"
+                onClick={() => setActivateFor(null)}
+              >
+                Cancelar
+              </Button>
+              <Button
+                type="button"
+                className="rounded-xl"
+                disabled={activateMut.isPending}
+                onClick={() => activateMut.mutate()}
+              >
+                {activateMut.isPending ? "Activando…" : "Activar"}
+              </Button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {resetFor ? (
         <div className="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4">

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Empty } from "@/components/ui-kit";
+import { KiraLoader } from "@/components/kira-loader";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
@@ -56,7 +57,7 @@ export function MailConfigPanel() {
   });
 
   if (mail.isLoading) {
-    return <p className="text-sm text-muted-foreground">Cargando configuración SMTP…</p>;
+    return <KiraLoader variant="inline" />;
   }
 
   return (
@@ -181,7 +182,7 @@ export function EmailTemplatesPanel() {
   };
 
   if (templates.isLoading) {
-    return <p className="text-sm text-muted-foreground">Cargando plantillas…</p>;
+    return <KiraLoader variant="inline" />;
   }
 
   return (

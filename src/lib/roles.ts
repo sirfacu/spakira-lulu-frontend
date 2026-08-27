@@ -63,7 +63,7 @@ export function homeForRole(role: string | undefined | null, modules?: string[])
   const paths = pathsForModules(modules, role);
   const preferred =
     r === "cliente"
-      ? ["/panel/mascotas", "/panel/agenda", "/panel/precios"]
+      ? ["/panel/precios", "/panel/agenda", "/panel/mascotas"]
       : r === "colaborador"
         ? ["/panel/agenda", "/panel/mascotas", "/panel/precios", "/panel/propietarios"]
         : ["/panel", "/panel/agenda", "/panel/mascotas", "/panel/precios"];

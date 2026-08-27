@@ -48,6 +48,7 @@ import {
   listAppointmentReschedules,
   reviewAppointmentReschedule,
   inventoryShopQuery,
+  fetchNextAppointmentSlot,
   type Pet,
   type Appointment,
   type AppointmentExtra,
@@ -59,6 +60,7 @@ import {
   normalizeStatus,
   time,
   cop,
+  copRange,
   initials,
   appointmentProgress,
 } from "@/lib/format";
@@ -323,10 +325,36 @@ function Agenda() {
   useEffect(() => {
     const sid = search.service;
     if (!sid) return;
+    let cancelled = false;
     setServiceId(sid);
-    setStartsAt(defaultStartsAtForDay(new Date()));
     setOpenForm(true);
-    void navigate({ search: { google: search.google, service: undefined }, replace: true });
+    void (async () => {
+      try {
+        const slot = await fetchNextAppointmentSlot({ service_id: sid });
+        if (cancelled) return;
+        setStartsAt(toLocalInputValue(new Date(slot.starts_at)));
+        toast.message(`Primer turno libre: ${slot.label}`, {
+          description: new Date(slot.starts_at).toLocaleString("es-CO", {
+            weekday: "short",
+            day: "2-digit",
+            month: "short",
+            hour: "2-digit",
+            minute: "2-digit",
+          }),
+        });
+      } catch (e) {
+        if (cancelled) return;
+        setStartsAt(defaultStartsAtForDay(new Date()));
+        toast.error(e instanceof Error ? e.message : "No se encontró un turno libre");
+      } finally {
+        if (!cancelled) {
+          void navigate({ search: { google: search.google, service: undefined }, replace: true });
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, [search.service, search.google, navigate]);
 
   const saveMut = useMutation({
@@ -707,7 +735,9 @@ function Agenda() {
                 <SelectContent>
                   {(services.data ?? []).map((s) => (
                     <SelectItem key={s.id} value={s.id}>
-                      {s.name} · {cop(s.price)}
+                      {perms.isCliente
+                        ? `${s.name} · ${s.duration_min} min`
+                        : `${s.name} · ${copRange(s.price_min, s.price_max, s.price)}`}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -1223,7 +1253,9 @@ function Agenda() {
                       <SelectContent>
                         {(services.data ?? []).map((s) => (
                           <SelectItem key={s.id} value={s.id}>
-                            {s.name} · {cop(s.price)}
+                            {perms.isCliente
+                              ? `${s.name} · ${s.duration_min} min`
+                              : `${s.name} · ${copRange(s.price_min, s.price_max, s.price)}`}
                           </SelectItem>
                         ))}
                       </SelectContent>

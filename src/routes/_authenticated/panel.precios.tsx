@@ -19,7 +19,7 @@ import {
   reorderServices,
   type Service,
 } from "@/lib/spa-queries";
-import { cop } from "@/lib/format";
+import { cop, copRange } from "@/lib/format";
 import { requirePathAccess } from "@/lib/route-access";
 import { permissionsFor } from "@/lib/roles";
 import { cn } from "@/lib/utils";
@@ -210,7 +210,7 @@ function Servicios() {
         {!canManage ? (
           <p className="mt-3 text-sm text-muted-foreground">
             {perms.isCliente
-              ? "Consultá precios y duración. Agendá el servicio que quieras."
+              ? "Elegí un servicio y agendá el primer turno libre disponible."
               : "Como Staff solo podés consultar. Crear, editar o programar es solo admin."}
           </p>
         ) : null}
@@ -284,14 +284,28 @@ function Servicios() {
                     })}
                   </p>
                 ) : null}
-                <p className="mt-4 font-display text-2xl font-bold text-accent">{cop(s.price)}</p>
+                {perms.isCliente ? null : (
+                  <div className="mt-4">
+                    <p className="font-display text-xl font-bold text-accent">
+                      {copRange(s.price_min, s.price_max, s.price)}
+                    </p>
+                    {s.price_note ||
+                    (s.price_min != null &&
+                      s.price_max != null &&
+                      Number(s.price_min) !== Number(s.price_max)) ? (
+                      <p className="mt-1 text-[11px] text-muted-foreground">
+                        {s.price_note || "Se confirma el valor al finalizar el servicio"}
+                      </p>
+                    ) : null}
+                  </div>
+                )}
                 {perms.isCliente ? (
                   <Button
                     className="mt-4 h-11 w-full rounded-xl"
                     onClick={() =>
                       void navigate({
                         to: "/panel/agenda",
-                        search: { service: s.id },
+                        search: { service: s.id, google: undefined },
                       })
                     }
                   >

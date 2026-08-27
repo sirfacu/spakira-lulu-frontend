@@ -5,7 +5,7 @@ import { homeForRole, permissionsFor } from "@/lib/roles";
 export const Route = createFileRoute("/_authenticated")({
   ssr: false,
   beforeLoad: async ({ location }) => {
-    if (!getToken()) throw redirect({ to: "/auth" });
+    if (!getToken()) throw redirect({ to: "/" });
     try {
       const user = await fetchMe();
       const path = location.pathname;
@@ -26,7 +26,7 @@ export const Route = createFileRoute("/_authenticated")({
     } catch (err) {
       if (err && typeof err === "object" && "to" in err) throw err;
       logout();
-      throw redirect({ to: "/auth" });
+      throw redirect({ to: "/" });
     }
   },
   component: () => <Outlet />,

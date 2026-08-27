@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
 import { toast } from "sonner";
 import {
@@ -12,6 +12,7 @@ import {
   setToken,
 } from "@/lib/api";
 import { BrandMark } from "@/components/brand";
+import { LoginSplash } from "@/components/login-splash";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -94,6 +95,15 @@ function AuthPage() {
   const [loading, setLoading] = useState(false);
   const [googleReady, setGoogleReady] = useState(true);
   const [googleHint, setGoogleHint] = useState<string | null>(null);
+  const [splashTo, setSplashTo] = useState<string | null>(null);
+
+  const finishSplash = useCallback(() => {
+    if (!splashTo) return;
+    const dest = splashTo;
+    setSplashTo(null);
+    // Destino dinámico post-login (precios / agenda / completar / panel).
+    void navigate({ to: dest as "/panel", replace: true });
+  }, [splashTo, navigate]);
 
   useEffect(() => {
     if (google_error) {
@@ -112,12 +122,8 @@ function AuthPage() {
       role: role || "cliente",
       profile_complete: !need_profile,
     });
-    toast.success(permissionsFor(role).isStaff ? "Sesión iniciada con Google" : "Entraste con Google");
-    void navigate({
-      to: destAfterAuth(role, undefined, need_profile),
-      search: {},
-      replace: true,
-    });
+    setSplashTo(destAfterAuth(role, undefined, need_profile));
+    void navigate({ to: "/auth", search: {}, replace: true });
   }, [google_token, roleFromUrl, need_profile, navigate]);
 
   useEffect(() => {
@@ -152,27 +158,16 @@ function AuthPage() {
     try {
       if (mode === "login") {
         const data = await login(email, password);
-        await navigate({
-          to: destAfterAuth(data.role, data.profile_complete),
-          replace: true,
-        });
+        setSplashTo(destAfterAuth(data.role, data.profile_complete));
         return;
       }
       if (mode === "register") {
         const data = await registerAccount(email, fullName.trim() || email.split("@")[0]!, password);
-        toast.success("Cuenta creada");
-        await navigate({
-          to: destAfterAuth(data.role, data.profile_complete),
-          replace: true,
-        });
+        setSplashTo(destAfterAuth(data.role, data.profile_complete));
         return;
       }
       const data = await activateAccount(token, password, fullName || undefined);
-      toast.success("Cuenta activada");
-      await navigate({
-        to: destAfterAuth(data.role, data.profile_complete),
-        replace: true,
-      });
+      setSplashTo(destAfterAuth(data.role, data.profile_complete));
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "No fue posible continuar");
     } finally {
@@ -184,6 +179,7 @@ function AuthPage() {
 
   return (
     <div className="spa-canvas flex min-h-screen items-center justify-center bg-background px-4 py-12">
+      {splashTo ? <LoginSplash onDone={finishSplash} /> : null}
       <div className="w-full max-w-md">
         <Link
           to="/"
@@ -320,6 +316,15 @@ function AuthPage() {
                 )}
               </p>
             ) : null}
+            <p className="mt-6 text-center text-xs text-muted-foreground">
+              <Link to="/privacidad" className="underline-offset-2 hover:underline">
+                Privacidad
+              </Link>
+              {" · "}
+              <Link to="/terminos" className="underline-offset-2 hover:underline">
+                Términos
+              </Link>
+            </p>
           </div>
         </div>
       </div>

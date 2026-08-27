@@ -20,7 +20,7 @@ describe("roles", () => {
   it("homes by role", () => {
     expect(homeForRole("admin")).toBe("/panel");
     expect(homeForRole("colaborador")).toBe("/panel/agenda");
-    expect(homeForRole("cliente")).toBe("/panel/mascotas");
+    expect(homeForRole("cliente")).toBe("/panel/precios");
   });
 
   it("labels colaborador as Staff", () => {

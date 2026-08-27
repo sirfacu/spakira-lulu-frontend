@@ -37,6 +37,14 @@ export default defineConfig({
       server: { entry: "server" },
     }),
     viteReact(),
-    nitro(),
+    nitro({
+      publicAssets: [
+        {
+          dir: path.resolve(rootDir, "static"),
+          baseURL: "/",
+          maxAge: 60 * 60 * 24 * 7,
+        },
+      ],
+    }),
   ],
 });

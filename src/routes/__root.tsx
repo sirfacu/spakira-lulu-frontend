@@ -1,8 +1,8 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
   Outlet,
-  Link,
   createRootRouteWithContext,
+  redirect,
   useRouter,
   HeadContent,
   Scripts,
@@ -11,28 +11,12 @@ import { type ReactNode, useEffect } from "react";
 
 import appCss from "../styles.css?url";
 import { Toaster } from "@/components/ui/sonner";
+import { GlobalKiraLoading } from "@/components/global-kira-loading";
+import { KiraLoader } from "@/components/kira-loader";
 import { installLocalClientLogging, logError } from "@/lib/local-client-logging";
 
 function NotFoundComponent() {
-  return (
-    <div className="spa-canvas flex min-h-screen items-center justify-center bg-background px-4">
-      <div className="max-w-md text-center">
-        <h1 className="font-display text-7xl font-bold text-primary">404</h1>
-        <h2 className="mt-4 text-xl font-semibold text-foreground">Página no encontrada</h2>
-        <p className="mt-2 text-sm text-muted-foreground">
-          La página que buscas no existe o fue movida.
-        </p>
-        <div className="mt-6">
-          <Link
-            to="/"
-            className="inline-flex items-center justify-center rounded-xl bg-primary px-5 py-2.5 text-sm font-medium text-primary-foreground shadow-soft transition-colors hover:bg-primary/90"
-          >
-            Volver al inicio
-          </Link>
-        </div>
-      </div>
-    </div>
-  );
+  throw redirect({ href: "/home" });
 }
 
 function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
@@ -67,7 +51,7 @@ function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
             Reintentar
           </button>
           <a
-            href="/"
+            href="/home"
             className="inline-flex items-center justify-center rounded-xl border border-input bg-card px-5 py-2.5 text-sm font-medium text-foreground transition-colors hover:bg-accent/10"
           >
             Ir al inicio
@@ -109,6 +93,7 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
   }),
   shellComponent: RootShell,
   component: RootComponent,
+  pendingComponent: () => <KiraLoader variant="fullscreen" />,
   notFoundComponent: NotFoundComponent,
   errorComponent: ErrorComponent,
 });
@@ -137,6 +122,7 @@ function RootComponent() {
     <QueryClientProvider client={queryClient}>
       {/* Required: nested routes render here. Removing <Outlet /> breaks all child routes. */}
       <Outlet />
+      <GlobalKiraLoading />
       <Toaster position="top-right" richColors />
     </QueryClientProvider>
   );

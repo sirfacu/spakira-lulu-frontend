@@ -18,7 +18,9 @@ import {
 } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
 import { BreedsManager } from "@/components/breeds-manager";
+import { BreedPickerList } from "@/components/breed-select";
 import { Empty, StatusPill } from "@/components/ui-kit";
+import { KiraLoader } from "@/components/kira-loader";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
@@ -466,9 +468,7 @@ function Mascotas() {
       </div>
 
       {petsInfinite.isLoading ? (
-        <div className="mt-10 flex justify-center text-sm text-muted-foreground">
-          <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Cargando mascotas…
-        </div>
+        <KiraLoader variant="inline" className="mt-6" />
       ) : list.length || perms.canManagePets ? (
         <>
           <ReorderList
@@ -770,20 +770,13 @@ function Mascotas() {
                 className="h-11 rounded-xl"
               />
             </div>
-            <div className="space-y-2">
+            <div className="space-y-2 sm:col-span-2">
               <Label>Raza</Label>
-              <select
-                className="flex h-11 w-full rounded-xl border border-input bg-background px-3 text-sm"
+              <BreedPickerList
                 value={form.breed_id}
-                onChange={(e) => setForm((f) => ({ ...f, breed_id: e.target.value }))}
-              >
-                <option value="">Sin raza</option>
-                {breedOptions.map((b) => (
-                  <option key={b.id} value={b.id}>
-                    {b.name}
-                  </option>
-                ))}
-              </select>
+                onChange={(breedId) => setForm((f) => ({ ...f, breed_id: breedId }))}
+                options={breedOptions}
+              />
             </div>
             <div className="space-y-2">
               <Label>Sexo</Label>
