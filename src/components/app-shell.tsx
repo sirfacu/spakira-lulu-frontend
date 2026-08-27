@@ -88,7 +88,7 @@ export function AppShell({
 
   const signOut = async () => {
     apiLogout();
-    navigate({ to: "/auth" });
+    navigate({ to: "/home" });
   };
 
   return (

@@ -273,6 +273,20 @@ export function logout() {
   setToken(null);
 }
 
+/**
+ * Normaliza URLs de fotos locales (/uploads/…) al API base actual.
+ * Deja intactas URLs de S3 / CloudFront.
+ */
+export function resolveMediaUrl(url: string | null | undefined): string {
+  if (!url?.trim()) return "";
+  const trimmed = url.trim();
+  if (/amazonaws\.com|cloudfront\.net/i.test(trimmed)) return trimmed;
+  const match = trimmed.match(/(\/uploads\/.+)$/);
+  if (match) return `${getApiBase()}${match[1]}`;
+  if (trimmed.startsWith("/")) return `${getApiBase()}${trimmed}`;
+  return trimmed;
+}
+
 /** Sube imagen (JPG/PNG/WEBP/GIF ≤5MB) y retorna URL pública. */
 export async function uploadPhoto(file: File): Promise<{ url: string; key: string }> {
   const headers: Record<string, string> = { Accept: "application/json" };
@@ -303,5 +317,6 @@ export async function uploadPhoto(file: File): Promise<{ url: string; key: strin
     }
     throw new ApiError(res.status, detail);
   }
-  return (await res.json()) as { url: string; key: string };
+  const data = (await res.json()) as { url: string; key: string };
+  return { ...data, url: resolveMediaUrl(data.url) || data.url };
 }
