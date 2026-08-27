@@ -1,7 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Bath, Scissors, Sparkles, Heart, Clock, Instagram, Facebook } from "lucide-react";
+import { Bath, Scissors, Sparkles, Heart, Smile, Clock, Instagram, Facebook } from "lucide-react";
 import { BrandMark, PawIcon, LOGO_SRC } from "@/components/brand";
 import { ChipRail } from "@/components/home-chip-rail";
 import {
@@ -56,6 +56,7 @@ const PERKS = [
   { icon: Bath, label: "Baño" },
   { icon: Scissors, label: "Corte" },
   { icon: Sparkles, label: "Uñas" },
+  { icon: Smile, label: "Limpieza de dientes" },
   { icon: Heart, label: "Mucho amor" },
 ];
 
