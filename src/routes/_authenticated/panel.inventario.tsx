@@ -18,6 +18,11 @@ import {
   type InventoryItem,
 } from "@/lib/spa-queries";
 import { cop } from "@/lib/format";
+import {
+  inventoryChannelBadgeClass,
+  inventoryChannelHint,
+  inventoryChannelLabel,
+} from "@/lib/inventory-channel";
 import { suggestedSale, unitPriceFromPack } from "@/lib/inventory-pricing";
 import { requirePathAccess } from "@/lib/route-access";
 
@@ -67,7 +72,7 @@ const emptyForm = (): ItemForm => ({
   unit_kind: "pack",
   pack_size: "1",
   pack_label: "",
-  channel: "interno_externo",
+  channel: "interno",
   expires_at: "",
 });
 
@@ -85,7 +90,7 @@ function toForm(i: InventoryItem): ItemForm {
     unit_kind: i.unit_kind ?? "unidad",
     pack_size: String(i.pack_size ?? 1),
     pack_label: i.pack_label ?? "",
-    channel: i.channel ?? "interno_externo",
+    channel: i.channel ?? "interno",
     expires_at: i.expires_at ? String(i.expires_at).slice(0, 10) : "",
   };
 }
@@ -207,6 +212,7 @@ function Inventario() {
               <tr className="border-b border-border bg-secondary/50 text-left text-xs uppercase tracking-wider text-muted-foreground">
                 <th className="px-5 py-3.5 font-semibold">Producto</th>
                 <th className="px-5 py-3.5 font-semibold">Categoría</th>
+                <th className="px-5 py-3.5 font-semibold">Uso</th>
                 <th className="px-5 py-3.5 font-semibold">Cantidad</th>
                 <th className="px-5 py-3.5 font-semibold">Mínimo</th>
                 <th className="px-5 py-3.5 font-semibold">Compra</th>
@@ -241,6 +247,12 @@ function Inventario() {
                       </div>
                     </td>
                     <td className="px-5 py-3.5 text-muted-foreground">{i.category}</td>
+                    <td className="px-5 py-3.5">
+                      <StatusPill
+                        label={inventoryChannelLabel(i.channel)}
+                        className={inventoryChannelBadgeClass(i.channel)}
+                      />
+                    </td>
                     <td className="px-5 py-3.5 font-semibold text-foreground">{i.quantity}</td>
                     <td className="px-5 py-3.5 text-muted-foreground">{i.min_stock}</td>
                     <td className="px-5 py-3.5 text-muted-foreground">{cop(i.purchase_price)}</td>
@@ -336,17 +348,24 @@ function Inventario() {
                 />
               </div>
             </div>
-            <div className="space-y-1">
-              <Label>Uso</Label>
+            <div className="space-y-2">
+              <Label>Uso del ítem</Label>
+              <p className="text-xs text-muted-foreground">
+                Si el mismo producto se usa en el spa y se vende, creá dos registros (ej. shampoo
+                consumo interno y shampoo venta) aunque compartan SKU o código de barras.
+              </p>
               <select
                 className="h-11 w-full rounded-xl border border-input bg-background px-3 text-sm"
                 value={form.channel}
                 onChange={(e) => setForm((f) => ({ ...f, channel: e.target.value }))}
               >
-                <option value="interno">Solo consumo interno</option>
-                <option value="interno_externo">Interno y venta</option>
-                <option value="externo">Solo venta (misceláneos / clientes)</option>
+                <option value="interno">Consumo interno (insumos del spa)</option>
+                <option value="externo">Venta al público (tienda / extras en cita)</option>
+                {form.channel === "interno_externo" ? (
+                  <option value="interno_externo">Interno + venta (legacy — separar en dos ítems)</option>
+                ) : null}
               </select>
+              <p className="text-xs text-muted-foreground">{inventoryChannelHint(form.channel)}</p>
             </div>
             {editing === "new" ? (
               <div className="space-y-1">
