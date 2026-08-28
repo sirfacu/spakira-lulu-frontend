@@ -102,6 +102,14 @@ function destAfterAuth(role: string | undefined, profileComplete?: boolean, need
   return homeForRole(role);
 }
 
+/** Si el splash no dispara (HMR roto), forzar salida de /auth. */
+function scheduleAuthRedirect(dest: string) {
+  window.setTimeout(() => {
+    const path = window.location.pathname.replace(/\/$/, "") || "/";
+    if (path === "/auth") window.location.assign(dest);
+  }, 2800);
+}
+
 function AuthPage() {
   const navigate = useNavigate();
   const search = Route.useSearch();
@@ -131,10 +139,9 @@ function AuthPage() {
 
   const finishSplash = useCallback(() => {
     if (!splashTo) return;
-    const dest = splashTo;
-    setSplashTo(null);
-    void navigate({ href: dest, replace: true });
-  }, [splashTo, navigate]);
+    // Navegación dura: más fiable que navigate() detrás de Apache + Vite dev.
+    window.location.assign(splashTo);
+  }, [splashTo]);
 
   const applySession = useCallback(
     (opts: {
@@ -157,6 +164,7 @@ function AuthPage() {
         profile_complete: !needProf,
       });
       setSplashTo(destAfterAuth(role, opts.profile_complete, needProf));
+      scheduleAuthRedirect(destAfterAuth(role, opts.profile_complete, needProf));
     },
     [need_profile],
   );
@@ -258,18 +266,24 @@ function AuthPage() {
       if (mode === "login") {
         const data = await login(email, password);
         toast.success("Ingreso correcto");
-        setSplashTo(destAfterAuth(data.role, data.profile_complete));
+        const dest = destAfterAuth(data.role, data.profile_complete);
+        setSplashTo(dest);
+        scheduleAuthRedirect(dest);
         return;
       }
       if (mode === "register") {
         const data = await registerAccount(email, fullName.trim() || email.split("@")[0]!, password);
         toast.success("Cuenta creada");
-        setSplashTo(destAfterAuth(data.role, data.profile_complete));
+        const dest = destAfterAuth(data.role, data.profile_complete);
+        setSplashTo(dest);
+        scheduleAuthRedirect(dest);
         return;
       }
       const data = await activateAccount(token, password, fullName || undefined);
       toast.success("Cuenta activada");
-      setSplashTo(destAfterAuth(data.role, data.profile_complete));
+      const dest = destAfterAuth(data.role, data.profile_complete);
+      setSplashTo(dest);
+      scheduleAuthRedirect(dest);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "No fue posible continuar");
     } finally {
@@ -282,7 +296,9 @@ function AuthPage() {
   return (
     <div className="spa-canvas flex min-h-screen items-center justify-center bg-background px-4 py-12">
       {ticketBusy ? <KiraLoader variant="fullscreen" label="cargando tu experiencia" /> : null}
-      {splashTo && !ticketBusy ? <LoginSplash onDone={finishSplash} /> : null}
+      {splashTo && !ticketBusy ? (
+        <LoginSplash onDone={finishSplash} label="Ingreso correcto · cargando tu panel" />
+      ) : null}
       <div className="w-full max-w-md">
         <Link
           to="/"
