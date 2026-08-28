@@ -30,6 +30,7 @@ import {
   salesQuery,
   staffQuery,
 } from "@/lib/spa-queries";
+import { resolveMediaUrl } from "@/lib/api";
 import { cop, dayKey, shortDate, statusMeta, time, initials } from "@/lib/format";
 import { requirePathAccess } from "@/lib/route-access";
 
@@ -311,7 +312,7 @@ function Dashboard() {
                   >
                     {a.pets?.photo_url ? (
                       <img
-                        src={a.pets.photo_url}
+                        src={resolveMediaUrl(a.pets.photo_url)}
                         alt={a.pets?.name ?? "Mascota"}
                         className="h-12 w-12 shrink-0 rounded-2xl object-cover"
                       />

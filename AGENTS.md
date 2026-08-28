@@ -46,6 +46,18 @@ Si el proyecto sigue vinculado en lovable.dev, desconectalo desde su UI
 > historia ya publicada (force-push / rebase de commits remotos) mientras
 > ese vínculo exista.
 
+## API y prod
+
+- `src/lib/api.ts`: `getApiBase()` → `:9001` local; `spakira.e-mac.co` → **`/api`**.
+- `resolveMediaUrl()`: reescribe `/uploads/…` al API base; deja S3/CloudFront/Unsplash intactos.
+- Deploy prod: `./deploy-to-aws.sh` (local). Home pública `/home`; panel `/panel/*`.
+
+## UX reciente (referencia)
+
+- Agenda: navigate con `to: "/panel/agenda"` (no id `/_authenticated/…`).
+- Mascotas: raza autocomplete (≥3 letras), upload sin `capture`, logout → `/home`.
+- Home: chips noticias/servicios/videos desde API (`038`).
+
 ## Workspace padre
 
 Si abrís `/facu/learning-n8n/kirajiro/` en Cursor, el mapa multi-repo está en `../AGENTS.md` (o `/facu/learning-n8n/kirajiro/AGENTS.md`).
