@@ -13,6 +13,7 @@ import appCss from "../styles.css?url";
 import { Toaster } from "@/components/ui/sonner";
 import { GlobalKiraLoading } from "@/components/global-kira-loading";
 import { KiraLoader } from "@/components/kira-loader";
+import { PublicWhatsAppFab } from "@/components/whatsapp-fab";
 import { installLocalClientLogging, logError } from "@/lib/local-client-logging";
 
 function NotFoundComponent() {
@@ -142,6 +143,7 @@ function RootComponent() {
     <QueryClientProvider client={queryClient}>
       {/* Required: nested routes render here. Removing <Outlet /> breaks all child routes. */}
       <Outlet />
+      <PublicWhatsAppFab />
       <GlobalKiraLoading />
       <Toaster position="top-right" richColors />
     </QueryClientProvider>
