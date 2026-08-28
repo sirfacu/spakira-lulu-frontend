@@ -7,13 +7,14 @@ type Props = {
   onDone: () => void;
   /** ms totales aproximados */
   durationMs?: number;
+  label?: string;
 };
 
-export function LoginSplash({ onDone, durationMs = 2200 }: Props) {
+export function LoginSplash({ onDone, durationMs = 2200, label = "cargando tu experiencia" }: Props) {
   useEffect(() => {
     const done = window.setTimeout(() => onDone(), durationMs);
     return () => window.clearTimeout(done);
   }, [onDone, durationMs]);
 
-  return <KiraLoader variant="fullscreen" label="cargando tu experiencia" />;
+  return <KiraLoader variant="fullscreen" label={label} />;
 }

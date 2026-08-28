@@ -175,8 +175,17 @@ export type Service = {
   is_addon?: boolean;
   sort_order: number;
   publish_at?: string | null;
-  /** Actividades (admin / matching): bano, secado, color, … */
+  /** IDs de actividades del catálogo (bano, secado, cepillado, …) */
   activities?: string[];
+};
+
+export type ServiceActivityCatalogItem = {
+  id: string;
+  label: string;
+  icon: string | null;
+  sort_order: number;
+  required_skills?: string[];
+  active?: boolean;
 };
 
 export type Appointment = {
@@ -517,6 +526,11 @@ export async function skillCatalog() {
   }>("/staff/skill-catalog");
 }
 
+export const serviceActivityCatalogQuery = queryOptions({
+  queryKey: ["service-activity-catalog"],
+  queryFn: () => api<ServiceActivityCatalogItem[]>("/services/activity-catalog"),
+});
+
 export const appointmentsQuery = queryOptions({
   queryKey: ["appointments"],
   queryFn: () => api<Appointment[]>("/appointments"),
@@ -546,10 +560,15 @@ export type AuditEntry = {
   id: string;
   actor_email: string | null;
   action: string;
+  action_label?: string;
   entity_type: string;
+  entity_label?: string;
   entity_id: string | null;
   created_at: string;
+  summary?: string;
   meta?: unknown;
+  before_data?: Record<string, unknown> | null;
+  after_data?: Record<string, unknown> | null;
 };
 
 export type AuditPage = {
@@ -1065,6 +1084,9 @@ export async function upsertService(
       name: input.name,
       description: input.description ?? null,
       price: input.price ?? 0,
+      price_min: input.price_min ?? null,
+      price_max: input.price_max ?? null,
+      price_note: input.price_note ?? null,
       duration_min: input.duration_min ?? 60,
       image_url: input.image_url ?? null,
       is_public: input.is_public ?? true,

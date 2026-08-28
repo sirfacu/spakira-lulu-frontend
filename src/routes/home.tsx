@@ -3,6 +3,7 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Bath, Scissors, Sparkles, Heart, Smile, Clock, Instagram, Facebook } from "lucide-react";
 import { BrandMark, PawIcon, LOGO_SRC } from "@/components/brand";
+import { ServiceDetailDialog } from "@/components/service-detail-dialog";
 import { ChipRail } from "@/components/home-chip-rail";
 import {
   DEFAULT_PRIVACY_PATH,
@@ -17,8 +18,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { getPublicHomeContent, servicesQuery, type HomeNewsItem } from "@/lib/spa-queries";
-import { cop } from "@/lib/format";
+import {
+  getPublicHomeContent,
+  servicesQuery,
+  type HomeNewsItem,
+  type Service,
+} from "@/lib/spa-queries";
+import { servicePriceHeadline, servicePriceNote } from "@/lib/service-pricing";
 import { fetchMe, getToken, logout } from "@/lib/api";
 import { homeForRole, permissionsFor } from "@/lib/roles";
 
@@ -83,7 +89,8 @@ function Landing() {
     if (!s.publish_at) return true;
     return new Date(s.publish_at).getTime() <= Date.now();
   });
-  const staff = permissionsFor(me.data?.role).isStaff;
+  const perms = permissionsFor(me.data?.role);
+  const staff = perms.isStaff;
   const panelTo = homeForRole(me.data?.role);
   const { data: bizLegal } = usePublicBusiness();
   const privacyHref = resolveLegalHref(bizLegal?.privacy_url, DEFAULT_PRIVACY_PATH);
@@ -93,6 +100,7 @@ function Landing() {
   const news = homeContent.data?.news ?? [];
   const videos = homeContent.data?.client_videos ?? [];
   const [preview, setPreview] = useState<HomeNewsItem | null>(null);
+  const [detailService, setDetailService] = useState<Service | null>(null);
 
   const authCta = staff ? (
     <Button asChild size="sm" className="rounded-xl shadow-glow">
@@ -301,10 +309,38 @@ function Landing() {
                     <p className="mt-2 line-clamp-3 flex-1 text-sm leading-relaxed text-muted-foreground">
                       {s.description}
                     </p>
-                    <p className="mt-3 font-display text-xl font-bold text-accent">{cop(s.price)}</p>
-                    <Button asChild className="mt-3 h-10 w-full rounded-xl">
-                      <Link to="/auth">Agendar</Link>
-                    </Button>
+                    <p className="mt-3 font-display text-xl font-bold text-accent">
+                      {servicePriceHeadline(s)}
+                    </p>
+                    {servicePriceNote(s) ? (
+                      <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
+                        {servicePriceNote(s)}
+                      </p>
+                    ) : null}
+                    <div className="mt-3 grid gap-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="h-10 w-full rounded-xl"
+                        onClick={() => setDetailService(s)}
+                      >
+                        Leer más
+                      </Button>
+                      {me.data && !staff ? (
+                        <Button asChild className="h-10 w-full rounded-xl">
+                          <Link
+                            to="/panel/agenda"
+                            search={{ service: s.id, google: undefined }}
+                          >
+                            Agendar
+                          </Link>
+                        </Button>
+                      ) : (
+                        <Button asChild className="h-10 w-full rounded-xl">
+                          <Link to="/auth">Agendar</Link>
+                        </Button>
+                      )}
+                    </div>
                   </div>
                 </article>
               ))}
@@ -312,6 +348,17 @@ function Landing() {
           </div>
         )}
       </section>
+
+      <ServiceDetailDialog
+        service={detailService}
+        open={!!detailService}
+        onOpenChange={(open) => {
+          if (!open) setDetailService(null);
+        }}
+        showAgendar={
+          !!detailService && (perms.isCliente || perms.isColaborador)
+        }
+      />
 
       {videos.length > 0 ? (
         <section className="border-t border-border/60 bg-card/35 py-16">
