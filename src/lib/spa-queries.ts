@@ -531,6 +531,31 @@ export const serviceActivityCatalogQuery = queryOptions({
   queryFn: () => api<ServiceActivityCatalogItem[]>("/services/activity-catalog"),
 });
 
+export const serviceActivityCatalogAdminQuery = queryOptions({
+  queryKey: ["service-activity-catalog", "admin"],
+  queryFn: () => api<ServiceActivityCatalogItem[]>("/services/activity-catalog/all"),
+});
+
+export async function upsertServiceActivity(input: {
+  id: string;
+  label: string;
+  icon?: string | null;
+  sort_order: number;
+  required_skills: string[];
+  active?: boolean;
+}) {
+  return api<ServiceActivityCatalogItem>("/services/activity-catalog", {
+    method: "PUT",
+    body: input,
+  });
+}
+
+export async function deactivateServiceActivity(id: string) {
+  return api<void>(`/services/activity-catalog/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+  });
+}
+
 export const appointmentsQuery = queryOptions({
   queryKey: ["appointments"],
   queryFn: () => api<Appointment[]>("/appointments"),
