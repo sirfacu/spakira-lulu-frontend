@@ -69,7 +69,7 @@ import { permissionsFor } from "@/lib/roles";
 import { FinishAppointmentDialog } from "@/components/finish-appointment-dialog";
 import { MISC_CATALOG } from "@/lib/misc-catalog";
 import { cn } from "@/lib/utils";
-import { ApiError } from "@/lib/api";
+import { ApiError, resolveMediaUrl } from "@/lib/api";
 
 const ACTIVITY_SKILLS: Record<string, string[]> = {
   bano: ["bañista", "lavador", "groomer"],
@@ -1048,7 +1048,7 @@ function Agenda() {
                           <div className="flex w-11 shrink-0 flex-col items-center gap-1">
                             {a.pets?.photo_url ? (
                               <img
-                                src={a.pets.photo_url}
+                                src={resolveMediaUrl(a.pets.photo_url)}
                                 alt={a.pets.name}
                                 className="h-10 w-10 rounded-xl object-cover"
                               />
@@ -1059,7 +1059,7 @@ function Agenda() {
                             )}
                             {a.staff?.photo_url ? (
                               <img
-                                src={a.staff.photo_url}
+                                src={resolveMediaUrl(a.staff.photo_url)}
                                 alt={a.staff.full_name}
                                 title={a.staff.full_name}
                                 className="h-6 w-6 rounded-full object-cover ring-2 ring-background"
@@ -1201,7 +1201,7 @@ function Agenda() {
                 <div className="flex items-start gap-4">
                   {selected.pets?.photo_url ? (
                     <img
-                      src={selected.pets.photo_url}
+                      src={resolveMediaUrl(selected.pets.photo_url)}
                       alt={selected.pets.name}
                       className="h-16 w-16 shrink-0 rounded-2xl object-cover"
                     />
