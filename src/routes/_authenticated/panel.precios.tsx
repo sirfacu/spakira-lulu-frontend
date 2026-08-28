@@ -13,6 +13,7 @@ import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { ReorderList } from "@/components/reorder-list";
 import { ServiceDetailDialog } from "@/components/service-detail-dialog";
+import { ServiceActivityAdmin } from "@/components/service-activity-admin";
 import {
   panelServicesQuery,
   serviceActivityCatalogQuery,
@@ -409,6 +410,8 @@ function Servicios() {
       ) : null}
 
       {!list.length && !canManage ? <Empty message="Sin servicios." /> : null}
+
+      {canManage ? <ServiceActivityAdmin /> : null}
 
       <ServiceDetailDialog
         service={detailService}
