@@ -1,6 +1,9 @@
+import { useQuery } from "@tanstack/react-query";
 import { useRouterState } from "@tanstack/react-router";
 import { usePublicBusiness } from "@/components/legal-layout";
+import { fetchMe, getToken, roleFromAccessToken } from "@/lib/api";
 import { buildWhatsAppLink } from "@/lib/whatsapp-link";
+import { shouldShowWhatsAppFab } from "@/lib/whatsapp-fab-visibility";
 
 const DEFAULT_MESSAGE =
   "Hola Spa Kira, me gustaría consultar sobre sus servicios. ¿Me pueden ayudar?";
@@ -18,28 +21,25 @@ function WhatsAppIcon({ className }: { className?: string }) {
   );
 }
 
-function isPublicVisitorPath(pathname: string): boolean {
-  if (pathname.startsWith("/panel")) return false;
-  if (pathname.startsWith("/_authenticated")) return false;
-  return (
-    pathname === "/home" ||
-    pathname === "/auth" ||
-    pathname === "/privacidad" ||
-    pathname === "/terminos" ||
-    pathname === "/"
-  );
-}
-
 export function PublicWhatsAppFab() {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
+  const token = typeof window !== "undefined" ? getToken() : null;
+  const me = useQuery({
+    queryKey: ["auth-me", "whatsapp-fab"],
+    queryFn: fetchMe,
+    enabled: Boolean(token),
+    staleTime: 60_000,
+  });
+  const role = me.data?.role ?? (token ? roleFromAccessToken(token) : undefined);
   const { data: biz } = usePublicBusiness();
   const trade = biz?.trade_name?.trim() || "Spa Kira";
   const href = buildWhatsAppLink(
     biz?.whatsapp,
     DEFAULT_MESSAGE.replace("Spa Kira", trade),
   );
+  const visible = shouldShowWhatsAppFab(pathname, role, me.data?.modules);
 
-  if (!isPublicVisitorPath(pathname) || !href) return null;
+  if (!visible || !href) return null;
 
   return (
     <a
