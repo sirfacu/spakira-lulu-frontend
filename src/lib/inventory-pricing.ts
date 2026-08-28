@@ -15,6 +15,4 @@ export function unitPriceFromPack(salePack: number, packSize: number): number {
   return Math.round((Number(salePack) || 0) / (size > 0 ? size : 1));
 }
 
-export function isShoppable(channel: string | null | undefined): boolean {
-  return channel === "externo" || channel === "interno_externo" || !channel;
-}
+export { isShoppable } from "@/lib/inventory-channel";
