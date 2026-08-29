@@ -19,10 +19,20 @@ export const Route = createFileRoute("/_authenticated/panel/completar")({
   component: CompletarPerfil,
 });
 
+const DOC_TYPES = [
+  { value: "CC", label: "Cédula de ciudadanía" },
+  { value: "CE", label: "Cédula de extranjería" },
+  { value: "NIT", label: "NIT" },
+  { value: "PAS", label: "Pasaporte" },
+  { value: "TI", label: "Tarjeta de identidad" },
+] as const;
+
 function CompletarPerfil() {
   const { user } = useRouteContext({ from: "/_authenticated" });
   const navigate = useNavigate();
   const [fullName, setFullName] = useState("");
+  const [documentType, setDocumentType] = useState("CC");
+  const [documentId, setDocumentId] = useState("");
   const [phone, setPhone] = useState("");
   const [address, setAddress] = useState("");
   const [whatsapp, setWhatsapp] = useState("");
@@ -39,6 +49,8 @@ function CompletarPerfil() {
         setPhone(o.phone ?? "");
         setAddress(o.address ?? "");
         setWhatsapp(o.whatsapp ?? "");
+        setDocumentType((o.document_type || "CC").toUpperCase());
+        setDocumentId(o.document_id ?? "");
       })
       .catch(() => {
         /* ficha nueva vacía */
@@ -48,12 +60,17 @@ function CompletarPerfil() {
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     const digits = phone.replace(/\D/g, "");
+    const doc = documentId.replace(/[^a-zA-Z0-9]/g, "");
     if (digits.length < 8) {
       toast.error("El teléfono es obligatorio (mínimo 8 dígitos)");
       return;
     }
     if (address.trim().length < 8) {
       toast.error("La dirección es obligatoria");
+      return;
+    }
+    if (doc.length < 5) {
+      toast.error("La cédula / documento es obligatorio");
       return;
     }
     setLoading(true);
@@ -63,10 +80,12 @@ function CompletarPerfil() {
         phone: phone.trim(),
         address: address.trim(),
         whatsapp: whatsapp.trim() || undefined,
+        document_type: documentType,
+        document_id: documentId.trim(),
       });
       clearMeCache();
-      toast.success("Datos guardados");
-      await navigate({ to: homeForRole(user?.role), replace: true });
+      toast.success("Datos guardados. Ahora registrá a tu peludito.");
+      await navigate({ to: "/panel/mascotas", search: { alta: true }, replace: true });
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "No se pudo guardar");
     } finally {
@@ -75,8 +94,14 @@ function CompletarPerfil() {
   };
 
   return (
-    <AppShell title="Tus datos" subtitle="Teléfono y dirección son obligatorios para pedir turnos.">
+    <AppShell
+      title="Tus datos"
+      subtitle="Paso 1: tus datos (cédula incluida). Después creás la mascota."
+    >
       <form onSubmit={submit} className="card-soft mx-auto max-w-lg space-y-4 p-6">
+        <p className="text-sm text-muted-foreground">
+          1 de 2 · Completá tu información. El siguiente paso es crear tu mascota.
+        </p>
         <div className="space-y-2">
           <Label htmlFor="fullName">Nombre</Label>
           <Input
@@ -86,6 +111,35 @@ function CompletarPerfil() {
             onChange={(e) => setFullName(e.target.value)}
             className="h-12 rounded-xl"
           />
+        </div>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div className="space-y-2">
+            <Label htmlFor="documentType">Tipo de documento</Label>
+            <select
+              id="documentType"
+              value={documentType}
+              onChange={(e) => setDocumentType(e.target.value)}
+              className="flex h-12 w-full rounded-xl border border-input bg-background px-3 text-sm"
+            >
+              {DOC_TYPES.map((d) => (
+                <option key={d.value} value={d.value}>
+                  {d.label}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="documentId">Cédula / documento</Label>
+            <Input
+              id="documentId"
+              required
+              minLength={5}
+              value={documentId}
+              onChange={(e) => setDocumentId(e.target.value)}
+              placeholder="Número"
+              className="h-12 rounded-xl"
+            />
+          </div>
         </div>
         <div className="space-y-2">
           <Label htmlFor="phone">Teléfono</Label>
@@ -122,7 +176,7 @@ function CompletarPerfil() {
           />
         </div>
         <Button type="submit" disabled={loading} className="h-12 w-full rounded-xl">
-          {loading ? "Guardando…" : "Guardar y continuar"}
+          {loading ? "Guardando…" : "Guardar y crear mascota"}
         </Button>
       </form>
     </AppShell>

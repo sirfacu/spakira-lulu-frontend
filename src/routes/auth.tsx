@@ -6,7 +6,6 @@ import {
   getApiBase,
   getToken,
   login,
-  registerAccount,
   roleFromAccessToken,
   seedMeCache,
   setToken,
@@ -70,7 +69,7 @@ export const Route = createFileRoute("/auth")({
   component: AuthPage,
 });
 
-type Mode = "login" | "register" | "activate";
+type Mode = "login" | "activate";
 
 function GoogleGIcon({ className }: { className?: string }) {
   return (
@@ -95,9 +94,17 @@ function GoogleGIcon({ className }: { className?: string }) {
   );
 }
 
-function destAfterAuth(role: string | undefined, profileComplete?: boolean, needProfile?: boolean) {
+function destAfterAuth(
+  role: string | undefined,
+  profileComplete?: boolean,
+  needProfile?: boolean,
+  needsPet?: boolean,
+) {
   if (permissionsFor(role).isCliente && (needProfile || profileComplete === false)) {
     return "/panel/completar";
+  }
+  if (permissionsFor(role).isCliente && needsPet) {
+    return "/panel/mascotas?alta=true";
   }
   return homeForRole(role);
 }
@@ -150,6 +157,7 @@ function AuthPage() {
       role?: string;
       need_profile?: boolean;
       profile_complete?: boolean;
+      needs_pet?: boolean;
     }) => {
       setToken(opts.access_token);
       const role = opts.role || roleFromAccessToken(opts.access_token) || "cliente";
@@ -162,9 +170,11 @@ function AuthPage() {
         email: opts.email || "",
         role,
         profile_complete: !needProf,
+        needs_pet: opts.needs_pet,
       });
-      setSplashTo(destAfterAuth(role, opts.profile_complete, needProf));
-      scheduleAuthRedirect(destAfterAuth(role, opts.profile_complete, needProf));
+      const dest = destAfterAuth(role, opts.profile_complete, needProf, opts.needs_pet);
+      setSplashTo(dest);
+      scheduleAuthRedirect(dest);
     },
     [need_profile],
   );
@@ -186,6 +196,7 @@ function AuthPage() {
       try {
         const res = await fetch(
           `${getApiBase()}/auth/google/login/finish?ticket=${encodeURIComponent(google_ticket)}`,
+          { credentials: "include" },
         );
         const body = (await res.json().catch(() => ({}))) as {
           detail?: string;
@@ -194,6 +205,7 @@ function AuthPage() {
           email?: string;
           need_profile?: boolean;
           profile_complete?: boolean;
+          needs_pet?: boolean;
         };
         if (!res.ok || !body.access_token) {
           throw new Error(body.detail || "No se pudo completar el login con Google");
@@ -205,6 +217,7 @@ function AuthPage() {
           role: body.role,
           need_profile: body.need_profile,
           profile_complete: body.profile_complete,
+          needs_pet: body.needs_pet,
         });
         void navigate({ to: "/auth", search: {}, replace: true });
       } catch (err) {
@@ -257,7 +270,7 @@ function AuthPage() {
     };
   }, []);
 
-  const title = mode === "register" ? "Crear cuenta" : mode === "activate" ? "Activar cuenta" : "Ingresar";
+  const title = mode === "activate" ? "Activar cuenta" : "Ingresar";
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -266,22 +279,14 @@ function AuthPage() {
       if (mode === "login") {
         const data = await login(email, password);
         toast.success("Ingreso correcto");
-        const dest = destAfterAuth(data.role, data.profile_complete);
-        setSplashTo(dest);
-        scheduleAuthRedirect(dest);
-        return;
-      }
-      if (mode === "register") {
-        const data = await registerAccount(email, fullName.trim() || email.split("@")[0]!, password);
-        toast.success("Cuenta creada");
-        const dest = destAfterAuth(data.role, data.profile_complete);
+        const dest = destAfterAuth(data.role, data.profile_complete, undefined, data.needs_pet);
         setSplashTo(dest);
         scheduleAuthRedirect(dest);
         return;
       }
       const data = await activateAccount(token, password, fullName || undefined);
       toast.success("Cuenta activada");
-      const dest = destAfterAuth(data.role, data.profile_complete);
+      const dest = destAfterAuth(data.role, data.profile_complete, undefined, data.needs_pet);
       setSplashTo(dest);
       scheduleAuthRedirect(dest);
     } catch (err) {
@@ -334,7 +339,8 @@ function AuthPage() {
                   <p className="text-center text-[11px] text-muted-foreground">{googleHint}</p>
                 ) : null}
                 <p className="pt-1 text-center text-xs text-muted-foreground">
-                  O continuá con tu correo:
+                  Clientes nuevos: Google crea la cuenta. Después te pedimos cédula y tu mascota.
+                  Staff e invitados: correo y contraseña.
                 </p>
               </div>
             ) : null}
@@ -369,12 +375,11 @@ function AuthPage() {
                 </div>
               ) : null}
 
-              {mode !== "login" ? (
+              {mode === "activate" ? (
                 <div className="space-y-2">
                   <Label htmlFor="fullName">Nombre</Label>
                   <Input
                     id="fullName"
-                    required={mode === "register"}
                     value={fullName}
                     onChange={(e) => setFullName(e.target.value)}
                     placeholder="Tu nombre"
@@ -389,7 +394,7 @@ function AuthPage() {
                   id="password"
                   type="password"
                   required
-                  minLength={6}
+                  minLength={mode === "activate" ? 8 : 1}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="••••••••"
@@ -398,43 +403,10 @@ function AuthPage() {
               </div>
 
               <Button type="submit" disabled={loading || ticketBusy} className="h-12 w-full rounded-xl text-base">
-                {loading
-                  ? "Un momento…"
-                  : mode === "activate"
-                    ? "Activar e ingresar"
-                    : mode === "register"
-                      ? "Registrarse"
-                      : "Ingresar"}
+                {loading ? "Un momento…" : mode === "activate" ? "Activar e ingresar" : "Ingresar"}
               </Button>
             </form>
 
-            {mode !== "activate" ? (
-              <p className="mt-4 text-center text-sm text-muted-foreground">
-                {mode === "login" ? (
-                  <>
-                    ¿No tenés cuenta?{" "}
-                    <button
-                      type="button"
-                      className="font-medium text-primary underline-offset-2 hover:underline"
-                      onClick={() => setMode("register")}
-                    >
-                      Registrarse
-                    </button>
-                  </>
-                ) : (
-                  <>
-                    ¿Ya tenés cuenta?{" "}
-                    <button
-                      type="button"
-                      className="font-medium text-primary underline-offset-2 hover:underline"
-                      onClick={() => setMode("login")}
-                    >
-                      Ingresar
-                    </button>
-                  </>
-                )}
-              </p>
-            ) : null}
             <p className="mt-6 text-center text-xs text-muted-foreground">
               <a
                 href={resolveLegalHref(bizLegal?.privacy_url, DEFAULT_PRIVACY_PATH)}

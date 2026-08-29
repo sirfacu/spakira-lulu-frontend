@@ -6,8 +6,14 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { completeAppointment, listAppointmentExtras, inventoryShopQuery, type Appointment } from "@/lib/spa-queries";
-import { MISC_CATALOG, type MiscCatalogItem } from "@/lib/misc-catalog";
 import { cop, time } from "@/lib/format";
+
+type CatalogItem = {
+  id: string;
+  name: string;
+  category: string;
+  unit_price: number;
+};
 
 type Line = {
   key: string;
@@ -40,15 +46,12 @@ export function FinishAppointmentDialog({ appointment, open, onOpenChange, onDon
 
   const shop = useQuery({ ...inventoryShopQuery, enabled: open });
   const catalog = useMemo(() => {
-    const fromInv = (shop.data ?? []).map((i) => ({
+    return (shop.data ?? []).map((i) => ({
       id: i.id,
       name: i.name,
-      category: i.category || "Tienda",
+      category: i.category || "Vitrina",
       unit_price: Number(i.sale_price_unit || i.sale_price) || 0,
     }));
-    const names = new Set(fromInv.map((i) => i.name.toLowerCase()));
-    const fallback = MISC_CATALOG.filter((m) => !names.has(m.name.toLowerCase()));
-    return [...fromInv, ...fallback] as MiscCatalogItem[];
   }, [shop.data]);
 
   useEffect(() => {
@@ -88,7 +91,7 @@ export function FinishAppointmentDialog({ appointment, open, onOpenChange, onDon
 
   const suggestions = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (q.length < 1) return [] as MiscCatalogItem[];
+    if (q.length < 1) return [] as CatalogItem[];
     const selected = new Set(lines.map((l) => l.name.toLowerCase()));
     return catalog.filter(
       (item) =>
@@ -107,7 +110,7 @@ export function FinishAppointmentDialog({ appointment, open, onOpenChange, onDon
     includeService && Number.isFinite(parsedService) && parsedService >= 0 ? parsedService : 0;
   const grandTotal = serviceTotal + miscTotal;
 
-  const addCatalogItem = (item: MiscCatalogItem) => {
+  const addCatalogItem = (item: CatalogItem) => {
     setLines((prev) => [
       ...prev,
       {
@@ -269,7 +272,7 @@ export function FinishAppointmentDialog({ appointment, open, onOpenChange, onDon
                       addCatalogItem(suggestions[0]);
                     }
                   }}
-                  placeholder="Escribí: BARF, shampoo, bufanda…"
+                  placeholder="Escribí: galletas, collar, BARF…"
                   className="h-12 rounded-2xl border-border/80 bg-card pl-10 shadow-soft"
                 />
               </div>

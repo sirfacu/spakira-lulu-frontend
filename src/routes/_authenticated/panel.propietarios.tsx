@@ -87,13 +87,13 @@ function ownerToForm(o: Owner): OwnerForm {
 }
 
 function Propietarios() {
+  const { user } = useRouteContext({ from: "/_authenticated" });
+  const perms = permissionsFor(user?.role);
   const owners = useQuery(ownersQuery);
   const pets = useQuery(petsQuery);
   const appts = useQuery(appointmentsQuery);
-  const sales = useQuery(salesQuery);
+  const sales = useQuery({ ...salesQuery, enabled: perms.isAdmin });
   const qc = useQueryClient();
-  const { user } = useRouteContext({ from: "/_authenticated" });
-  const perms = permissionsFor(user?.role);
   const maskPii = perms.maskOwnerPii;
   const [q, setQ] = useState("");
   const [selected, setSelected] = useState<Owner | null>(null);
@@ -120,11 +120,14 @@ function Propietarios() {
     () =>
       [...(owners.data ?? [])]
         .filter((o): o is Owner => !!o?.id)
-        .sort(
-          (a, b) =>
+        .sort((a, b) => {
+          const sys = Number(Boolean(b.system_key)) - Number(Boolean(a.system_key));
+          if (sys) return sys;
+          return (
             (a.sort_order ?? 0) - (b.sort_order ?? 0) ||
-            (a.full_name ?? "").localeCompare(b.full_name ?? ""),
-        ),
+            (a.full_name ?? "").localeCompare(b.full_name ?? "")
+          );
+        }),
     [owners.data],
   );
 
@@ -349,18 +352,20 @@ function Propietarios() {
               </tr>
             </thead>
             <tbody>
-              {list.map((o) => (
+              {list.map((o) => {
+                const isSystem = Boolean(o.system_key);
+                return (
                 <tr
                   key={o.id}
                   onClick={() => setSelected(o)}
                   onDragOver={(e) => {
-                    if (!dragId) return;
+                    if (!dragId || isSystem) return;
                     e.preventDefault();
                     e.dataTransfer.dropEffect = "move";
                     if (overId !== o.id) setOverId(o.id);
                   }}
                   onDrop={(e) => {
-                    if (!dragId) return;
+                    if (!dragId || isSystem) return;
                     e.preventDefault();
                     moveRow(dragId, o.id);
                     setDragId(null);
@@ -373,6 +378,9 @@ function Propietarios() {
                   )}
                 >
                   <td className="px-2 py-3.5">
+                    {isSystem ? (
+                      <span className="block h-8 w-8" />
+                    ) : (
                     <div
                       className="grid h-8 w-8 cursor-grab place-items-center rounded-lg text-muted-foreground hover:bg-secondary hover:text-primary active:cursor-grabbing"
                       aria-label={`Reordenar ${o.full_name}`}
@@ -392,6 +400,7 @@ function Propietarios() {
                     >
                       <GripVertical className="h-4 w-4" />
                     </div>
+                    )}
                   </td>
                   <td className="px-5 py-3.5">
                     <div className="flex min-w-0 items-center gap-3">
@@ -407,6 +416,11 @@ function Propietarios() {
                         </span>
                       )}
                       <span className="truncate font-medium text-foreground">{o.full_name}</span>
+                      {isSystem ? (
+                        <span className="shrink-0 rounded-full bg-secondary px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                          Sistema
+                        </span>
+                      ) : null}
                     </div>
                   </td>
                   <td className="px-5 py-3.5 text-muted-foreground">
@@ -431,6 +445,9 @@ function Propietarios() {
                     </span>
                   </td>
                   <td className="px-5 py-3.5 text-right">
+                    {isSystem ? (
+                      <span className="text-xs text-muted-foreground">—</span>
+                    ) : (
                     <Button
                       type="button"
                       variant="outline"
@@ -445,9 +462,11 @@ function Propietarios() {
                     >
                       <Trash2 className="h-4 w-4" />
                     </Button>
+                    )}
                   </td>
                 </tr>
-              ))}
+              );
+              })}
             </tbody>
           </table>
         </div>
@@ -481,6 +500,12 @@ function Propietarios() {
               </div>
 
               <div className="mt-4 flex flex-wrap gap-2">
+                {selected.system_key ? (
+                  <p className="text-sm text-muted-foreground">
+                    Humano del sistema para venta de mostrador. No se edita ni se elimina.
+                  </p>
+                ) : (
+                  <>
                 <Button
                   variant="outline"
                   className="rounded-xl"
@@ -503,6 +528,8 @@ function Propietarios() {
                 >
                   <Trash2 className="mr-2 h-4 w-4" /> Eliminar
                 </Button>
+                  </>
+                )}
               </div>
 
               <div className="mt-5 grid gap-3 sm:grid-cols-2">

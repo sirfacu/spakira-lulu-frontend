@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
+import { sanitizePreviewHtml } from "@/lib/sanitize-html";
 import { SectionCard } from "@/components/ui-kit";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -298,7 +299,7 @@ export function ConfigHomePanel() {
           {preview?.kind === "html" && preview.html ? (
             <div
               className="prose prose-sm mt-2 max-w-none text-foreground"
-              dangerouslySetInnerHTML={{ __html: preview.html }}
+              dangerouslySetInnerHTML={{ __html: sanitizePreviewHtml(preview.html) }}
             />
           ) : null}
         </DialogContent>

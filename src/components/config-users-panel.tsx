@@ -134,7 +134,7 @@ export function ConfigUsersPanel({ currentUserId }: { currentUserId?: string }) 
   const resetMut = useMutation({
     mutationFn: () => {
       if (!resetFor) throw new Error("Sin usuario");
-      if (newPassword.length < 6) throw new Error("La clave debe tener al menos 6 caracteres");
+      if (newPassword.length < 8) throw new Error("La clave debe tener al menos 8 caracteres");
       if (newPassword !== newPassword2) throw new Error("Las claves no coinciden");
       return resetAppUserPassword(resetFor.id, newPassword);
     },
@@ -161,7 +161,7 @@ export function ConfigUsersPanel({ currentUserId }: { currentUserId?: string }) 
   const activateMut = useMutation({
     mutationFn: () => {
       if (!activateFor) throw new Error("Sin usuario");
-      if (activatePassword.length < 6) throw new Error("La clave debe tener al menos 6 caracteres");
+      if (activatePassword.length < 8) throw new Error("La clave debe tener al menos 8 caracteres");
       if (activatePassword !== activatePassword2) throw new Error("Las claves no coinciden");
       return forceActivateAppUser(activateFor.id, activatePassword);
     },

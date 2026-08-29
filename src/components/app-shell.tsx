@@ -58,10 +58,13 @@ export function AppShell({
   const { user } = useRouteContext({ from: "/_authenticated" });
   const role = normalizeRole(user?.role);
   const profileLocked = role === "cliente" && user?.profile_complete === false;
+  const needsPet = role === "cliente" && user?.profile_complete !== false && !!user?.needs_pet;
   const nav = (
     profileLocked
       ? []
-      : NAV.filter((item) => canAccessPath(role, item.to, user?.modules))
+      : needsPet
+        ? NAV.filter((item) => item.to === "/panel/mascotas")
+        : NAV.filter((item) => canAccessPath(role, item.to, user?.modules))
   ).map((item) => {
     if (item.to === "/panel/agenda" && (role === "colaborador" || role === "cliente")) {
       return { ...item, label: "Mi agenda" };
@@ -153,7 +156,7 @@ export function AppShell({
             <PawIcon className="h-5 w-5 text-accent" />
             <p className="mt-2 text-sm font-semibold text-blush-foreground">Consentimos con amor</p>
             <p className="mt-1 text-xs text-muted-foreground">
-              Canina y felina · Bogotá
+              Canina y felina
               {role === "colaborador" ? " · Staff" : ""}
             </p>
           </div>

@@ -7,6 +7,7 @@ type AuthContext = {
     email: string;
     role: string;
     profile_complete?: boolean;
+    needs_pet?: boolean;
     modules?: string[];
   };
 };

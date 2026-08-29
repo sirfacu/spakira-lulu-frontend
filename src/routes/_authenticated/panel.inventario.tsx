@@ -112,7 +112,7 @@ function Inventario() {
 
   const soon = new Date();
   soon.setMonth(soon.getMonth() + 3);
-  const outOfStock = (inv.data ?? []).filter((i) => i.quantity === 0);
+  const outOfStock = (inv.data ?? []).filter((i) => Number(i.available ?? i.quantity) === 0);
   const expiring = (inv.data ?? []).filter(
     (i) => i.expires_at && new Date(i.expires_at) <= soon,
   );
@@ -213,7 +213,9 @@ function Inventario() {
                 <th className="px-5 py-3.5 font-semibold">Producto</th>
                 <th className="px-5 py-3.5 font-semibold">Categoría</th>
                 <th className="px-5 py-3.5 font-semibold">Uso</th>
-                <th className="px-5 py-3.5 font-semibold">Cantidad</th>
+                <th className="px-5 py-3.5 font-semibold">Físico</th>
+                <th className="px-5 py-3.5 font-semibold">Reservado</th>
+                <th className="px-5 py-3.5 font-semibold">Disponible</th>
                 <th className="px-5 py-3.5 font-semibold">Mínimo</th>
                 <th className="px-5 py-3.5 font-semibold">Compra</th>
                 <th className="px-5 py-3.5 font-semibold">Sugerido</th>
@@ -222,7 +224,8 @@ function Inventario() {
             </thead>
             <tbody>
               {items.map((i) => {
-                const st = state(i.quantity, i.min_stock);
+                const avail = Number(i.available ?? i.quantity);
+                const st = state(avail, i.min_stock);
                 return (
                   <tr
                     key={i.id}
@@ -254,6 +257,8 @@ function Inventario() {
                       />
                     </td>
                     <td className="px-5 py-3.5 font-semibold text-foreground">{i.quantity}</td>
+                    <td className="px-5 py-3.5 text-muted-foreground">{i.reserved ?? 0}</td>
+                    <td className="px-5 py-3.5 font-semibold text-foreground">{avail}</td>
                     <td className="px-5 py-3.5 text-muted-foreground">{i.min_stock}</td>
                     <td className="px-5 py-3.5 text-muted-foreground">{cop(i.purchase_price)}</td>
                     <td className="px-5 py-3.5 font-medium text-accent">{cop(i.sale_price)}</td>
@@ -275,8 +280,8 @@ function Inventario() {
             {editing === "new" ? "Nuevo producto" : "Producto"}
           </h2>
           <p className="text-sm text-muted-foreground">
-            El saldo solo cambia con movimientos (compra, merma, ajuste). Si el extra de una cita
-            tiene el mismo nombre, descuenta stock.
+            El saldo físico baja al finalizar una cita o al registrar una venta de mostrador.
+            Mientras la cita está agendada, el extra queda reservado (columna Reservado).
           </p>
           <div className="mt-4 grid gap-3">
             <div className="space-y-1">

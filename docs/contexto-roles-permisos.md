@@ -72,7 +72,7 @@ Override por usuario: `user_module_access`. Si no hay filas, hereda el perfil. C
 
 Pestaña: `/panel/permisos` (solo admin). API: `GET/PUT /settings/role-modules`, `GET/PUT /auth/users/{id}/modules`. `/auth/me` trae `modules`, `modules_custom`, `modules_inherited`.
 
-Inventario API: `require_inventario`. Alta de venta: `require_ventas`. GET ventas sigue staff (reportes).
+Inventario API: `require_inventario`. Alta de venta: `require_ventas` (Staff puede registrar mostrador). GET `/sales` es **solo admin** (historial, ticket promedio, reportes). Staff no ve esas métricas aunque tenga el módulo Ventas.
 
 ## Archivos clave
 
