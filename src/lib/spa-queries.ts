@@ -239,6 +239,13 @@ export type InventoryItem = {
   pack_label?: string | null;
   channel?: string;
   expires_at: string | null;
+  next_expires_at?: string | null;
+};
+
+export type InventoryCategory = {
+  id: string;
+  name: string;
+  sort_order?: number;
 };
 
 export type InventoryMovement = {
@@ -249,6 +256,8 @@ export type InventoryMovement = {
   kind: string;
   note: string | null;
   created_at: string;
+  actor_name?: string | null;
+  actor_email?: string | null;
 };
 
 export type Sale = {
@@ -567,6 +576,11 @@ export const appointmentsQuery = queryOptions({
 export const inventoryQuery = queryOptions({
   queryKey: ["inventory"],
   queryFn: () => api<InventoryItem[]>("/inventory"),
+});
+
+export const inventoryCategoriesQuery = queryOptions({
+  queryKey: ["inventory", "categories"] as const,
+  queryFn: () => api<InventoryCategory[]>("/inventory/categories"),
 });
 
 export const inventoryShopQuery = queryOptions({
@@ -1194,7 +1208,6 @@ export async function createInventoryItem(body: {
   pack_size?: number;
   pack_label?: string | null;
   channel?: string;
-  expires_at?: string | null;
 }) {
   return api<InventoryItem>("/inventory", { method: "POST", body });
 }
@@ -1215,15 +1228,18 @@ export async function patchInventoryItem(
     pack_size: number;
     pack_label: string | null;
     channel: string;
-    expires_at: string | null;
   }>,
 ) {
   return api<InventoryItem>(`/inventory/${id}`, { method: "PATCH", body });
 }
 
+export async function createInventoryCategory(name: string) {
+  return api<InventoryCategory>("/inventory/categories", { method: "POST", body: { name } });
+}
+
 export async function createInventoryMove(
   id: string,
-  body: { delta: number; kind: string; note?: string },
+  body: { delta: number; kind: string; note?: string; expires_at?: string | null },
 ) {
   return api<InventoryMovement>(`/inventory/${id}/movements`, { method: "POST", body });
 }
