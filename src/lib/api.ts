@@ -65,6 +65,15 @@ export function usesHttpOnlySession(): boolean {
   return !localish;
 }
 
+/**
+ * En prod la sesión vive en cookie HttpOnly (`spakira_session`): no hay token en JS.
+ * Usar esto (no `getToken()`) para decidir si hay que llamar a `/auth/me`.
+ */
+export function mayHaveSession(): boolean {
+  if (usesHttpOnlySession()) return true;
+  return Boolean(getToken());
+}
+
 export function getToken(): string | null {
   if (typeof window === "undefined") return null;
   if (usesHttpOnlySession()) return null;

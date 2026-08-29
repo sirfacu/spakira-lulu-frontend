@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { useRouterState } from "@tanstack/react-router";
 import { usePublicBusiness } from "@/components/legal-layout";
-import { fetchMe, getToken, roleFromAccessToken } from "@/lib/api";
+import { fetchMe, getToken, mayHaveSession, roleFromAccessToken } from "@/lib/api";
 import { buildWhatsAppLink } from "@/lib/whatsapp-link";
 import { shouldShowWhatsAppFab } from "@/lib/whatsapp-fab-visibility";
 
@@ -24,11 +24,13 @@ function WhatsAppIcon({ className }: { className?: string }) {
 export function PublicWhatsAppFab() {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const token = typeof window !== "undefined" ? getToken() : null;
+  const onPanel = pathname.startsWith("/panel");
   const me = useQuery({
     queryKey: ["auth-me", "whatsapp-fab"],
     queryFn: fetchMe,
-    enabled: Boolean(token),
+    enabled: onPanel && mayHaveSession(),
     staleTime: 60_000,
+    retry: false,
   });
   const role = me.data?.role ?? (token ? roleFromAccessToken(token) : undefined);
   const { data: biz } = usePublicBusiness();

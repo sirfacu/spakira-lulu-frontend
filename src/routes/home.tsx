@@ -25,7 +25,7 @@ import {
   type Service,
 } from "@/lib/spa-queries";
 import { servicePriceHeadline, servicePriceNote } from "@/lib/service-pricing";
-import { fetchMe, getToken, logout } from "@/lib/api";
+import { fetchMe, logout, mayHaveSession } from "@/lib/api";
 import { sanitizePreviewHtml } from "@/lib/sanitize-html";
 import { homeForRole, permissionsFor } from "@/lib/roles";
 
@@ -73,7 +73,7 @@ function Landing() {
     retry: false,
   });
   const services = servicesQ.data ?? [];
-  const loggedIn = typeof window !== "undefined" && !!getToken();
+  const loggedIn = typeof window !== "undefined" && mayHaveSession();
   const me = useQuery({
     queryKey: ["auth-me"],
     queryFn: fetchMe,
