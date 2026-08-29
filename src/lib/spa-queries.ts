@@ -840,6 +840,7 @@ export type HomeVideoItem = {
 export type HomeContent = {
   news: HomeNewsItem[];
   client_videos: HomeVideoItem[];
+  section_order?: string[];
   updated_at?: string | null;
 };
 
@@ -882,6 +883,7 @@ export async function getHomeContent() {
 export async function putHomeContent(input: {
   news?: HomeNewsItem[];
   client_videos?: HomeVideoItem[];
+  section_order?: string[];
 }) {
   return api<HomeContent>("/settings/home", { method: "PUT", body: input });
 }

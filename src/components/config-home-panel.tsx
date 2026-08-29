@@ -1,8 +1,17 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
+import { GripVertical } from "lucide-react";
 import { sanitizePreviewHtml } from "@/lib/sanitize-html";
+import { parseSocialEmbed } from "@/lib/social-embed";
+import {
+  HOME_SECTION_LABELS,
+  normalizeSectionOrder,
+  type HomeSectionId,
+} from "@/lib/home-sections";
+import { cn } from "@/lib/utils";
 import { SectionCard } from "@/components/ui-kit";
+import { ReorderList } from "@/components/reorder-list";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -32,19 +41,29 @@ export function ConfigHomePanel() {
   const q = useQuery({ queryKey: ["home-content"], queryFn: getHomeContent });
   const [news, setNews] = useState<HomeNewsItem[]>([]);
   const [videos, setVideos] = useState<HomeVideoItem[]>([]);
+  const [sectionOrder, setSectionOrder] = useState<HomeSectionId[]>(() =>
+    normalizeSectionOrder(null),
+  );
   const [preview, setPreview] = useState<HomeNewsItem | null>(null);
 
   useEffect(() => {
     if (!q.data) return;
     setNews(q.data.news ?? []);
     setVideos(q.data.client_videos ?? []);
+    setSectionOrder(normalizeSectionOrder(q.data.section_order));
   }, [q.data]);
+
+  const sectionRows = useMemo(
+    () => sectionOrder.map((id) => ({ id, label: HOME_SECTION_LABELS[id] })),
+    [sectionOrder],
+  );
 
   const saveMut = useMutation({
     mutationFn: () =>
       putHomeContent({
         news: news.map((n, i) => ({ ...n, sort: i })),
         client_videos: videos.map((v, i) => ({ ...v, sort: i })),
+        section_order: sectionOrder,
       }),
     onSuccess: async () => {
       toast.success("Inicio actualizado");
@@ -56,6 +75,46 @@ export function ConfigHomePanel() {
 
   return (
     <div className="grid gap-6">
+      <SectionCard title="Orden de secciones">
+        <p className="mb-4 text-sm text-muted-foreground">
+          Arrastrá el nombre para cambiar cómo se ve el home. El menú de arriba y el pie
+          quedan fijos. Al soltar, el orden se guarda y aplica.
+        </p>
+        <ReorderList
+          items={sectionRows}
+          className="overflow-hidden rounded-2xl border border-border bg-card divide-y divide-border/70"
+          onReorder={(next) => {
+            const ids = next.map((row) => row.id);
+            setSectionOrder(ids);
+            putHomeContent({ section_order: ids })
+              .then(async () => {
+                toast.success("Orden del inicio actualizado");
+                await qc.invalidateQueries({ queryKey: ["home-content"] });
+                await qc.invalidateQueries({ queryKey: ["home-content-public"] });
+              })
+              .catch((e: Error) => toast.error(e.message));
+          }}
+          renderItem={(item, { isDragging, dragHandleProps }) => (
+            <div
+              className={cn(
+                "flex items-center gap-3 px-3 py-3",
+                isDragging && "opacity-60",
+              )}
+            >
+              <div
+                {...dragHandleProps}
+                className="grid h-8 w-8 cursor-grab place-items-center rounded-lg text-muted-foreground hover:bg-secondary hover:text-primary active:cursor-grabbing"
+                aria-label={`Reordenar ${item.label}`}
+                title="Arrastrar para reordenar"
+              >
+                <GripVertical className="h-4 w-4" />
+              </div>
+              <span className="text-sm font-medium text-foreground">{item.label}</span>
+            </div>
+          )}
+        />
+      </SectionCard>
+
       <SectionCard title="Noticias / ideas (chips del home)">
         <p className="mb-4 text-sm text-muted-foreground">
           Cada ítem puede ser texto HTML o una imagen. En el home desfilan de izquierda a
@@ -190,8 +249,9 @@ export function ConfigHomePanel() {
 
       <SectionCard title="Nuestros clientes dicen (videos)">
         <p className="mb-4 text-sm text-muted-foreground">
-          Pegá URLs de YouTube (watch, youtu.be o embed). Se muestran embebidos y desfilan
-          en el home.
+          Pegá URLs de YouTube (watch, shorts, youtu.be), Instagram (publicación o reel) o
+          TikTok (video). Los perfiles no se pueden embeber: en el home se muestra un
+          enlace para abrirlos.
         </p>
         <div className="space-y-4">
           {videos.map((item, idx) => (
@@ -246,8 +306,14 @@ export function ConfigHomePanel() {
                         ),
                       )
                     }
-                    placeholder="https://www.youtube.com/watch?v=..."
+                    placeholder="YouTube, Instagram (p/reel) o TikTok (video)…"
                   />
+                  {item.embed_url.trim() && !parseSocialEmbed(item.embed_url).iframeSrc ? (
+                    <p className="text-xs text-muted-foreground">
+                      Este enlace no se puede embeber (perfil o shortlink). En el home se
+                      muestra un botón para abrirlo en Instagram o TikTok.
+                    </p>
+                  ) : null}
                 </div>
               </div>
             </div>
