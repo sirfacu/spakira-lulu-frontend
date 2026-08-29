@@ -1,11 +1,14 @@
 import { createFileRoute, Outlet, redirect } from "@tanstack/react-router";
-import { fetchMe, getToken, logout } from "@/lib/api";
+import { fetchMe, logout, mayHaveSession } from "@/lib/api";
 import { homeForRole, permissionsFor } from "@/lib/roles";
 
 export const Route = createFileRoute("/_authenticated")({
   ssr: false,
   beforeLoad: async ({ location }) => {
-    if (!getToken()) throw redirect({ to: "/auth" });
+    // Local: JWT en localStorage. Prod: cookie HttpOnly — getToken() es siempre null.
+    if (!mayHaveSession()) {
+      throw redirect({ to: "/auth" });
+    }
     try {
       const user = await fetchMe();
       const path = location.pathname;

@@ -732,6 +732,7 @@ export async function importBreedsCsv(file: File) {
       Accept: "application/json",
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
+    credentials: "include",
     body: fd,
   });
   if (!res.ok) {
