@@ -1,10 +1,11 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Bath, Scissors, Sparkles, Heart, Smile, Clock, Instagram, Facebook } from "lucide-react";
 import { BrandMark, PawIcon, LOGO_SRC } from "@/components/brand";
 import { ServiceDetailDialog } from "@/components/service-detail-dialog";
 import { ChipRail } from "@/components/home-chip-rail";
+import { SocialEmbed } from "@/components/social-embed";
 import {
   DEFAULT_PRIVACY_PATH,
   DEFAULT_TERMS_PATH,
@@ -28,6 +29,7 @@ import { servicePriceHeadline, servicePriceNote } from "@/lib/service-pricing";
 import { fetchMe, logout, mayHaveSession } from "@/lib/api";
 import { sanitizePreviewHtml } from "@/lib/sanitize-html";
 import { homeForRole, permissionsFor } from "@/lib/roles";
+import { normalizeSectionOrder } from "@/lib/home-sections";
 
 const INSTAGRAM_URL = "https://www.instagram.com/spakiralu_";
 const FACEBOOK_URL = "https://www.facebook.com/spakiralulu";
@@ -100,6 +102,7 @@ function Landing() {
   const termsPdf = bizLegal?.terms_pdf_url?.trim();
   const news = homeContent.data?.news ?? [];
   const videos = homeContent.data?.client_videos ?? [];
+  const sectionOrder = normalizeSectionOrder(homeContent.data?.section_order);
   const [preview, setPreview] = useState<HomeNewsItem | null>(null);
   const [detailService, setDetailService] = useState<Service | null>(null);
 
@@ -157,6 +160,9 @@ function Landing() {
         </div>
       </header>
 
+      {sectionOrder.map((id) => (
+        <Fragment key={id}>
+          {id === "hero" ? (
       <section className="mx-auto grid max-w-6xl items-center gap-10 px-5 pb-12 pt-10 lg:grid-cols-[1.05fr_1fr]">
         <div>
           <span className="inline-flex items-center gap-2 rounded-full bg-blush px-4 py-1.5 text-xs font-semibold uppercase tracking-[0.16em] text-blush-foreground">
@@ -199,8 +205,9 @@ function Landing() {
           </div>
         </div>
       </section>
+          ) : null}
 
-      {news.length > 0 ? (
+          {id === "news" && news.length > 0 ? (
         <section className="border-y border-border/60 bg-card/40 py-10">
           <div className="mx-auto max-w-6xl px-5">
             <div className="mb-6 text-center">
@@ -246,31 +253,9 @@ function Landing() {
             </ChipRail>
           </div>
         </section>
-      ) : null}
-
-      <Dialog open={!!preview} onOpenChange={(open) => !open && setPreview(null)}>
-        <DialogContent className="max-h-[85vh] max-w-lg overflow-y-auto rounded-2xl">
-          <DialogHeader>
-            <DialogTitle className="font-display text-2xl text-primary">
-              {preview?.title}
-            </DialogTitle>
-          </DialogHeader>
-          {preview?.kind === "image" && preview.image_url ? (
-            <img
-              src={preview.image_url}
-              alt={preview.title}
-              className="mt-2 max-h-[50vh] w-full rounded-xl object-contain"
-            />
           ) : null}
-          {preview?.kind === "html" && preview.html ? (
-            <div
-              className="prose prose-sm mt-2 max-w-none text-foreground prose-headings:font-display"
-              dangerouslySetInnerHTML={{ __html: sanitizePreviewHtml(preview.html) }}
-            />
-          ) : null}
-        </DialogContent>
-      </Dialog>
 
+          {id === "services" ? (
       <section id="precios" className="mx-auto max-w-6xl px-5 py-16">
         <div className="text-center">
           <span className="font-script text-3xl text-accent">Nuestros</span>
@@ -349,6 +334,59 @@ function Landing() {
           </div>
         )}
       </section>
+          ) : null}
+
+          {id === "videos" && videos.length > 0 ? (
+        <section className="border-t border-border/60 bg-card/35 py-16">
+          <div className="mx-auto max-w-6xl px-5">
+            <div className="mb-8 text-center">
+              <span className="font-script text-3xl text-accent">Testimonios</span>
+              <h2 className="font-display text-3xl font-bold text-primary sm:text-4xl">
+                Nuestros clientes dicen
+              </h2>
+              <div className="gold-rule mx-auto mt-4 max-w-xs" />
+            </div>
+            <ChipRail stepPx={286}>
+              {videos.map((v) => (
+                <figure
+                  key={v.id}
+                  className="card-soft w-[260px] shrink-0 overflow-hidden sm:w-[270px]"
+                >
+                  <figcaption className="px-4 py-3 text-sm font-medium text-primary">
+                    {v.title}
+                  </figcaption>
+                  <SocialEmbed url={v.embed_url} title={v.title} />
+                </figure>
+              ))}
+            </ChipRail>
+          </div>
+        </section>
+          ) : null}
+        </Fragment>
+      ))}
+
+      <Dialog open={!!preview} onOpenChange={(open) => !open && setPreview(null)}>
+        <DialogContent className="max-h-[85vh] max-w-lg overflow-y-auto rounded-2xl">
+          <DialogHeader>
+            <DialogTitle className="font-display text-2xl text-primary">
+              {preview?.title}
+            </DialogTitle>
+          </DialogHeader>
+          {preview?.kind === "image" && preview.image_url ? (
+            <img
+              src={preview.image_url}
+              alt={preview.title}
+              className="mt-2 max-h-[50vh] w-full rounded-xl object-contain"
+            />
+          ) : null}
+          {preview?.kind === "html" && preview.html ? (
+            <div
+              className="prose prose-sm mt-2 max-w-none text-foreground prose-headings:font-display"
+              dangerouslySetInnerHTML={{ __html: sanitizePreviewHtml(preview.html) }}
+            />
+          ) : null}
+        </DialogContent>
+      </Dialog>
 
       <ServiceDetailDialog
         service={detailService}
@@ -360,42 +398,6 @@ function Landing() {
           !!detailService && (perms.isCliente || perms.isColaborador)
         }
       />
-
-      {videos.length > 0 ? (
-        <section className="border-t border-border/60 bg-card/35 py-16">
-          <div className="mx-auto max-w-6xl px-5">
-            <div className="mb-8 text-center">
-              <span className="font-script text-3xl text-accent">Testimonios</span>
-              <h2 className="font-display text-3xl font-bold text-primary sm:text-4xl">
-                Nuestros clientes dicen
-              </h2>
-              <div className="gold-rule mx-auto mt-4 max-w-xs" />
-            </div>
-            <ChipRail stepPx={340}>
-              {videos.map((v) => (
-                <figure
-                  key={v.id}
-                  className="card-soft w-[300px] shrink-0 overflow-hidden sm:w-[360px]"
-                >
-                  <div className="aspect-video bg-secondary">
-                    <iframe
-                      title={v.title}
-                      src={v.embed_url}
-                      className="h-full w-full border-0"
-                      loading="lazy"
-                      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                      allowFullScreen
-                    />
-                  </div>
-                  <figcaption className="px-4 py-3 text-sm font-medium text-primary">
-                    {v.title}
-                  </figcaption>
-                </figure>
-              ))}
-            </ChipRail>
-          </div>
-        </section>
-      ) : null}
 
       <footer className="border-t border-border bg-card/60">
         <div className="mx-auto flex max-w-6xl flex-col items-center gap-3 px-5 py-10 text-center">

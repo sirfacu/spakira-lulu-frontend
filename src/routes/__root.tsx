@@ -145,7 +145,7 @@ function RootComponent() {
       <Outlet />
       <PublicWhatsAppFab />
       <GlobalKiraLoading />
-      <Toaster position="top-right" richColors />
+      <Toaster position="top-center" richColors />
     </QueryClientProvider>
   );
 }

@@ -112,12 +112,19 @@ export function AppShell({
         )}
       >
         <div className="flex items-center justify-between gap-2 px-4 py-4">
-          <BrandMark
-            compact
-            tagline={false}
-            tradeName={business.data?.trade_name ?? null}
-            slogan={business.data?.slogan ?? null}
-          />
+          <Link
+            to="/home"
+            onClick={() => setOpen(false)}
+            className="min-w-0 rounded-xl outline-none ring-offset-background transition-opacity hover:opacity-90 focus-visible:ring-2 focus-visible:ring-primary"
+            aria-label="Ir al inicio"
+          >
+            <BrandMark
+              compact
+              tagline={false}
+              tradeName={business.data?.trade_name ?? null}
+              slogan={business.data?.slogan ?? null}
+            />
+          </Link>
           <button
             onClick={() => setOpen(false)}
             className="rounded-lg p-2 text-muted-foreground hover:bg-sidebar-accent lg:hidden"
