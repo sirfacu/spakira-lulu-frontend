@@ -1139,6 +1139,7 @@ export async function completeAppointment(
     }[];
     owners: { id?: string; full_name?: string; email?: string | null }[];
     smtp_configured?: boolean;
+    email_queued?: boolean;
     invoice_pdf?: string;
   }>(`/appointments/${id}/complete`, { method: "POST", body: input });
 }
