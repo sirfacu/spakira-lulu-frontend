@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { ServiceActivitiesList } from "@/components/service-activities-list";
 import {
+  isPendingCatalogPrice,
   isVariableServicePrice,
   servicePriceHeadline,
   servicePriceLabel,
@@ -61,7 +62,11 @@ export function ServiceDetailDialog({
 
           <div className="mt-5 rounded-2xl border border-border/70 bg-secondary/35 p-4">
             <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-              {variable ? "Rango referencial" : "Precio"}
+              {isPendingCatalogPrice(service)
+                ? "Valor"
+                : variable
+                  ? "Rango referencial"
+                  : "Precio"}
             </p>
             <p className="mt-1 font-display text-2xl font-bold text-accent">
               {variable ? servicePriceLabel(service) : servicePriceHeadline(service)}

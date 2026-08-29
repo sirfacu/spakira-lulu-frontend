@@ -7,7 +7,7 @@ export type HomeSectionId = (typeof HOME_SECTION_IDS)[number];
 export const HOME_SECTION_LABELS: Record<HomeSectionId, string> = {
   hero: "Portada",
   news: "Novedades",
-  services: "Servicios y precios",
+  services: "Servicios",
   videos: "Testimonios",
 };
 

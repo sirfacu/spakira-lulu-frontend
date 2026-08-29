@@ -260,8 +260,11 @@ function Landing() {
         <div className="text-center">
           <span className="font-script text-3xl text-accent">Nuestros</span>
           <h2 className="font-display text-3xl font-bold text-primary sm:text-4xl">
-            Servicios y precios
+            Servicios
           </h2>
+          <p className="mx-auto mt-3 max-w-lg text-sm text-muted-foreground">
+            El valor se confirma al llegar, según la mascota.
+          </p>
           <div className="gold-rule mx-auto mt-4 max-w-xs" />
         </div>
 

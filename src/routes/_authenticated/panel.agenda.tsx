@@ -67,6 +67,11 @@ import {
 import { requirePathAccess } from "@/lib/route-access";
 import { permissionsFor } from "@/lib/roles";
 import { FinishAppointmentDialog } from "@/components/finish-appointment-dialog";
+import { ConfirmServicePriceDialog } from "@/components/confirm-service-price-dialog";
+import {
+  appointmentShowsChargedPrice,
+  PENDING_SERVICE_PRICE_LABEL,
+} from "@/lib/service-pricing";
 import { cn } from "@/lib/utils";
 import { ApiError, resolveMediaUrl } from "@/lib/api";
 
@@ -200,6 +205,11 @@ function Agenda() {
     { owner_id?: string; full_name?: string; link: string }[] | null
   >(null);
   const [finishAppt, setFinishAppt] = useState<Appointment | null>(null);
+  const [pricePrompt, setPricePrompt] = useState<{
+    appointment: Appointment;
+    mode: "status" | "save";
+    nextStatus: string;
+  } | null>(null);
   const [selected, setSelected] = useState<Appointment | null>(null);
   const [confirmAction, setConfirmAction] = useState<{
     title: string;
@@ -360,9 +370,9 @@ function Agenda() {
   }, [search.service, search.google, navigate]);
 
   const saveMut = useMutation({
-    mutationFn: async () => {
+    mutationFn: async (opts?: { price?: number }) => {
       if (!selected) throw new Error("Sin cita");
-      if (!formDirty && !extrasDirty) {
+      if (!formDirty && !extrasDirty && opts?.price == null) {
         throw new Error("No hay cambios para guardar");
       }
       const nextStatus = editForm.status;
@@ -372,7 +382,7 @@ function Agenda() {
         return null;
       }
       // PATCH ya notifica por correo (actualización o cancelación) con snapshot + notas.
-      if (formDirty) {
+      if (formDirty || opts?.price != null) {
         const patched = await updateAppointment(selected.id, {
           pet_id: editForm.pet_id || undefined,
           service_id: editForm.service_id || undefined,
@@ -386,6 +396,7 @@ function Agenda() {
                 starts_at: new Date(editForm.starts_at).toISOString(),
               }),
           ...(perms.canChangeAppointmentStatus ? { status: nextStatus } : {}),
+          ...(opts?.price != null ? { price: opts.price } : {}),
         });
         return {
           ok: true,
@@ -435,9 +446,10 @@ function Agenda() {
   });
 
   const statusMut = useMutation({
-    mutationFn: ({ id, status }: { id: string; status: string }) =>
-      updateAppointmentStatus(id, status),
+    mutationFn: ({ id, status, price }: { id: string; status: string; price?: number }) =>
+      updateAppointmentStatus(id, status, price != null ? { price } : undefined),
     onSuccess: () => {
+      setPricePrompt(null);
       void qc.invalidateQueries({ queryKey: ["appointments"] });
       toast.success("Estado actualizado");
     },
@@ -1102,7 +1114,9 @@ function Agenda() {
                         <div className="mt-2 flex items-center justify-between gap-2">
                           <StatusPill label={meta.label} className={meta.className} hint={meta.hint} />
                           <span className="text-right text-[11px] font-medium text-accent">
-                            {cop(appointmentChargeTotal(a))}
+                            {appointmentShowsChargedPrice(a, perms.isCliente)
+                              ? cop(appointmentChargeTotal(a))
+                              : PENDING_SERVICE_PRICE_LABEL}
                             {Number(a.extras_count ?? 0) > 0 ? (
                               <span className="mt-0.5 block text-[9px] font-normal text-muted-foreground">
                                 incl. {a.extras_count} extra
@@ -1144,6 +1158,10 @@ function Agenda() {
                           onValueChange={(v) => {
                             if (v === "finalizada") {
                               setFinishAppt(a);
+                              return;
+                            }
+                            if (v === "enproceso" && normalizeStatus(a.status) !== "enproceso") {
+                              setPricePrompt({ appointment: a, mode: "status", nextStatus: v });
                               return;
                             }
                             statusMut.mutate({ id: a.id, status: v });
@@ -1197,6 +1215,30 @@ function Agenda() {
           void qc.invalidateQueries({ queryKey: ["appointments"] });
           void qc.invalidateQueries({ queryKey: ["pets"] });
           void qc.invalidateQueries({ queryKey: ["sales"] });
+        }}
+      />
+
+      <ConfirmServicePriceDialog
+        open={!!pricePrompt}
+        petName={pricePrompt?.appointment.pets?.name}
+        defaultPrice={pricePrompt?.appointment.price}
+        saving={statusMut.isPending || saveMut.isPending}
+        onOpenChange={(o) => {
+          if (!o) setPricePrompt(null);
+        }}
+        onConfirm={(price) => {
+          if (!pricePrompt) return;
+          if (pricePrompt.mode === "status") {
+            statusMut.mutate({
+              id: pricePrompt.appointment.id,
+              status: pricePrompt.nextStatus,
+              price,
+            });
+            setPricePrompt(null);
+            return;
+          }
+          saveMut.mutate({ price });
+          setPricePrompt(null);
         }}
       />
 
@@ -1628,7 +1670,11 @@ function Agenda() {
                   <div className="mt-3 space-y-1 border-t border-border pt-3 text-sm">
                     <div className="flex justify-between text-muted-foreground">
                       <span>Servicio</span>
-                      <span>{cop(selected.price)}</span>
+                      <span>
+                        {appointmentShowsChargedPrice(selected, perms.isCliente)
+                          ? cop(selected.price)
+                          : PENDING_SERVICE_PRICE_LABEL}
+                      </span>
                     </div>
                     <div className="flex justify-between text-muted-foreground">
                       <span>Extras</span>
@@ -1639,10 +1685,12 @@ function Agenda() {
                     <div className="flex justify-between font-semibold text-accent">
                       <span>Total</span>
                       <span>
-                        {cop(
-                          Number(selected.price || 0) +
-                            extras.reduce((s, ex) => s + Number(ex.total || 0), 0),
-                        )}
+                        {appointmentShowsChargedPrice(selected, perms.isCliente)
+                          ? cop(
+                              Number(selected.price || 0) +
+                                extras.reduce((s, ex) => s + Number(ex.total || 0), 0),
+                            )
+                          : PENDING_SERVICE_PRICE_LABEL}
                       </span>
                     </div>
                   </div>
@@ -1660,7 +1708,20 @@ function Agenda() {
                       <Button
                         className="rounded-xl"
                         disabled={saveMut.isPending || !canSaveNotify}
-                        onClick={() => saveMut.mutate()}
+                        onClick={() => {
+                          if (
+                            editForm.status === "enproceso" &&
+                            normalizeStatus(selected.status) !== "enproceso"
+                          ) {
+                            setPricePrompt({
+                              appointment: selected,
+                              mode: "save",
+                              nextStatus: "enproceso",
+                            });
+                            return;
+                          }
+                          saveMut.mutate(undefined);
+                        }}
                       >
                         <Pencil className="mr-2 h-4 w-4" />
                         {saveMut.isPending ? "Guardando…" : "Guardar cambios"}
