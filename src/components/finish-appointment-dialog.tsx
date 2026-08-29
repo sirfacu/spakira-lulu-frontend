@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { completeAppointment, listAppointmentExtras, inventoryShopQuery, type Appointment } from "@/lib/spa-queries";
+import { ApiError } from "@/lib/api";
 import { cop, time } from "@/lib/format";
 
 type CatalogItem = {
@@ -181,7 +182,11 @@ export function FinishAppointmentDialog({ appointment, open, onOpenChange, onDon
       });
       const emailed = (res.email_notifications ?? []).filter((n) => n.sent).length;
       const targets = (res.email_notifications ?? []).filter((n) => n.email).length;
-      if (emailed > 0) {
+      if (res.email_queued) {
+        toast.success(
+          `Servicio cerrado · factura ${res.invoice_number}. El correo se envía en segundo plano.`,
+        );
+      } else if (emailed > 0) {
         toast.success(`Servicio cerrado · factura ${res.invoice_number} enviada a ${emailed} dueño(s)`);
       } else if (!res.smtp_configured && targets > 0) {
         toast.warning(
@@ -198,7 +203,14 @@ export function FinishAppointmentDialog({ appointment, open, onOpenChange, onDon
       onOpenChange(false);
       onDone();
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "No se pudo finalizar");
+      if (e instanceof ApiError && e.status === 409) {
+        toast.success("El servicio ya estaba cerrado. Recargá la agenda.");
+        setConfirmOpen(false);
+        onOpenChange(false);
+        onDone();
+      } else {
+        toast.error(e instanceof Error ? e.message : "No se pudo finalizar");
+      }
     } finally {
       setSaving(false);
     }

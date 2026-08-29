@@ -145,6 +145,43 @@ export class ApiError extends Error {
   }
 }
 
+const NETWORK_FETCH_ERRORS = new Set([
+  "Failed to fetch",
+  "Load failed",
+  "NetworkError when attempting to fetch resource.",
+]);
+
+export function isLocalishHostname(hostname: string): boolean {
+  return (
+    hostname === "localhost" ||
+    hostname === "127.0.0.1" ||
+    hostname === "0.0.0.0" ||
+    /^\d{1,3}(?:\.\d{1,3}){3}$/.test(hostname)
+  );
+}
+
+export function isTunnelHostname(hostname: string): boolean {
+  return (
+    hostname.endsWith(".trycloudflare.com") ||
+    hostname.endsWith(".cfargotunnel.com") ||
+    hostname.includes("trycloudflare.com")
+  );
+}
+
+/** Mensaje de red según el host: el aviso del túnel Cloudflare es solo local. */
+export function networkErrorMessage(raw: string, hostname?: string): string {
+  if (!NETWORK_FETCH_ERRORS.has(raw)) return raw;
+  const host =
+    hostname ?? (typeof window !== "undefined" ? window.location.hostname : "");
+  if (isTunnelHostname(host)) {
+    return "No se pudo contactar la API. El cierre no debe ir por el túnel de Cloudflare; usá localhost:9000 en esta PC.";
+  }
+  if (isLocalishHostname(host)) {
+    return "No se pudo contactar la API. ¿Está corriendo en el puerto 9001? Recargá e intentá de nuevo.";
+  }
+  return "No se pudo contactar la API. Recargá e intentá de nuevo. Si el servicio ya se cerró, revisá la agenda.";
+}
+
 type FetchOpts = {
   method?: string;
   body?: unknown;
@@ -222,12 +259,7 @@ export async function api<T>(path: string, opts: FetchOpts = {}): Promise<T> {
       path,
       message: raw,
     });
-    throw new ApiError(
-      0,
-      raw === "Failed to fetch" || raw === "Load failed" || raw === "NetworkError when attempting to fetch resource."
-        ? "No se pudo contactar la API. Si estás en esta PC, recargá; el cierre no debe ir por el túnel de Cloudflare."
-        : raw,
-    );
+    throw new ApiError(0, networkErrorMessage(raw));
   }
 }
 
