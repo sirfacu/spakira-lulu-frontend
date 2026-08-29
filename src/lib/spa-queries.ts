@@ -166,10 +166,11 @@ export type Service = {
   id: string;
   name: string;
   description: string | null;
-  price: number;
+  price: number | null;
   price_min?: number | null;
   price_max?: number | null;
   price_note?: string | null;
+  price_pending?: boolean;
   duration_min: number;
   image_url: string | null;
   is_public: boolean;
@@ -197,7 +198,8 @@ export type Appointment = {
   starts_at: string;
   duration_min: number;
   status: string;
-  price: number;
+  price: number | null;
+  price_pending?: boolean;
   /** Suma de extras vinculados a la cita (store_purchases.appointment_id). */
   extras_total?: number;
   extras_count?: number;
@@ -980,8 +982,15 @@ export async function createSale(input: {
   return api<Sale>("/sales", { method: "POST", body: input });
 }
 
-export async function updateAppointmentStatus(id: string, status: string) {
-  await api(`/appointments/${id}/status`, { method: "PATCH", body: { status } });
+export async function updateAppointmentStatus(
+  id: string,
+  status: string,
+  extra?: { price?: number },
+) {
+  await api(`/appointments/${id}/status`, {
+    method: "PATCH",
+    body: { status, ...(extra?.price != null ? { price: extra.price } : {}) },
+  });
 }
 
 export async function updateAppointment(
@@ -994,6 +1003,7 @@ export async function updateAppointment(
     duration_min?: number;
     notes?: string | null;
     status?: string;
+    price?: number;
   },
 ) {
   return api<Appointment & { email_notifications?: { sent: boolean; email?: string }[] }>(

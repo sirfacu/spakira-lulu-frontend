@@ -42,6 +42,7 @@ import {
   type Pet,
 } from "@/lib/spa-queries";
 import { shortDate, statusMeta, time, cop, ageLabelFromLifeDate } from "@/lib/format";
+import { appointmentShowsChargedPrice, PENDING_SERVICE_PRICE_LABEL } from "@/lib/service-pricing";
 import { requirePathAccess } from "@/lib/route-access";
 import { permissionsFor } from "@/lib/roles";
 import { clearMeCache, uploadPhoto, resolveMediaUrl } from "@/lib/api";
@@ -719,7 +720,11 @@ function Mascotas() {
                           </p>
                           <p className="truncate text-xs text-muted-foreground">
                             {shortDate(a.starts_at)} {time(a.starts_at)} ·{" "}
-                            {a.staff_name ?? "—"} · {cop(a.price)}
+                            {a.staff_name ?? "—"}
+                            {a.kind === "store_purchase" ||
+                            appointmentShowsChargedPrice(a, perms.isCliente)
+                              ? ` · ${cop(a.price)}`
+                              : ` · ${PENDING_SERVICE_PRICE_LABEL}`}
                           </p>
                         </div>
                         <StatusPill

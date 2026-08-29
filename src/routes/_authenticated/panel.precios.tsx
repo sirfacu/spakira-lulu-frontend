@@ -250,7 +250,7 @@ function Servicios() {
         {!canManage ? (
           <p className="mt-3 text-sm text-muted-foreground">
             {perms.isCliente
-              ? "Elegí un servicio y agendá el primer turno libre disponible."
+              ? "Elegí un servicio y agendá. El valor se confirma al llegar."
               : "Como Staff solo podés consultar. Crear, editar o programar es solo admin."}
           </p>
         ) : null}

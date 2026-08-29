@@ -55,7 +55,7 @@ export function MailConfigPanel() {
       }),
     onSuccess: async (res) => {
       toast.success("Correo guardado");
-      if (res.backup) toast.message(`Backup: ${res.backup}`);
+      if (res.backup) toast.message("Copia de seguridad de correo guardada");
       setPassword("");
       await qc.invalidateQueries({ queryKey: ["mail-settings"] });
     },
