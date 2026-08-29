@@ -26,6 +26,7 @@ import {
 } from "@/lib/spa-queries";
 import { servicePriceHeadline, servicePriceNote } from "@/lib/service-pricing";
 import { fetchMe, getToken, logout } from "@/lib/api";
+import { sanitizePreviewHtml } from "@/lib/sanitize-html";
 import { homeForRole, permissionsFor } from "@/lib/roles";
 
 const INSTAGRAM_URL = "https://www.instagram.com/spakiralu_";
@@ -228,7 +229,7 @@ function Landing() {
                     {item.kind === "html" && item.html ? (
                       <div
                         className="prose prose-sm line-clamp-4 max-w-none text-muted-foreground prose-p:my-1"
-                        dangerouslySetInnerHTML={{ __html: item.html }}
+                        dangerouslySetInnerHTML={{ __html: sanitizePreviewHtml(item.html) }}
                       />
                     ) : null}
                     <Button
@@ -264,7 +265,7 @@ function Landing() {
           {preview?.kind === "html" && preview.html ? (
             <div
               className="prose prose-sm mt-2 max-w-none text-foreground prose-headings:font-display"
-              dangerouslySetInnerHTML={{ __html: preview.html }}
+              dangerouslySetInnerHTML={{ __html: sanitizePreviewHtml(preview.html) }}
             />
           ) : null}
         </DialogContent>
@@ -400,7 +401,7 @@ function Landing() {
         <div className="mx-auto flex max-w-6xl flex-col items-center gap-3 px-5 py-10 text-center">
           <BrandMark tradeName={bizLegal?.trade_name} slogan={bizLegal?.slogan} />
           <p className="text-sm text-muted-foreground">
-            Luxury pet grooming · Canina y felina · Bogotá
+            Luxury pet grooming · Canina y felina
           </p>
           <div className="mt-2 flex flex-wrap items-center justify-center gap-4">
             <a

@@ -43,7 +43,7 @@ import {
   deleteAppointmentExtra,
   notifyAppointmentUpdate,
   googleIntegrationStatus,
-  googleConnectUrl,
+  startGoogleCalendarConnect,
   getMyStaff,
   listAppointmentReschedules,
   reviewAppointmentReschedule,
@@ -67,7 +67,6 @@ import {
 import { requirePathAccess } from "@/lib/route-access";
 import { permissionsFor } from "@/lib/roles";
 import { FinishAppointmentDialog } from "@/components/finish-appointment-dialog";
-import { MISC_CATALOG } from "@/lib/misc-catalog";
 import { cn } from "@/lib/utils";
 import { ApiError, resolveMediaUrl } from "@/lib/api";
 
@@ -161,15 +160,13 @@ function Agenda() {
   const services = useQuery(panelServicesQuery);
   const shop = useQuery(inventoryShopQuery);
   const miscCatalog = useMemo(() => {
-    const fromInv = (shop.data ?? []).map((i) => ({
+    return (shop.data ?? []).map((i) => ({
       id: i.id,
       name: i.name,
-      category: i.category || "Tienda",
+      category: i.category || "Vitrina",
       unit_price: Number(i.sale_price_unit || i.sale_price) || 0,
+      available: Number(i.available ?? i.quantity) || 0,
     }));
-    const names = new Set(fromInv.map((i) => i.name.toLowerCase()));
-    const fallback = MISC_CATALOG.filter((m) => !names.has(m.name.toLowerCase()));
-    return [...fromInv, ...fallback];
   }, [shop.data]);
   const myStaff = useQuery({
     queryKey: ["staff-me"],
@@ -458,6 +455,7 @@ function Agenda() {
       setExtraPrice("");
       if (selected) void loadExtras(selected.id);
       void qc.invalidateQueries({ queryKey: ["appointments"] });
+      void qc.invalidateQueries({ queryKey: ["inventory"] });
     },
     onError: (e) => toast.error(e instanceof Error ? e.message : "No se pudo agregar"),
   });
@@ -628,10 +626,19 @@ function Agenda() {
       actions={
         <div className="flex flex-wrap items-center gap-2">
           {perms.canConnectGoogle && google.data && !google.data.authorized ? (
-            <Button asChild variant="outline" className="h-10 rounded-xl">
-              <a href={googleConnectUrl()}>
-                <CalendarCheck className="mr-2 h-4 w-4" /> Conectar Google
-              </a>
+            <Button
+              variant="outline"
+              className="h-10 rounded-xl"
+              onClick={async () => {
+                try {
+                  const { url } = await startGoogleCalendarConnect();
+                  window.location.href = url;
+                } catch (err) {
+                  toast.error(err instanceof Error ? err.message : "No se pudo iniciar Google Calendar");
+                }
+              }}
+            >
+              <CalendarCheck className="mr-2 h-4 w-4" /> Conectar Google
             </Button>
           ) : perms.canConnectGoogle ? (
             <span className="hidden text-xs text-muted-foreground sm:inline">
@@ -1416,36 +1423,54 @@ function Agenda() {
                   </div>
                 ) : null}
 
-                {perms.isStaff ? (
+                {perms.isStaff || perms.isCliente ? (
                 <div className="mt-6 rounded-2xl border border-border p-4">
                   <h3 className="font-display text-base font-bold text-primary">
-                    Servicios adicionales
+                    Vitrina / extras
                   </h3>
                   <p className="mt-1 text-xs text-muted-foreground">
                     {perms.isCliente
-                      ? "Podés pedir extras para esta visita."
-                      : "Los extras se guardan al instante; el correo al humano (con totales) se envía al Guardar cambios."}
+                      ? "Galletas, collares, BARF… se reservan ahora y se descuentan del stock al finalizar."
+                      : "Los extras de vitrina se reservan al pedirlos; el stock físico baja al Finalizar. El correo al humano se envía al Guardar cambios."}
                   </p>
-                  <div className="relative mt-3">
+                  {(() => {
+                    const extrasStatus = normalizeStatus(selected.status);
+                    const canEditExtras =
+                      (perms.isCliente && extrasStatus === "pendiente") ||
+                      (perms.isStaff &&
+                        extrasStatus !== "finalizada" &&
+                        extrasStatus !== "cancelada");
+                    return (
+                      <>
+                  {canEditExtras ? (
+                    <div className="relative mt-3">
                     <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                     <Input
                       className="h-11 rounded-xl pl-9"
-                      placeholder="Buscar en catálogo o escribir un ítem…"
+                      placeholder="Buscar en la vitrina…"
                       value={extraQuery}
                       onChange={(e) => setExtraQuery(e.target.value)}
                     />
                   </div>
-                  {extraQuery.trim().length >= 1 ? (
+                  ) : (
+                    <p className="mt-2 text-xs text-muted-foreground">
+                      {perms.isCliente
+                        ? "Los extras se editan solo con el turno Agendado."
+                        : "Esta cita ya no admite extras."}
+                    </p>
+                  )}
+                  {canEditExtras && extraQuery.trim().length >= 1 ? (
                     <ul className="mt-2 max-h-36 space-y-1 overflow-y-auto rounded-xl border border-border bg-card p-1">
                       {miscCatalog.filter((item) =>
                         item.name.toLowerCase().includes(extraQuery.trim().toLowerCase()),
                       )
                         .slice(0, 8)
                         .map((item) => (
-                          <li key={item.name}>
+                          <li key={item.id}>
                             <button
                               type="button"
-                              className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm hover:bg-secondary/60"
+                              disabled={item.available < 1}
+                              className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm hover:bg-secondary/60 disabled:opacity-50"
                               onClick={() =>
                                 addExtraMut.mutate({
                                   item_name: item.name,
@@ -1454,11 +1479,14 @@ function Agenda() {
                               }
                             >
                               <span>{item.name}</span>
-                              <span className="text-accent">{cop(item.unit_price)}</span>
+                              <span className="text-accent">
+                                {cop(item.unit_price)} · quedan {item.available}
+                              </span>
                             </button>
                           </li>
                         ))}
-                      {!miscCatalog.some(
+                      {perms.isStaff &&
+                      !miscCatalog.some(
                         (i) => i.name.toLowerCase() === extraQuery.trim().toLowerCase(),
                       ) && extraQuery.trim().length >= 2 ? (
                         <li className="border-t border-border p-2">
@@ -1514,7 +1542,7 @@ function Agenda() {
                               size="icon"
                               className="h-8 w-8 shrink-0 text-destructive"
                               aria-label={`Eliminar ${ex.item_name}`}
-                              disabled={deleteExtraMut.isPending}
+                              disabled={!canEditExtras || deleteExtraMut.isPending}
                               onClick={() => {
                                 setConfirmAction({
                                   title: "Quitar extra",
@@ -1534,7 +1562,7 @@ function Agenda() {
                                 variant="outline"
                                 size="icon"
                                 className="h-8 w-8 rounded-lg"
-                                disabled={patchExtraMut.isPending || qty <= 1}
+                                disabled={!canEditExtras || patchExtraMut.isPending || qty <= 1}
                                 aria-label="Restar"
                                 onClick={() =>
                                   patchExtraMut.mutate({ extraId: ex.id, quantity: qty - 1 })
@@ -1574,7 +1602,7 @@ function Agenda() {
                                 variant="outline"
                                 size="icon"
                                 className="h-8 w-8 rounded-lg"
-                                disabled={patchExtraMut.isPending}
+                                disabled={!canEditExtras || patchExtraMut.isPending}
                                 aria-label="Sumar"
                                 onClick={() =>
                                   patchExtraMut.mutate({ extraId: ex.id, quantity: qty + 1 })
@@ -1618,6 +1646,9 @@ function Agenda() {
                       </span>
                     </div>
                   </div>
+                      </>
+                    );
+                  })()}
                 </div>
                 ) : null}
               </div>

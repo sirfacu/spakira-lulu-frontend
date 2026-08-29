@@ -84,7 +84,7 @@ function Personal() {
   const qc = useQueryClient();
   const staff = useQuery(staffQuery);
   const appts = useQuery(appointmentsQuery);
-  const sales = useQuery(salesQuery);
+  const sales = useQuery({ ...salesQuery, enabled: isAdmin });
   const settings = useQuery({ queryKey: ["payroll-settings"], queryFn: getPayrollSettings });
   const runs = useQuery({ queryKey: ["payroll-runs"], queryFn: () => listPayrollRuns() });
   const requests = useQuery({

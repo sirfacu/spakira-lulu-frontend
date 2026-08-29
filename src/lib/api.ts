@@ -11,6 +11,7 @@ let meCache: {
     email: string;
     role: string;
     profile_complete?: boolean;
+    needs_pet?: boolean;
     modules?: string[];
     modules_custom?: boolean;
   };
@@ -53,14 +54,30 @@ export function getApiBase(): string {
   return "http://127.0.0.1:9001";
 }
 
+export function usesHttpOnlySession(): boolean {
+  if (typeof window === "undefined") return false;
+  const { hostname } = window.location;
+  const localish =
+    hostname === "localhost" ||
+    hostname === "127.0.0.1" ||
+    hostname === "0.0.0.0" ||
+    /^\d{1,3}(?:\.\d{1,3}){3}$/.test(hostname);
+  return !localish;
+}
+
 export function getToken(): string | null {
   if (typeof window === "undefined") return null;
+  if (usesHttpOnlySession()) return null;
   return localStorage.getItem(TOKEN_KEY);
 }
 
 export function setToken(token: string | null) {
   meCache = null;
   if (typeof window === "undefined") return;
+  if (usesHttpOnlySession()) {
+    localStorage.removeItem(TOKEN_KEY);
+    return;
+  }
   if (token) localStorage.setItem(TOKEN_KEY, token);
   else localStorage.removeItem(TOKEN_KEY);
 }
@@ -87,6 +104,7 @@ export function seedMeCache(opts: {
   email: string;
   role: string;
   profile_complete?: boolean;
+  needs_pet?: boolean;
 }) {
   const payload = jwtPayload(opts.access_token);
   const sub = payload && typeof payload.sub === "string" ? payload.sub : "";
@@ -97,6 +115,7 @@ export function seedMeCache(opts: {
       email: opts.email,
       role: opts.role,
       profile_complete: opts.profile_complete,
+      needs_pet: opts.needs_pet,
     },
   };
 }
@@ -142,6 +161,7 @@ export async function api<T>(path: string, opts: FetchOpts = {}): Promise<T> {
       method,
       headers,
       body: opts.body !== undefined ? JSON.stringify(opts.body) : undefined,
+      credentials: "include",
     });
 
     logHttp({
@@ -208,6 +228,7 @@ export async function login(email: string, password: string) {
     email: string;
     role: string;
     profile_complete?: boolean;
+    needs_pet?: boolean;
   }>("/auth/login", { method: "POST", body: { email, password }, auth: false });
   setToken(data.access_token);
   seedMeCache(data);
@@ -220,6 +241,7 @@ export async function registerAccount(email: string, full_name: string, password
     email: string;
     role: string;
     profile_complete?: boolean;
+    needs_pet?: boolean;
   }>("/auth/register", {
     method: "POST",
     body: { email, full_name, password },
@@ -235,6 +257,8 @@ export async function activateAccount(token: string, password: string, full_name
     access_token: string;
     email: string;
     role: string;
+    profile_complete?: boolean;
+    needs_pet?: boolean;
   }>("/auth/activate", {
     method: "POST",
     body: { token, password, full_name },
@@ -258,6 +282,7 @@ export function fetchMe() {
     email: string;
     role: string;
     profile_complete?: boolean;
+    needs_pet?: boolean;
     modules?: string[];
     modules_custom?: boolean;
   }>("/auth/me").then(
@@ -271,6 +296,7 @@ export function fetchMe() {
 export function logout() {
   meCache = null;
   setToken(null);
+  void api("/auth/logout", { method: "POST", auth: false }).catch(() => {});
 }
 
 /**

@@ -40,8 +40,8 @@ describe("roles", () => {
     expect(canAccessPath("cliente", "/panel/completar")).toBe(true);
     expect(canAccessPath("admin", "/panel/permisos")).toBe(true);
     expect(canAccessPath("colaborador", "/panel/permisos")).toBe(false);
-    expect(canAccessPath("colaborador", "/panel/inventario", ["agenda", "inventario"])).toBe(true);
-    expect(canAccessPath("colaborador", "/panel/inventario", ["agenda"])).toBe(false);
+    expect(canAccessPath("colaborador", "/panel/ventas")).toBe(false);
+    expect(canAccessPath("colaborador", "/panel/ventas", ["agenda", "ventas"])).toBe(true);
     expect(canAccessPath("admin", "/panel/completar")).toBe(false);
   });
 
@@ -53,6 +53,8 @@ describe("roles", () => {
     expect(p.isStaff).toBe(true);
     expect(p.canChangeAppointmentStatus).toBe(true);
     expect(p.canSeeWhatsAppLinks).toBe(true);
+    expect(p.canViewSalesAnalytics).toBe(false);
+    expect(p.canConnectGoogle).toBe(false);
     expect(p.isCliente).toBe(false);
   });
 
@@ -62,6 +64,8 @@ describe("roles", () => {
     expect(canAccessPath("colaborador", "/panel/precios")).toBe(true);
     expect(permissionsFor("colaborador").canManagePrices).toBe(false);
     expect(permissionsFor("admin").canManagePrices).toBe(true);
+    expect(permissionsFor("admin").canViewSalesAnalytics).toBe(true);
+    expect(permissionsFor("admin").canConnectGoogle).toBe(true);
   });
 
   it("permissions for cliente", () => {

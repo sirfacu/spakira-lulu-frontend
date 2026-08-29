@@ -9,6 +9,7 @@ export type AppUser = {
   modules?: string[];
   modules_custom?: boolean;
   profile_complete?: boolean;
+  needs_pet?: boolean;
 };
 
 export const PANEL_MODULES = [
@@ -122,9 +123,11 @@ export function permissionsFor(role: string | undefined | null) {
     canFinishAppointments: isStaff,
     canChangeAppointmentStatus: isStaff,
     canSeeWhatsAppLinks: isStaff,
-    canConnectGoogle: isStaff,
+    canConnectGoogle: isAdmin,
     canManagePrices: isAdmin,
     canViewPrices: true,
+    canViewSalesAnalytics: isAdmin,
+    canRegisterSales: isAdmin || r === "colaborador",
     maskOwnerPii: r === "colaborador",
     canAssociatePets: isStaff,
     canDeleteOwners: isStaff,

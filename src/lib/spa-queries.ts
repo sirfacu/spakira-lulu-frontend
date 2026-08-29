@@ -20,6 +20,7 @@ export type Owner = {
   photo_url: string | null;
   sort_order?: number;
   pii_masked?: boolean;
+  system_key?: string | null;
   pets?: Array<{
     id: string;
     name: string;
@@ -226,6 +227,8 @@ export type InventoryItem = {
   barcode?: string | null;
   photo_url: string | null;
   quantity: number;
+  reserved?: number;
+  available?: number;
   min_stock: number;
   purchase_price: number;
   sale_price: number;
@@ -675,6 +678,8 @@ export async function updateMyOwner(input: {
   phone: string;
   address: string;
   whatsapp?: string;
+  document_type: string;
+  document_id: string;
 }) {
   return api<Owner & { profile_complete?: boolean }>("/owners/me", { method: "PATCH", body: input });
 }
@@ -950,8 +955,10 @@ export async function saveUserModules(
 export async function createSale(input: {
   owner_id: string | null;
   staff_id: string | null;
-  total: number;
   payment_method: string;
+  service_id?: string | null;
+  lines?: { inventory_item_id: string; quantity: number }[];
+  total?: number;
 }) {
   return api<Sale>("/sales", { method: "POST", body: input });
 }
@@ -994,6 +1001,8 @@ export type EmailTemplate = {
   subject: string;
   body_html: string;
   body_text: string;
+  enabled?: boolean;
+  system?: boolean;
   updated_at?: string | null;
 };
 
@@ -1005,11 +1014,29 @@ export async function getEmailTemplate(key: string) {
   return api<EmailTemplate & { variables: string[] }>(`/email-templates/${key}`);
 }
 
+export async function createEmailTemplate(name = "Nueva plantilla") {
+  return api<EmailTemplate>("/email-templates", { method: "POST", body: { name } });
+}
+
 export async function saveEmailTemplate(
   key: string,
-  input: { name?: string; subject: string; body_html: string; body_text?: string },
+  input: {
+    name?: string;
+    subject: string;
+    body_html: string;
+    body_text?: string;
+    enabled?: boolean;
+  },
 ) {
   return api<EmailTemplate>(`/email-templates/${key}`, { method: "PUT", body: input });
+}
+
+export async function patchEmailTemplateEnabled(key: string, enabled: boolean) {
+  return api<EmailTemplate>(`/email-templates/${key}`, { method: "PATCH", body: { enabled } });
+}
+
+export async function deleteEmailTemplate(key: string) {
+  return api<{ ok: boolean; key: string }>(`/email-templates/${key}`, { method: "DELETE" });
 }
 
 export async function previewEmailTemplate(
@@ -1290,12 +1317,6 @@ export async function googleIntegrationStatus() {
   }>("/integrations/google/status");
 }
 
-export function googleConnectUrl() {
-  const base =
-    typeof import.meta !== "undefined" && import.meta.env?.VITE_API_URL
-      ? String(import.meta.env.VITE_API_URL).replace(/\/$/, "")
-      : typeof window !== "undefined"
-        ? `${window.location.protocol}//${window.location.hostname}:9001`
-        : "http://127.0.0.1:9001";
-  return `${base}/auth/google/start`;
+export async function startGoogleCalendarConnect() {
+  return api<{ url: string }>("/auth/google/start", { method: "POST" });
 }

@@ -8,10 +8,16 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import { Plus, Trash2 } from "lucide-react";
+import { ConfirmDialog } from "@/components/confirm-dialog";
+import { sanitizePreviewHtml } from "@/lib/sanitize-html";
 import {
   listEmailTemplates,
   saveEmailTemplate,
   previewEmailTemplate,
+  patchEmailTemplateEnabled,
+  createEmailTemplate,
+  deleteEmailTemplate,
   getMailSettings,
   putMailSettings,
   type EmailTemplate,
@@ -136,6 +142,9 @@ export function EmailTemplatesPanel() {
   const [subject, setSubject] = useState("");
   const [bodyHtml, setBodyHtml] = useState("");
   const [bodyText, setBodyText] = useState("");
+  const [title, setTitle] = useState("");
+  const [enabled, setEnabled] = useState(true);
+  const [pendingDelete, setPendingDelete] = useState<EmailTemplate | null>(null);
   const [preview, setPreview] = useState<{
     subject: string;
     body_html: string;
@@ -147,16 +156,19 @@ export function EmailTemplatesPanel() {
     setSubject(selected.subject);
     setBodyHtml(selected.body_html);
     setBodyText(selected.body_text);
+    setTitle(selected.name);
+    setEnabled(selected.enabled !== false);
     setPreview(null);
-  }, [selected?.key, selected?.updated_at]);
+  }, [selected?.key, selected?.updated_at, selected?.enabled, selected?.name]);
 
   const saveMut = useMutation({
     mutationFn: () =>
       saveEmailTemplate(selected!.key, {
-        name: selected!.name,
+        name: title.trim() || selected!.name,
         subject,
         body_html: bodyHtml,
         body_text: bodyText,
+        enabled,
       }),
     onSuccess: async () => {
       toast.success("Plantilla guardada");
@@ -164,6 +176,47 @@ export function EmailTemplatesPanel() {
     },
     onError: (e: Error) => toast.error(e.message),
   });
+
+  const toggleMut = useMutation({
+    mutationFn: (next: boolean) => patchEmailTemplateEnabled(selected!.key, next),
+    onSuccess: async (res) => {
+      setEnabled(res.enabled !== false);
+      toast.success(
+        res.enabled !== false ? "Este correo se enviará" : "Este correo no se enviará",
+      );
+      await qc.invalidateQueries({ queryKey: ["email-templates"] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const createMut = useMutation({
+    mutationFn: () => createEmailTemplate("Nueva plantilla"),
+    onSuccess: async (created) => {
+      toast.success("Plantilla creada");
+      await qc.invalidateQueries({ queryKey: ["email-templates"] });
+      setSelectedKey(created.key);
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const deleteMut = useMutation({
+    mutationFn: (key: string) => deleteEmailTemplate(key),
+    onSuccess: async (_, key) => {
+      toast.success("Plantilla eliminada");
+      setPendingDelete(null);
+      if (selectedKey === key) setSelectedKey("appointment_created");
+      await qc.invalidateQueries({ queryKey: ["email-templates"] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const askDelete = (t: EmailTemplate | null) => {
+    if (!t || t.system !== false) {
+      toast.message("Las de sistema no se borran. Apagalas con el interruptor si no querés enviarlas.");
+      return;
+    }
+    setPendingDelete(t);
+  };
 
   const previewMut = useMutation({
     mutationFn: () =>
@@ -203,18 +256,66 @@ export function EmailTemplatesPanel() {
                     : "bg-secondary/60 text-foreground hover:bg-secondary"
                 }`}
               >
-                {t.name}
+                <span className="block">{t.name}</span>
+                {t.enabled === false ? (
+                  <span
+                    className={`mt-0.5 block text-[11px] ${
+                      selected?.key === t.key ? "text-primary-foreground/80" : "text-muted-foreground"
+                    }`}
+                  >
+                    No se envía
+                  </span>
+                ) : null}
               </button>
             </li>
           ))}
+          <li>
+            <button
+              type="button"
+              onClick={() => createMut.mutate()}
+              disabled={createMut.isPending}
+              aria-label="Agregar plantilla"
+              className="flex w-full items-center justify-center rounded-xl bg-secondary/60 px-3 py-2 text-foreground hover:bg-secondary disabled:opacity-50"
+            >
+              <Plus className="h-5 w-5" strokeWidth={2.25} />
+            </button>
+          </li>
         </ul>
         <p className="pt-3 text-[11px] text-muted-foreground">
-          Variables con doble llave, p. ej. {"{{mascota}}"}. Se reemplazan al enviar.
+          El interruptor de cada plantilla decide si el mensaje sale. Variables con doble llave,
+          p. ej. {"{{mascota}}"}.
         </p>
       </div>
 
       {selected ? (
         <div className="space-y-4">
+          <div className="flex items-center justify-between gap-3 rounded-2xl border border-border bg-secondary/40 px-4 py-3">
+            <div>
+              <p className="text-sm font-medium">Enviar este correo</p>
+              <p className="text-xs text-muted-foreground">
+                {selected.system === false
+                  ? "Plantilla extra: se guarda acá. Las citas y facturas siguen usando las cuatro de sistema."
+                  : enabled
+                    ? "Si está apagado, no se manda ese aviso (cita, factura, etc.)."
+                    : "Apagado: no se envía, el texto se conserva."}
+              </p>
+            </div>
+            <Switch
+              checked={enabled}
+              disabled={toggleMut.isPending}
+              onCheckedChange={(next) => toggleMut.mutate(next)}
+              aria-label="Enviar este correo"
+            />
+          </div>
+          <div className="space-y-2">
+            <Label>Título</Label>
+            <Input
+              className="h-11 rounded-xl"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              placeholder="Nombre en la lista"
+            />
+          </div>
           <div className="space-y-2">
             <Label>Asunto</Label>
             <Input
@@ -267,7 +368,32 @@ export function EmailTemplatesPanel() {
             >
               Vista previa
             </Button>
+            <Button
+              variant="outline"
+              className="rounded-xl"
+              disabled={deleteMut.isPending}
+              onClick={() => askDelete(selected)}
+            >
+              <Trash2 className="mr-1.5 h-4 w-4" />
+              Eliminar
+            </Button>
           </div>
+          <ConfirmDialog
+            open={pendingDelete != null}
+            title="¿Eliminar esta plantilla?"
+            description={
+              pendingDelete
+                ? `Se va a borrar «${pendingDelete.name}». Las de cita y factura no se pueden eliminar.`
+                : undefined
+            }
+            pending={deleteMut.isPending}
+            onConfirm={() => {
+              if (pendingDelete) deleteMut.mutate(pendingDelete.key);
+            }}
+            onOpenChange={(open) => {
+              if (!open) setPendingDelete(null);
+            }}
+          />
           {preview ? (
             <div className="rounded-2xl border border-border p-4">
               <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
@@ -276,7 +402,7 @@ export function EmailTemplatesPanel() {
               <p className="mt-2 font-medium">{preview.subject}</p>
               <div
                 className="prose prose-sm mt-3 max-w-none rounded-xl bg-secondary/40 p-3 text-sm"
-                dangerouslySetInnerHTML={{ __html: preview.body_html }}
+                dangerouslySetInnerHTML={{ __html: sanitizePreviewHtml(preview.body_html) }}
               />
               <pre className="mt-3 overflow-x-auto whitespace-pre-wrap rounded-xl bg-card p-3 text-[11px] text-muted-foreground">
                 {preview.body_text}

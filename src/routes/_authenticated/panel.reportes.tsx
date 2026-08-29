@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, useRouteContext } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import {
   ResponsiveContainer,
@@ -19,6 +19,7 @@ import { salesQuery, appointmentsQuery, petsQuery, ownersQuery } from "@/lib/spa
 import { cop, dayKey, shortDate } from "@/lib/format";
 import { DollarSign, Dog, Users, CalendarCheck } from "lucide-react";
 import { requirePathAccess } from "@/lib/route-access";
+import { permissionsFor } from "@/lib/roles";
 
 export const Route = createFileRoute("/_authenticated/panel/reportes")({
   beforeLoad: requirePathAccess("/panel/reportes"),
@@ -39,7 +40,11 @@ export const Route = createFileRoute("/_authenticated/panel/reportes")({
 const COLORS = ["var(--chart-1)", "var(--chart-2)", "var(--chart-3)", "var(--chart-4)", "var(--chart-5)"];
 
 function Reportes() {
-  const sales = useQuery(salesQuery);
+  const { user } = useRouteContext({ from: "/_authenticated" });
+  const sales = useQuery({
+    ...salesQuery,
+    enabled: permissionsFor(user?.role).canViewSalesAnalytics,
+  });
   const appts = useQuery(appointmentsQuery);
   const pets = useQuery(petsQuery);
   const owners = useQuery(ownersQuery);

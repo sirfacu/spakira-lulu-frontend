@@ -17,6 +17,14 @@ export const Route = createFileRoute("/_authenticated")({
         throw redirect({ to: "/panel/completar" });
       }
       if (
+        permissionsFor(user.role).isCliente &&
+        user.profile_complete !== false &&
+        user.needs_pet &&
+        !path.startsWith("/panel/mascotas")
+      ) {
+        throw redirect({ to: "/panel/mascotas", search: { alta: true } });
+      }
+      if (
         (path === "/panel" || path === "/panel/") &&
         homeForRole(user.role, user.modules) !== "/panel"
       ) {

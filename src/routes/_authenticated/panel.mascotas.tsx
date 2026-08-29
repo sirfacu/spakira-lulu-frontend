@@ -44,7 +44,7 @@ import {
 import { shortDate, statusMeta, time, cop, ageLabelFromLifeDate } from "@/lib/format";
 import { requirePathAccess } from "@/lib/route-access";
 import { permissionsFor } from "@/lib/roles";
-import { uploadPhoto, resolveMediaUrl } from "@/lib/api";
+import { clearMeCache, uploadPhoto, resolveMediaUrl } from "@/lib/api";
 import { petCardAgeText, petDetailLifeText, petToFormFields } from "@/lib/entity-forms";
 import { cn } from "@/lib/utils";
 
@@ -72,6 +72,7 @@ export const Route = createFileRoute("/_authenticated/panel/mascotas")({
   beforeLoad: requirePathAccess("/panel/mascotas"),
   validateSearch: (search: Record<string, unknown>) => ({
     tab: search.tab === "razas" ? ("razas" as const) : ("fichas" as const),
+    alta: search.alta === true || search.alta === "1" || search.alta === "true" ? true : undefined,
   }),
   head: () => ({
     meta: [
@@ -132,7 +133,7 @@ function Mascotas() {
   const { user } = useRouteContext({ from: "/_authenticated" });
   const navigate = useNavigate();
   const perms = permissionsFor(user?.role);
-  const { tab } = useSearch({ from: "/_authenticated/panel/mascotas" });
+  const { tab, alta } = useSearch({ from: "/_authenticated/panel/mascotas" });
   const showRazas = perms.isAdmin;
   const activeTab = showRazas && tab === "razas" ? "razas" : "fichas";
   const setTab = (next: "fichas" | "razas") => {
@@ -164,6 +165,7 @@ function Mascotas() {
   const [welcomePet, setWelcomePet] = useState<Pet | null>(null);
   const [pendingDelete, setPendingDelete] = useState<{ name: string; id: string } | null>(null);
   const loadMoreRef = useRef<HTMLDivElement | null>(null);
+  const openedAlta = useRef(false);
 
   const ownersList = owners.data ?? [];
   const hasOwners = ownersList.length > 0;
@@ -238,6 +240,13 @@ function Mascotas() {
     }
     setEditing("new");
   };
+
+  useEffect(() => {
+    if (openedAlta.current) return;
+    if (!alta && !(perms.isCliente && user?.needs_pet)) return;
+    openedAlta.current = true;
+    openNewPet();
+  }, [alta, perms.isCliente, user?.needs_pet]);
 
   const openEditPet = (pet: Pet) => {
     setForm(petToForm(pet));
@@ -318,7 +327,17 @@ function Mascotas() {
       ]);
       if (wasNew && saved) {
         setWelcomePet(saved);
-        toast.success("Peludito registrado");
+        toast.success(
+          perms.isCliente && user?.needs_pet
+            ? "Peludito registrado. Ya podés pedir un turno."
+            : "Peludito registrado",
+        );
+        if (perms.isCliente) {
+          clearMeCache();
+          if (user?.needs_pet) {
+            await navigate({ to: "/panel/precios" });
+          }
+        }
       } else {
         toast.success("Mascota actualizada");
         if (saved?.id) setSelected(saved);
@@ -394,7 +413,9 @@ function Mascotas() {
     <AppShell
       title="Mascotas"
       subtitle={
-        activeTab === "razas"
+        perms.isCliente && user?.needs_pet
+          ? "Paso 2 de 2: registrá a tu peludito para pedir turnos."
+          : activeTab === "razas"
           ? "Catálogo de razas para las fichas"
           : petsInfinite.isLoading
             ? "Cargando fichas…"
@@ -722,8 +743,17 @@ function Mascotas() {
       <Dialog open={editing !== null} onOpenChange={(o) => !o && setEditing(null)}>
         <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto rounded-3xl">
           <h2 className="font-display text-xl font-bold text-primary">
-            {editing === "new" ? "Nueva mascota" : "Editar mascota"}
+            {editing === "new"
+              ? perms.isCliente && user?.needs_pet
+                ? "Paso 2 · Nueva mascota"
+                : "Nueva mascota"
+              : "Editar mascota"}
           </h2>
+          {editing === "new" && perms.isCliente && user?.needs_pet ? (
+            <p className="mt-1 text-sm text-muted-foreground">
+              Completá la ficha de tu peludito. Después vas a poder pedir un turno.
+            </p>
+          ) : null}
           <div className="mt-4 grid gap-3 sm:grid-cols-2">
             <div className="space-y-2 sm:col-span-2">
               <Label>Nombre</Label>

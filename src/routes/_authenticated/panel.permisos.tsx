@@ -117,7 +117,7 @@ function PermisosPage() {
                 {p.role === "admin"
                   ? "Ve todo. Roles y permisos no se puede quitar."
                   : p.role === "colaborador"
-                    ? "Staff del spa. Podés sumarle inventario, ventas, etc."
+                    ? "Staff del spa. Ventas, si lo activás, es solo registrar mostrador (sin historial ni totales)."
                     : "Dueño de mascotas. No puede ver operación interna."}
               </p>
               <ul className="mt-4 space-y-2">
@@ -137,7 +137,14 @@ function PermisosPage() {
                   const on = (merged[p.role] ?? []).includes(m.id);
                   return (
                     <li key={m.id} className="flex items-center justify-between gap-2 text-sm">
-                      <span className={locked && !on ? "text-muted-foreground" : ""}>{m.label}</span>
+                      <span className={locked && !on ? "text-muted-foreground" : ""}>
+                        {m.label}
+                        {m.id === "ventas" && p.role === "colaborador" ? (
+                          <span className="mt-0.5 block text-[11px] font-normal text-muted-foreground">
+                            Solo registrar mostrador (sin historial ni totales)
+                          </span>
+                        ) : null}
+                      </span>
                       <Switch
                         checked={on}
                         disabled={locked}
