@@ -184,10 +184,10 @@ export function FinishAppointmentDialog({ appointment, open, onOpenChange, onDon
       const targets = (res.email_notifications ?? []).filter((n) => n.email).length;
       if (res.email_queued) {
         toast.success(
-          `Servicio cerrado · factura ${res.invoice_number}. El correo se envía en segundo plano.`,
+          `Servicio cerrado · factura ${res.invoice_number}. Quedó registrada en Ventas. El correo se envía en segundo plano.`,
         );
       } else if (emailed > 0) {
-        toast.success(`Servicio cerrado · factura ${res.invoice_number} enviada a ${emailed} dueño(s)`);
+        toast.success(`Servicio cerrado · factura ${res.invoice_number} enviada a ${emailed} dueño(s) · registrada en Ventas`);
       } else if (!res.smtp_configured && targets > 0) {
         toast.warning(
           `Servicio cerrado · factura ${res.invoice_number} generada, pero SMTP no está configurado: el correo NO se envió. PDF en logs/invoices/`,
@@ -197,7 +197,7 @@ export function FinishAppointmentDialog({ appointment, open, onOpenChange, onDon
           `Servicio cerrado · factura ${res.invoice_number} generada, pero Google rechazó el SMTP (App Password). PDF en logs/invoices/`,
         );
       } else {
-        toast.success(`Servicio cerrado · factura ${res.invoice_number} (dueños sin email)`);
+        toast.success(`Servicio cerrado · factura ${res.invoice_number} (dueños sin email) · registrada en Ventas`);
       }
       setConfirmOpen(false);
       onOpenChange(false);

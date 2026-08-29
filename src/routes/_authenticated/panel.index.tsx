@@ -33,6 +33,7 @@ import {
 import { resolveMediaUrl } from "@/lib/api";
 import { cop, dayKey, shortDate, statusMeta, time, initials } from "@/lib/format";
 import { requirePathAccess } from "@/lib/route-access";
+import { isActiveSale } from "@/lib/roles";
 
 export const Route = createFileRoute("/_authenticated/panel/")({
   beforeLoad: requirePathAccess("/panel"),
@@ -59,7 +60,9 @@ function Dashboard() {
 
   const today = dayKey(new Date());
   const todayAppts = (appts.data ?? []).filter((a) => dayKey(new Date(a.starts_at)) === today);
-  const todaySales = (sales.data ?? []).filter((s) => dayKey(new Date(s.sold_at)) === today);
+  const todaySales = (sales.data ?? []).filter(
+    (s) => isActiveSale(s.status) && dayKey(new Date(s.sold_at)) === today,
+  );
   const lowStock = (inv.data ?? []).filter((i) => i.quantity <= i.min_stock);
   const activeStaff = (staff.data ?? []).filter((s) => s.active);
   const upcoming = (appts.data ?? [])
@@ -71,7 +74,7 @@ function Dashboard() {
     d.setDate(d.getDate() - (6 - idx));
     const key = dayKey(d);
     const total = (sales.data ?? [])
-      .filter((s) => dayKey(new Date(s.sold_at)) === key)
+      .filter((s) => isActiveSale(s.status) && dayKey(new Date(s.sold_at)) === key)
       .reduce((acc, s) => acc + Number(s.total), 0);
     return { day: shortDate(d.toISOString()), total };
   });

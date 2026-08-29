@@ -35,7 +35,7 @@ import {
 } from "@/lib/spa-queries";
 import { cop, dayKey, shortDate } from "@/lib/format";
 import { requirePathAccess } from "@/lib/route-access";
-import { permissionsFor } from "@/lib/roles";
+import { isActiveSale, permissionsFor } from "@/lib/roles";
 
 export const Route = createFileRoute("/_authenticated/panel/ventas")({
   beforeLoad: requirePathAccess("/panel/ventas"),
@@ -152,7 +152,7 @@ function Ventas() {
     onError: (e) => toast.error(e instanceof Error ? e.message : "Error"),
   });
 
-  const all = sales.data ?? [];
+  const all = (sales.data ?? []).filter((s) => isActiveSale(s.status));
   const today = dayKey(new Date());
   const todayTotal = all
     .filter((s) => dayKey(new Date(s.sold_at)) === today)
@@ -385,6 +385,7 @@ function Ventas() {
                     <thead>
                       <tr className="border-b border-border text-left text-xs uppercase tracking-wider text-muted-foreground">
                         <th className="py-3 font-semibold">Fecha</th>
+                        <th className="py-3 font-semibold">Origen</th>
                         <th className="py-3 font-semibold">Cliente</th>
                         <th className="py-3 font-semibold">Vendedor</th>
                         <th className="py-3 font-semibold">Método</th>
@@ -395,6 +396,13 @@ function Ventas() {
                       {all.map((s) => (
                         <tr key={s.id} className="border-b border-border/60 last:border-0">
                           <td className="py-3 text-muted-foreground">{shortDate(s.sold_at)}</td>
+                          <td className="py-3 text-muted-foreground">
+                            {s.source === "cita"
+                              ? s.service_name
+                                ? `Servicio${s.pet_name ? ` · ${s.pet_name}` : ""}`
+                                : "Servicio"
+                              : "Mostrador"}
+                          </td>
                           <td className="py-3 font-medium text-foreground">
                             {s.owners?.full_name ?? "—"}
                           </td>

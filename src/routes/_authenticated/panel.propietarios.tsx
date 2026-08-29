@@ -24,7 +24,7 @@ import {
 } from "@/lib/spa-queries";
 import { cop, initials, shortDate, statusMeta, time } from "@/lib/format";
 import { requirePathAccess } from "@/lib/route-access";
-import { permissionsFor } from "@/lib/roles";
+import { isActiveSale, permissionsFor } from "@/lib/roles";
 import { ApiError } from "@/lib/api";
 import { ownerToFormFields } from "@/lib/entity-forms";
 import { cn } from "@/lib/utils";
@@ -165,7 +165,7 @@ function Propietarios() {
       .filter((a) => a?.id && a.pets?.owner_id === id)
       .sort((a, b) => +new Date(b.starts_at) - +new Date(a.starts_at));
   const paymentsOf = (id: string) =>
-    (sales.data ?? []).filter((s) => s?.id && s.owner_id === id);
+    (sales.data ?? []).filter((s) => s?.id && s.owner_id === id && isActiveSale(s.status));
 
   const editingOwner = editing && editing !== "new" ? editing : null;
 

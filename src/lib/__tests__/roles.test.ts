@@ -7,6 +7,8 @@ import {
   maskEndingDigits,
   normalizeRole,
   permissionsFor,
+  editableAppointmentStatuses,
+  isActiveSale,
 } from "../roles";
 
 describe("roles", () => {
@@ -52,6 +54,7 @@ describe("roles", () => {
     expect(p.canManagePets).toBe(true);
     expect(p.isStaff).toBe(true);
     expect(p.canChangeAppointmentStatus).toBe(true);
+    expect(p.canEditFinalizedAppointment).toBe(false);
     expect(p.canSeeWhatsAppLinks).toBe(true);
     expect(p.canViewSalesAnalytics).toBe(false);
     expect(p.canConnectGoogle).toBe(false);
@@ -65,6 +68,7 @@ describe("roles", () => {
     expect(permissionsFor("colaborador").canManagePrices).toBe(false);
     expect(permissionsFor("admin").canManagePrices).toBe(true);
     expect(permissionsFor("admin").canViewSalesAnalytics).toBe(true);
+    expect(permissionsFor("admin").canEditFinalizedAppointment).toBe(true);
     expect(permissionsFor("admin").canConnectGoogle).toBe(true);
   });
 
@@ -77,6 +81,7 @@ describe("roles", () => {
     expect(p.canPickOwners).toBe(false);
     expect(p.canConnectGoogle).toBe(false);
     expect(p.canChangeAppointmentStatus).toBe(false);
+    expect(p.canEditFinalizedAppointment).toBe(false);
     expect(p.canSeeWhatsAppLinks).toBe(false);
     expect(p.canManagePrices).toBe(false);
   });
@@ -84,5 +89,20 @@ describe("roles", () => {
   it("masks values", () => {
     expect(maskEndingDigits("3105551234")).toContain("1234");
     expect(maskEmail("maria@email.com")).toBe("m••••@email.com");
+  });
+
+  it("staff cannot edit statuses after finalizada; admin can", () => {
+    expect(editableAppointmentStatuses("colaborador", "enproceso")).toEqual([
+      "pendiente",
+      "enproceso",
+      "finalizada",
+      "cancelada",
+    ]);
+    expect(editableAppointmentStatuses("colaborador", "finalizada")).toEqual(["finalizada"]);
+    expect(editableAppointmentStatuses("admin", "finalizada")).toContain("pendiente");
+    expect(editableAppointmentStatuses("cliente", "pendiente")).toEqual([]);
+    expect(isActiveSale("activa")).toBe(true);
+    expect(isActiveSale("anulada")).toBe(false);
+    expect(isActiveSale(undefined)).toBe(true);
   });
 });
