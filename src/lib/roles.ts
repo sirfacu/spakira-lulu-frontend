@@ -122,6 +122,7 @@ export function permissionsFor(role: string | undefined | null) {
     canPickOwners: isStaff,
     canFinishAppointments: isStaff,
     canChangeAppointmentStatus: isStaff,
+    canEditFinalizedAppointment: isAdmin,
     canSeeWhatsAppLinks: isStaff,
     canConnectGoogle: isAdmin,
     canManagePrices: isAdmin,
@@ -134,6 +135,25 @@ export function permissionsFor(role: string | undefined | null) {
     canSeeServiceProgress: isStaff,
     canEditAppointmentNotes: isCliente,
   };
+}
+
+export const APPOINTMENT_STATUSES = ["pendiente", "enproceso", "finalizada", "cancelada"] as const;
+
+export function editableAppointmentStatuses(
+  role: string | undefined | null,
+  currentStatus: string | undefined | null,
+): string[] {
+  const p = permissionsFor(role);
+  if (!p.canChangeAppointmentStatus) return [];
+  const current = (currentStatus || "").replace(/\s|_/g, "").toLowerCase();
+  if (current === "finalizada" && !p.canEditFinalizedAppointment) {
+    return ["finalizada"];
+  }
+  return [...APPOINTMENT_STATUSES];
+}
+
+export function isActiveSale(status: string | undefined | null): boolean {
+  return (status || "activa") !== "anulada";
 }
 
 export function maskEndingDigits(value: string | null | undefined, visible = 4): string {

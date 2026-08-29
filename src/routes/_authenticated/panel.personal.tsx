@@ -37,7 +37,7 @@ import { uploadPhoto } from "@/lib/api";
 import { canonicalizeStaffRole, staffRoleLabel, staffRolesLine, STAFF_ROLE_OPTS } from "@/lib/staff-roles";
 import { cop, dayKey, initials, shortDate, time } from "@/lib/format";
 import { requirePathAccess } from "@/lib/route-access";
-import { permissionsFor } from "@/lib/roles";
+import { isActiveSale, permissionsFor } from "@/lib/roles";
 
 export const Route = createFileRoute("/_authenticated/panel/personal")({
   beforeLoad: requirePathAccess("/panel/personal"),
@@ -120,7 +120,9 @@ function Personal() {
       .filter((a) => a.staff_id === id && a.status === "finalizada")
       .sort((a, b) => +new Date(b.starts_at) - +new Date(a.starts_at));
   const soldBy = (id: string) =>
-    (sales.data ?? []).filter((s) => s.staff_id === id).reduce((a, s) => a + Number(s.total), 0);
+    (sales.data ?? [])
+      .filter((s) => s.staff_id === id && isActiveSale(s.status))
+      .reduce((a, s) => a + Number(s.total), 0);
   const shiftsOf = (id: string) =>
     new Set((appts.data ?? []).filter((a) => a.staff_id === id).map((a) => dayKey(new Date(a.starts_at))));
 

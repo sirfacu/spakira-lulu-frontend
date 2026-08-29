@@ -19,7 +19,7 @@ import { salesQuery, appointmentsQuery, petsQuery, ownersQuery } from "@/lib/spa
 import { cop, dayKey, shortDate } from "@/lib/format";
 import { DollarSign, Dog, Users, CalendarCheck } from "lucide-react";
 import { requirePathAccess } from "@/lib/route-access";
-import { permissionsFor } from "@/lib/roles";
+import { isActiveSale, permissionsFor } from "@/lib/roles";
 
 export const Route = createFileRoute("/_authenticated/panel/reportes")({
   beforeLoad: requirePathAccess("/panel/reportes"),
@@ -49,7 +49,7 @@ function Reportes() {
   const pets = useQuery(petsQuery);
   const owners = useQuery(ownersQuery);
 
-  const all = sales.data ?? [];
+  const all = (sales.data ?? []).filter((s) => isActiveSale(s.status));
   const trend = Array.from({ length: 14 }).map((_, idx) => {
     const d = new Date();
     d.setDate(d.getDate() - (13 - idx));

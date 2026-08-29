@@ -65,7 +65,7 @@ import {
   appointmentProgress,
 } from "@/lib/format";
 import { requirePathAccess } from "@/lib/route-access";
-import { permissionsFor } from "@/lib/roles";
+import { editableAppointmentStatuses, permissionsFor } from "@/lib/roles";
 import { FinishAppointmentDialog } from "@/components/finish-appointment-dialog";
 import { ConfirmServicePriceDialog } from "@/components/confirm-service-price-dialog";
 import {
@@ -1155,6 +1155,9 @@ function Agenda() {
                       >
                         <Select
                           value={normalizeStatus(a.status)}
+                          disabled={
+                            editableAppointmentStatuses(user?.role, a.status).length === 1
+                          }
                           onValueChange={(v) => {
                             if (v === "finalizada") {
                               setFinishAppt(a);
@@ -1171,7 +1174,7 @@ function Agenda() {
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
-                            {STATUSES.map((s) => (
+                            {editableAppointmentStatuses(user?.role, a.status).map((s) => (
                               <SelectItem key={s} value={s} className="text-xs" title={statusMeta(s).hint}>
                                 {statusMeta(s).label}
                               </SelectItem>
@@ -1388,13 +1391,16 @@ function Agenda() {
                     {perms.canChangeAppointmentStatus ? (
                     <Select
                       value={editForm.status}
+                      disabled={
+                        editableAppointmentStatuses(user?.role, selected.status).length === 1
+                      }
                       onValueChange={(v) => setEditForm((f) => ({ ...f, status: v }))}
                     >
                       <SelectTrigger className="h-11 rounded-xl">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        {STATUSES.map((s) => (
+                        {editableAppointmentStatuses(user?.role, selected.status).map((s) => (
                             <SelectItem key={s} value={s}>
                               {statusMeta(s).label}
                             </SelectItem>
@@ -1702,12 +1708,23 @@ function Agenda() {
               </div>
 
               <div className="shrink-0 border-t border-border px-6 py-4">
+                {normalizeStatus(selected.status) === "finalizada" && !perms.canEditFinalizedAppointment ? (
+                  <p className="mb-3 text-[11px] text-muted-foreground">
+                    Servicio cerrado: quedó como venta. Solo un admin puede devolverlo o editarlo.
+                  </p>
+                ) : null}
                 <div className="flex flex-wrap gap-2">
                   {perms.isStaff || perms.isCliente ? (
                     <>
                       <Button
                         className="rounded-xl"
-                        disabled={saveMut.isPending || !canSaveNotify}
+                        disabled={
+                          saveMut.isPending ||
+                          !canSaveNotify ||
+                          (normalizeStatus(selected.status) === "finalizada" &&
+                            !perms.canEditFinalizedAppointment &&
+                            !perms.isCliente)
+                        }
                         onClick={() => {
                           if (
                             editForm.status === "enproceso" &&
@@ -1726,7 +1743,8 @@ function Agenda() {
                         <Pencil className="mr-2 h-4 w-4" />
                         {saveMut.isPending ? "Guardando…" : "Guardar cambios"}
                       </Button>
-                      {perms.canFinishAppointments ? (
+                      {perms.canFinishAppointments &&
+                      normalizeStatus(selected.status) !== "finalizada" ? (
                       <Button
                         variant="outline"
                         className="rounded-xl"
@@ -1741,7 +1759,12 @@ function Agenda() {
                       <Button
                         variant="outline"
                         className="rounded-xl border-destructive/30 text-destructive hover:bg-destructive hover:text-destructive-foreground"
-                        disabled={deleteMut.isPending}
+                        disabled={
+                          deleteMut.isPending ||
+                          (normalizeStatus(selected.status) === "finalizada" &&
+                            !perms.canEditFinalizedAppointment &&
+                            !perms.isCliente)
+                        }
                         onClick={() => {
                           const petName = selected.pets?.name ?? (perms.isCliente ? "tu mascota" : "esta mascota");
                           setConfirmAction({

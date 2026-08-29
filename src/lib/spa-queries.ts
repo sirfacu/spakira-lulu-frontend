@@ -269,6 +269,13 @@ export type Sale = {
   total: number;
   payment_method: string;
   sold_at: string;
+  source?: "mostrador" | "cita" | string;
+  status?: "activa" | "anulada" | string;
+  appointment_id?: string | null;
+  invoice_id?: string | null;
+  invoice_number?: string | null;
+  pet_name?: string | null;
+  service_name?: string | null;
   owners?: Owner | null;
   staff?: Staff | null;
 };
@@ -1138,6 +1145,8 @@ export async function completeAppointment(
   return api<{
     ok: boolean;
     invoice_number: string;
+    invoice_id?: string;
+    sale_id?: string;
     total: number;
     misc: { id: string; name: string; quantity: number; unit_price: number; total: number }[];
     email_notifications: {
