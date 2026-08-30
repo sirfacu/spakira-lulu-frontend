@@ -24,6 +24,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { PaymentMethodFields } from "@/components/payment-method-fields";
+import { CouponApplyFields } from "@/components/coupon-apply-fields";
 import {
   salesQuery,
   ownersQuery,
@@ -33,7 +34,9 @@ import {
   paymentMethodsQuery,
   createSale,
   getMyStaff,
+  getLoyaltyCustomer,
   type InventoryItem,
+  type PromoValidate,
 } from "@/lib/spa-queries";
 import { cop, dayKey, shortDate } from "@/lib/format";
 import { requirePathAccess } from "@/lib/route-access";
@@ -91,12 +94,21 @@ function Ventas() {
   const [evidenceUrl, setEvidenceUrl] = useState("");
   const [productId, setProductId] = useState("");
   const [cart, setCart] = useState<CartLine[]>([]);
+  const [promo, setPromo] = useState<PromoValidate | null>(null);
+
+  const loyalty = useQuery({
+    queryKey: ["loyalty-customer", ownerId],
+    queryFn: () => getLoyaltyCustomer(ownerId),
+    enabled: !!ownerId,
+  });
 
   const mostrador = (owners.data ?? []).find((o) => o.system_key === "mostrador");
   const service = (services.data ?? []).find((s) => s.id === serviceId);
   const serviceTotal = Number(service?.price ?? 0);
   const productsTotal = cart.reduce((a, l) => a + l.unit_price * l.quantity, 0);
   const grandTotal = serviceTotal + productsTotal;
+  const discount = promo?.valid ? Number(promo.discount_amount || 0) : 0;
+  const netTotal = Math.max(0, grandTotal - discount);
 
   useEffect(() => {
     if (!ownerId && mostrador?.id) setOwnerId(mostrador.id);
@@ -146,6 +158,9 @@ function Ventas() {
         ...(evidenceUrl ? { payment_evidence_url: evidenceUrl } : {}),
         service_id: serviceId || null,
         lines: cart.map((l) => ({ inventory_item_id: l.id, quantity: l.quantity })),
+        ...(promo?.valid && promo.code ? { coupon_code: promo.code } : {}),
+        ...(promo?.valid && promo.loyalty_reward_id ? { loyalty_reward_id: promo.loyalty_reward_id } : {}),
+        ...(promo?.valid && promo.promotion_id && !promo.code ? { promotion_id: promo.promotion_id } : {}),
       }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["sales"] });
@@ -154,6 +169,7 @@ function Ventas() {
       setServiceId("");
       setCart([]);
       setEvidenceUrl("");
+      setPromo(null);
     },
     onError: (e) => toast.error(e instanceof Error ? e.message : "Error"),
   });
@@ -285,6 +301,17 @@ function Ventas() {
             </div>
 
             <div className="mt-4">
+              <CouponApplyFields
+                subtotal={grandTotal}
+                customerId={ownerId || null}
+                serviceIds={serviceId ? [serviceId] : []}
+                value={promo}
+                onChange={setPromo}
+                rewards={(loyalty.data?.available ?? []).map((r) => ({ id: r.id, label: r.label }))}
+              />
+            </div>
+
+            <div className="mt-4">
               <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                 Vitrina
               </p>
@@ -372,7 +399,10 @@ function Ventas() {
             <div className="mt-5 grid grid-cols-[minmax(0,1fr)_auto] items-center gap-4 rounded-2xl bg-secondary/60 p-5">
               <div className="min-w-0">
                 <p className="text-xs uppercase tracking-wider text-muted-foreground">Total</p>
-                <p className="font-display text-3xl font-bold text-accent">{cop(grandTotal)}</p>
+                <p className="font-display text-3xl font-bold text-accent">{cop(netTotal)}</p>
+                {discount > 0 ? (
+                  <p className="text-xs text-muted-foreground">Antes {cop(grandTotal)}</p>
+                ) : null}
               </div>
               <Button
                 disabled={!canSubmit}

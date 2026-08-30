@@ -133,6 +133,7 @@ function PermisosPage() {
                         "reportes",
                         "configuracion",
                         "permisos",
+                        "promociones",
                       ].includes(m.id));
                   const on = (merged[p.role] ?? []).includes(m.id);
                   return (

@@ -5,7 +5,8 @@ import { Minus, Plus, Search, Trash2, FileText, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { completeAppointment, listAppointmentExtras, inventoryShopQuery, paymentMethodsQuery, type Appointment } from "@/lib/spa-queries";
+import { completeAppointment, listAppointmentExtras, inventoryShopQuery, paymentMethodsQuery, getLoyaltyCustomer, type Appointment, type PromoValidate } from "@/lib/spa-queries";
+import { CouponApplyFields } from "@/components/coupon-apply-fields";
 import { ApiError } from "@/lib/api";
 import { cop, time } from "@/lib/format";
 import { PaymentMethodFields } from "@/components/payment-method-fields";
@@ -46,10 +47,17 @@ export function FinishAppointmentDialog({ appointment, open, onOpenChange, onDon
   const [saving, setSaving] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState("");
   const [evidenceUrl, setEvidenceUrl] = useState("");
+  const [promo, setPromo] = useState<PromoValidate | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const shop = useQuery({ ...inventoryShopQuery, enabled: open });
   const payMethods = useQuery({ ...paymentMethodsQuery, enabled: open });
+  const ownerId = appointment?.pets?.owners?.id ?? appointment?.pets?.owner_id ?? null;
+  const loyalty = useQuery({
+    queryKey: ["loyalty-customer", ownerId],
+    queryFn: () => getLoyaltyCustomer(ownerId!),
+    enabled: open && !!ownerId,
+  });
   const catalog = useMemo(() => {
     return (shop.data ?? []).map((i) => ({
       id: i.id,
@@ -72,6 +80,7 @@ export function FinishAppointmentDialog({ appointment, open, onOpenChange, onDon
     setCustomPrice("");
     setPaymentMethod("");
     setEvidenceUrl("");
+    setPromo(null);
     let cancelled = false;
     (async () => {
       try {
@@ -116,6 +125,8 @@ export function FinishAppointmentDialog({ appointment, open, onOpenChange, onDon
   const serviceTotal =
     includeService && Number.isFinite(parsedService) && parsedService >= 0 ? parsedService : 0;
   const grandTotal = serviceTotal + miscTotal;
+  const discount = promo?.valid ? Number(promo.discount_amount || 0) : 0;
+  const netTotal = Math.max(0, grandTotal - discount);
 
   const addCatalogItem = (item: CatalogItem) => {
     setLines((prev) => [
@@ -196,6 +207,9 @@ export function FinishAppointmentDialog({ appointment, open, onOpenChange, onDon
         })),
         payment_method: paymentMethod,
         ...(evidenceUrl ? { payment_evidence_url: evidenceUrl } : {}),
+        ...(promo?.valid && promo.code ? { coupon_code: promo.code } : {}),
+        ...(promo?.valid && promo.loyalty_reward_id ? { loyalty_reward_id: promo.loyalty_reward_id } : {}),
+        ...(promo?.valid && promo.promotion_id && !promo.code ? { promotion_id: promo.promotion_id } : {}),
       });
       const emailed = (res.email_notifications ?? []).filter((n) => n.sent).length;
       const targets = (res.email_notifications ?? []).filter((n) => n.email).length;
@@ -288,6 +302,16 @@ export function FinishAppointmentDialog({ appointment, open, onOpenChange, onDon
               onMethodChange={setPaymentMethod}
               evidenceUrl={evidenceUrl}
               onEvidenceUrl={setEvidenceUrl}
+            />
+
+            <CouponApplyFields
+              subtotal={grandTotal}
+              customerId={ownerId}
+              petId={appointment.pet_id}
+              serviceIds={appointment.service_id ? [appointment.service_id] : []}
+              value={promo}
+              onChange={setPromo}
+              rewards={loyalty.data?.available ?? []}
             />
 
             <div>
@@ -424,7 +448,10 @@ export function FinishAppointmentDialog({ appointment, open, onOpenChange, onDon
             <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border pt-4">
               <div>
                 <p className="text-xs text-muted-foreground">Total estimado</p>
-                <p className="font-display text-xl font-bold text-primary">{cop(grandTotal)}</p>
+                <p className="font-display text-xl font-bold text-primary">{cop(netTotal)}</p>
+                {discount > 0 ? (
+                  <p className="text-xs text-muted-foreground">Antes {cop(grandTotal)}</p>
+                ) : null}
               </div>
               <div className="flex gap-2">
                 <Button variant="outline" className="rounded-xl" onClick={() => onOpenChange(false)}>
@@ -449,7 +476,7 @@ export function FinishAppointmentDialog({ appointment, open, onOpenChange, onDon
           </h3>
           <p className="mt-2 text-center text-sm text-muted-foreground">
             Se marcará el servicio como finalizado, se registrará la factura{" "}
-            <span className="font-medium text-foreground">{cop(grandTotal)}</span> y se enviará un
+            <span className="font-medium text-foreground">{cop(netTotal)}</span> y se enviará un
             PDF por correo a los dueños de {appointment.pets?.name ?? "la mascota"}.
           </p>
           <ul className="mt-4 space-y-1.5 rounded-2xl bg-secondary/50 px-4 py-3 text-sm">

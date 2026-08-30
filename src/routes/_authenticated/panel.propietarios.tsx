@@ -30,6 +30,7 @@ import { ownerToFormFields } from "@/lib/entity-forms";
 import { ConfigUsersPanel } from "@/components/config-users-panel";
 import { ConfigAuditPanel } from "@/components/config-audit-panel";
 import { UserSelfProfile } from "@/components/user-self-profile";
+import { LoyaltyCard } from "@/components/loyalty-card";
 
 export const Route = createFileRoute("/_authenticated/panel/propietarios")({
   beforeLoad: requirePathAccess("/panel/propietarios"),
@@ -433,6 +434,8 @@ function Propietarios() {
                   </div>
                 </dl>
               </div>
+
+              <LoyaltyCard customerId={selected.id} />
 
               <h3 className="mt-6 font-display text-lg font-bold text-primary">Mascotas</h3>
               <ul className="mt-3 grid gap-2 sm:grid-cols-2">

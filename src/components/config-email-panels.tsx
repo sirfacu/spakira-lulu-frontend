@@ -126,11 +126,19 @@ export function MailConfigPanel() {
   );
 }
 
-export function EmailTemplatesPanel() {
+export function EmailTemplatesPanel({
+  module,
+  allowCreate = true,
+  intro,
+}: {
+  module?: string;
+  allowCreate?: boolean;
+  intro?: string;
+} = {}) {
   const qc = useQueryClient();
   const templates = useQuery({
-    queryKey: ["email-templates"],
-    queryFn: listEmailTemplates,
+    queryKey: ["email-templates", module || "core"],
+    queryFn: () => listEmailTemplates(module),
   });
   const items = templates.data?.items ?? [];
   const variables = templates.data?.variables ?? [];
@@ -244,6 +252,7 @@ export function EmailTemplatesPanel() {
         <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
           Plantillas
         </p>
+        {intro ? <p className="text-xs text-muted-foreground">{intro}</p> : null}
         <ul className="space-y-1">
           {items.map((t: EmailTemplate) => (
             <li key={t.key}>
@@ -269,6 +278,7 @@ export function EmailTemplatesPanel() {
               </button>
             </li>
           ))}
+          {allowCreate ? (
           <li>
             <button
               type="button"
@@ -280,6 +290,7 @@ export function EmailTemplatesPanel() {
               <Plus className="h-5 w-5" strokeWidth={2.25} />
             </button>
           </li>
+          ) : null}
         </ul>
         <p className="pt-3 text-[11px] text-muted-foreground">
           El interruptor de cada plantilla decide si el mensaje sale. Variables con doble llave,
@@ -368,6 +379,7 @@ export function EmailTemplatesPanel() {
             >
               Vista previa
             </Button>
+            {allowCreate ? (
             <Button
               variant="outline"
               className="rounded-xl"
@@ -377,6 +389,7 @@ export function EmailTemplatesPanel() {
               <Trash2 className="mr-1.5 h-4 w-4" />
               Eliminar
             </Button>
+            ) : null}
           </div>
           <ConfirmDialog
             open={pendingDelete != null}

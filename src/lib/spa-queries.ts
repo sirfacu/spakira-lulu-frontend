@@ -1050,7 +1050,9 @@ export async function createSale(input: {
   payment_evidence_url?: string | null;
   service_id?: string | null;
   lines?: { inventory_item_id: string; quantity: number }[];
-  total?: number;
+  coupon_code?: string | null;
+  promotion_id?: string | null;
+  loyalty_reward_id?: string | null;
 }) {
   return api<Sale>("/sales", { method: "POST", body: input });
 }
@@ -1106,8 +1108,9 @@ export type EmailTemplate = {
   updated_at?: string | null;
 };
 
-export async function listEmailTemplates() {
-  return api<{ items: EmailTemplate[]; variables: string[] }>("/email-templates");
+export async function listEmailTemplates(module?: string) {
+  const q = module ? `?module=${encodeURIComponent(module)}` : "";
+  return api<{ items: EmailTemplate[]; variables: string[] }>(`/email-templates${q}`);
 }
 
 export async function getEmailTemplate(key: string) {
@@ -1208,6 +1211,9 @@ export async function completeAppointment(
     notes?: string | null;
     payment_method: string;
     payment_evidence_url?: string | null;
+    coupon_code?: string | null;
+    loyalty_reward_id?: string | null;
+    promotion_id?: string | null;
   },
 ) {
   return api<{
@@ -1426,4 +1432,181 @@ export async function googleIntegrationStatus() {
 
 export async function startGoogleCalendarConnect() {
   return api<{ url: string }>("/auth/google/start", { method: "POST" });
+}
+
+export type Promotion = {
+  id: string;
+  name: string;
+  description?: string | null;
+  kind: string;
+  requires_code: boolean;
+  code: string | null;
+  status: string;
+  discount_type: string;
+  discount_value: number;
+  starts_at?: string | null;
+  ends_at?: string | null;
+  max_uses?: number | null;
+  max_uses_per_customer?: number | null;
+  usage_count?: number;
+  audience?: string;
+  min_pets?: number;
+  min_purchase?: number;
+  service_ids?: string[];
+  weekdays?: number[];
+  customer_ids?: string[];
+};
+
+export type PromoValidate = {
+  valid: boolean;
+  reason?: string | null;
+  message?: string;
+  promotion_id?: string | null;
+  loyalty_reward_id?: string | null;
+  discount_type?: string;
+  discount_value?: number;
+  discount_amount?: number;
+  code?: string | null;
+  name?: string;
+};
+
+export const promotionsQuery = queryOptions({
+  queryKey: ["promotions"],
+  queryFn: () => api<Promotion[]>("/promotions"),
+});
+
+export const couponsQuery = queryOptions({
+  queryKey: ["promotions", "coupons"],
+  queryFn: () => api<Promotion[]>("/promotions?coupons_only=true"),
+});
+
+export const promotionsSummaryQuery = queryOptions({
+  queryKey: ["promotions-summary"],
+  queryFn: () =>
+    api<{
+      active: number;
+      upcoming: number;
+      expired: number;
+      coupons: number;
+      coupon_uses: number;
+      discount_total: number;
+      top_promotion: { name: string; code: string | null; uses: number } | null;
+      loyalty: Record<string, number>;
+    }>("/promotions/summary"),
+});
+
+export const promotionUsageQuery = queryOptions({
+  queryKey: ["promotions-usage"],
+  queryFn: () => api<Record<string, unknown>[]>("/promotions/usage"),
+});
+
+export const loyaltyProgramQuery = queryOptions({
+  queryKey: ["loyalty-program"],
+  queryFn: () =>
+    api<{
+      program: { id: string; name: string; active: boolean } | null;
+      tiers: Record<string, unknown>[];
+      rules: Record<string, unknown>[];
+      rewards: Record<string, unknown>[];
+    }>("/loyalty/program"),
+});
+
+export type LoyaltyCustomer = {
+  months: number;
+  visits: number;
+  services: number;
+  spend: number;
+  tier: { name: string } | null;
+  next_tier: { name: string; min_visits: number } | null;
+  progress_percent: number;
+  visits_remaining: number;
+  available: { id: string; label: string; expires_at?: string | null }[];
+};
+
+export async function getLoyaltyCustomer(customerId: string) {
+  return api<LoyaltyCustomer>(`/loyalty/customers/${customerId}`);
+}
+
+export async function getLoyaltyMe() {
+  return api<LoyaltyCustomer>("/loyalty/me");
+}
+
+export async function patchLoyaltyTier(id: string, input: Record<string, unknown>) {
+  return api(`/loyalty/tiers/${id}`, { method: "PATCH", body: input });
+}
+
+export async function createLoyaltyTier(input: {
+  name: string;
+  sort_order?: number;
+  min_visits?: number;
+  min_months?: number;
+  discount_type?: string;
+  discount_value?: number;
+}) {
+  return api("/loyalty/tiers", { method: "POST", body: input });
+}
+
+export async function patchLoyaltyRule(id: string, input: Record<string, unknown>) {
+  return api(`/loyalty/rules/${id}`, { method: "PATCH", body: input });
+}
+
+export async function createLoyaltyRule(input: {
+  name: string;
+  min_months?: number;
+  min_visits?: number;
+  cycle_months?: number;
+  reward_kind?: string;
+  reward_value?: number;
+  reward_service_id?: string | null;
+  reward_valid_days?: number;
+  uses_per_cycle?: number;
+}) {
+  return api("/loyalty/rules", { method: "POST", body: input });
+}
+
+export async function issueLoyaltyReward(input: {
+  customer_id: string;
+  label: string;
+  discount_type: string;
+  discount_value: number;
+  free_service_id?: string | null;
+  valid_days?: number;
+}) {
+  return api("/loyalty/rewards", { method: "POST", body: input });
+}
+
+export async function patchLoyaltyReward(id: string, status: "cancelled" | "expired") {
+  return api(`/loyalty/rewards/${id}`, { method: "PATCH", body: { status } });
+}
+
+export async function validatePromotion(input: {
+  code?: string;
+  loyalty_reward_id?: string;
+  customer_id?: string | null;
+  pet_id?: string | null;
+  service_ids?: string[];
+  subtotal: number;
+}) {
+  return api<PromoValidate>("/promotions/validate", { method: "POST", body: input });
+}
+
+export async function createPromotion(input: Partial<Promotion> & { name: string; discount_type: string }) {
+  return api<Promotion>("/promotions", { method: "POST", body: input });
+}
+
+export async function patchPromotion(id: string, input: Partial<Promotion>) {
+  return api<Promotion>(`/promotions/${id}`, { method: "PATCH", body: input });
+}
+
+export async function fetchPromoNotify() {
+  return api<{
+    templates: EmailTemplate[];
+    settings: { event_key: string; template_key: string; enabled: boolean; days_before: number }[];
+    log: Record<string, unknown>[];
+    variables: string[];
+  }>("/promotions/notify/templates");
+}
+
+export async function runPromoNotifyDue() {
+  return api<{ ok: boolean }>("/promotions/notify-due", { method: "POST", body: {} });
 }
