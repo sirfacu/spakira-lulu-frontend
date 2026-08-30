@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  PANEL_MODULES,
   canAccessPath,
   displayRole,
   homeForRole,
@@ -31,6 +32,12 @@ describe("roles", () => {
     expect(displayRole("cliente")).toBe("Usuario");
   });
 
+  it("labels the propietarios module as Usuarios", () => {
+    const mod = PANEL_MODULES.find((m) => m.id === "propietarios");
+    expect(mod?.label).toBe("Usuarios");
+    expect(mod?.path).toBe("/panel/propietarios");
+  });
+
   it("gates razas tab via mascotas (admin)", () => {
     expect(canAccessPath("admin", "/panel/mascotas")).toBe(true);
     expect(canAccessPath("admin", "/panel/razas")).toBe(false);
@@ -38,7 +45,7 @@ describe("roles", () => {
     expect(canAccessPath("cliente", "/panel/mascotas")).toBe(true);
     expect(canAccessPath("cliente", "/panel/agenda")).toBe(true);
     expect(canAccessPath("cliente", "/panel/precios")).toBe(true);
-    expect(canAccessPath("cliente", "/panel/propietarios")).toBe(false);
+    expect(canAccessPath("cliente", "/panel/propietarios")).toBe(true);
     expect(canAccessPath("cliente", "/panel/completar")).toBe(true);
     expect(canAccessPath("admin", "/panel/permisos")).toBe(true);
     expect(canAccessPath("colaborador", "/panel/permisos")).toBe(false);

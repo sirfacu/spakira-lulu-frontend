@@ -21,6 +21,9 @@ export type Owner = {
   sort_order?: number;
   pii_masked?: boolean;
   system_key?: string | null;
+  role?: string | null;
+  active?: boolean | null;
+  auth_provider?: string | null;
   pets?: Array<{
     id: string;
     name: string;
@@ -276,8 +279,19 @@ export type Sale = {
   invoice_number?: string | null;
   pet_name?: string | null;
   service_name?: string | null;
+  payment_method_label?: string | null;
+  payment_evidence_url?: string | null;
   owners?: Owner | null;
   staff?: Staff | null;
+};
+
+export type PaymentMethod = {
+  id: string;
+  code: string;
+  label: string;
+  require_evidence: boolean;
+  active: boolean;
+  sort_order: number;
 };
 
 export type AppUser = {
@@ -602,10 +616,61 @@ export const salesQuery = queryOptions({
   queryFn: () => api<Sale[]>("/sales"),
 });
 
+export const paymentMethodsQuery = queryOptions({
+  queryKey: ["payment-methods"],
+  queryFn: () => api<PaymentMethod[]>("/payment-methods"),
+});
+
+export const paymentMethodsAdminQuery = queryOptions({
+  queryKey: ["payment-methods", "admin"],
+  queryFn: () => api<PaymentMethod[]>("/payment-methods?include_inactive=true"),
+});
+
+export async function createPaymentMethod(input: {
+  label: string;
+  code?: string;
+  require_evidence?: boolean;
+  active?: boolean;
+  sort_order?: number;
+}) {
+  return api<PaymentMethod>("/payment-methods", { method: "POST", body: input });
+}
+
+export async function patchPaymentMethod(
+  id: string,
+  input: {
+    label?: string;
+    require_evidence?: boolean;
+    active?: boolean;
+    sort_order?: number;
+  },
+) {
+  return api<PaymentMethod>(`/payment-methods/${id}`, { method: "PATCH", body: input });
+}
+
+export async function deletePaymentMethod(id: string) {
+  await api(`/payment-methods/${id}`, { method: "DELETE" });
+}
+
 export const appUsersQuery = queryOptions({
   queryKey: ["app-users"],
   queryFn: () => api<AppUser[]>("/auth/users"),
 });
+
+export type MailPrefItem = {
+  key: string;
+  name: string;
+  enabled: boolean;
+  template_enabled?: boolean;
+};
+
+export async function getMyMailPrefs() {
+  return api<{ items: MailPrefItem[] }>("/me/mail-prefs");
+}
+
+export async function putMyMailPrefs(items: { key: string; enabled: boolean }[]) {
+  return api<{ items: MailPrefItem[] }>("/me/mail-prefs", { method: "PUT", body: { items } });
+}
 
 export type AuditEntry = {
   id: string;
@@ -982,6 +1047,7 @@ export async function createSale(input: {
   owner_id: string | null;
   staff_id: string | null;
   payment_method: string;
+  payment_evidence_url?: string | null;
   service_id?: string | null;
   lines?: { inventory_item_id: string; quantity: number }[];
   total?: number;
@@ -1140,6 +1206,8 @@ export async function completeAppointment(
     service_price?: number;
     lines?: { name: string; quantity: number; unit_price: number }[];
     notes?: string | null;
+    payment_method: string;
+    payment_evidence_url?: string | null;
   },
 ) {
   return api<{

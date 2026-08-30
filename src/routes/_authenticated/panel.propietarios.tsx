@@ -1,8 +1,8 @@
-import { useEffect, useMemo, useState, type DragEvent } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { createFileRoute, useRouteContext } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { Search, Phone, Mail, MapPin, MessageCircle, Plus, Pencil, Trash2, GripVertical } from "lucide-react";
+import { Phone, Mail, MapPin, MessageCircle, Pencil, Trash2 } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
 import { Empty, StatusPill } from "@/components/ui-kit";
 import { Input } from "@/components/ui/input";
@@ -19,28 +19,30 @@ import {
   updateOwner,
   setOwnerPets,
   deleteOwner,
-  reorderOwners,
   type Owner,
+  type AppUser,
 } from "@/lib/spa-queries";
 import { cop, initials, shortDate, statusMeta, time } from "@/lib/format";
 import { requirePathAccess } from "@/lib/route-access";
-import { isActiveSale, permissionsFor } from "@/lib/roles";
+import { displayRole, isActiveSale, normalizeRole, permissionsFor } from "@/lib/roles";
 import { ApiError } from "@/lib/api";
 import { ownerToFormFields } from "@/lib/entity-forms";
-import { cn } from "@/lib/utils";
+import { ConfigUsersPanel } from "@/components/config-users-panel";
+import { ConfigAuditPanel } from "@/components/config-audit-panel";
+import { UserSelfProfile } from "@/components/user-self-profile";
 
 export const Route = createFileRoute("/_authenticated/panel/propietarios")({
   beforeLoad: requirePathAccess("/panel/propietarios"),
   head: () => ({
     meta: [
-      { title: "Humanos de compañía | Spa Kira" },
+      { title: "Usuarios | Spa Kira" },
       {
         name: "description",
         content:
-          "Directorio de humanos de compañía con contacto, mascotas registradas, historial de visitas y pagos.",
+          "Cuentas de acceso, ficha de cada persona y (admin) auditoría.",
       },
-      { property: "og:title", content: "Humanos de compañía | Spa Kira" },
-      { property: "og:description", content: "Directorio de humanos de compañía del spa canino y felino." },
+      { property: "og:title", content: "Usuarios | Spa Kira" },
+      { property: "og:description", content: "Directorio de usuarios del spa canino y felino." },
     ],
   }),
   component: Propietarios,
@@ -95,7 +97,6 @@ function Propietarios() {
   const sales = useQuery({ ...salesQuery, enabled: perms.isAdmin });
   const qc = useQueryClient();
   const maskPii = perms.maskOwnerPii;
-  const [q, setQ] = useState("");
   const [selected, setSelected] = useState<Owner | null>(null);
   const [editing, setEditing] = useState<Owner | null | "new">(null);
   const [form, setForm] = useState<OwnerForm>(emptyForm());
@@ -107,6 +108,8 @@ function Propietarios() {
     message?: string;
   } | null>(null);
   const [pendingDelete, setPendingDelete] = useState<{ name: string; id: string } | null>(null);
+  const isAdmin = perms.isAdmin;
+  const [pageTab, setPageTab] = useState<"cuentas" | "auditoria">("cuentas");
 
   // Mantener el detalle alineado con la lista tras PATCH/refetch
   useEffect(() => {
@@ -131,23 +134,6 @@ function Propietarios() {
     [owners.data],
   );
 
-  const filtered = useMemo(() => {
-    const needle = q.toLowerCase();
-    return allOwners.filter((o) =>
-      `${o.full_name ?? ""} ${o.document_id ?? ""} ${o.phone ?? ""} ${o.email ?? ""}`
-        .toLowerCase()
-        .includes(needle),
-    );
-  }, [allOwners, q]);
-
-  const [list, setList] = useState<Owner[]>([]);
-  useEffect(() => {
-    setList(filtered);
-  }, [filtered]);
-
-  const [dragId, setDragId] = useState<string | null>(null);
-  const [overId, setOverId] = useState<string | null>(null);
-
   const petsOf = (id: string) =>
     (pets.data ?? []).filter((p) => {
       if (!p?.id) return false;
@@ -169,35 +155,18 @@ function Propietarios() {
 
   const editingOwner = editing && editing !== "new" ? editing : null;
 
-  const reorderMut = useMutation({
-    mutationFn: (ids: string[]) => reorderOwners(ids),
-    onSuccess: async () => {
-      await qc.invalidateQueries({ queryKey: ["owners"] });
-    },
-    onError: (err: Error) => {
-      toast.error(err.message);
-      setList(filtered);
-    },
-  });
-
-  const moveRow = (fromId: string, toId: string) => {
-    if (fromId === toId) return;
-    const from = list.findIndex((o) => o.id === fromId);
-    const to = list.findIndex((o) => o.id === toId);
-    if (from < 0 || to < 0) return;
-    const nextVisible = list.slice();
-    const [row] = nextVisible.splice(from, 1);
-    if (!row) return;
-    nextVisible.splice(to, 0, row);
-    setList(nextVisible);
-
-    const visibleIds = new Set(list.map((o) => o.id));
-    let vi = 0;
-    const fullOrder = allOwners.map((o) => {
-      if (!visibleIds.has(o.id)) return o;
-      return nextVisible[vi++]!;
-    });
-    reorderMut.mutate(fullOrder.map((o) => o.id));
+  const openAccount = (u: AppUser) => {
+    const email = (u.email || "").toLowerCase();
+    const match = allOwners.find(
+      (o) => o.id === u.id || (o.email || "").toLowerCase() === email,
+    );
+    if (match) {
+      setSelected(match);
+      return;
+    }
+    setForm({ ...emptyForm(), full_name: u.full_name || "", email: u.email });
+    setLinkedPetIds([]);
+    setEditing("new");
   };
 
   const saveMut = useMutation({
@@ -234,7 +203,7 @@ function Propietarios() {
       throw new Error("Sin formulario");
     },
     onSuccess: async (saved) => {
-      toast.success(editing === "new" ? "Humano de compañía creado" : "Humano de compañía actualizado");
+      toast.success(editing === "new" ? "Usuario creado" : "Usuario actualizado");
       setEditing(null);
       if (saved?.id) setSelected(saved);
       await Promise.all([
@@ -269,7 +238,7 @@ function Propietarios() {
       }
     },
     onSuccess: async () => {
-      toast.success("Humano de compañía eliminado");
+      toast.success("Usuario eliminado");
       setSelected(null);
       setOrphanConfirm(null);
       await Promise.all([
@@ -287,7 +256,7 @@ function Propietarios() {
   const confirmOrphanMut = useMutation({
     mutationFn: (ownerId: string) => deleteOwner(ownerId, { confirmOrphan: true }),
     onSuccess: async () => {
-      toast.success("Humano de compañía eliminado");
+      toast.success("Usuario eliminado");
       setSelected(null);
       setOrphanConfirm(null);
       await Promise.all([
@@ -299,179 +268,57 @@ function Propietarios() {
     onError: (err: Error) => toast.error(err.message),
   });
 
+  if (perms.isCliente) {
+    return (
+      <AppShell title="Usuarios" subtitle="Tu información y notificaciones">
+        <UserSelfProfile />
+      </AppShell>
+    );
+  }
+
   return (
     <AppShell
-      title="Humanos de compañía"
+      title="Usuarios"
       subtitle={
-        maskPii
-          ? `${list.length} clientes · arrastrá filas para ordenar · datos parcialmente ocultos`
-          : `Arrastrá las filas para ordenar · ${list.length} clientes`
-      }
-      actions={
-        <Button
-          className="rounded-xl"
-          onClick={() => {
-            setForm(emptyForm());
-            setLinkedPetIds([]);
-            setEditing("new");
-          }}
-        >
-          <Plus className="mr-2 h-4 w-4" /> Nuevo humano
-        </Button>
+        pageTab === "auditoria"
+          ? "Registro de acciones del panel"
+          : isAdmin
+            ? "Invitar, roles, activación y claves"
+            : "Cuentas de Usuario · clic para ver la ficha"
       }
     >
-      {maskPii ? (
-        <p className="mb-4 rounded-2xl border border-border bg-secondary/40 px-4 py-3 text-sm text-muted-foreground">
-          Como colaborador ves solo el final de teléfonos y documentos. Al crear un humano nuevo
-          sí podés cargar todos los campos. La edición de PII ofuscada está restringida.
-        </p>
-      ) : null}
-      <div className="card-soft flex items-center gap-3 p-4">
-        <Search className="h-4 w-4 shrink-0 text-muted-foreground" />
-        <Input
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          placeholder="Buscar por nombre, documento, teléfono o correo…"
-          className="h-10 rounded-xl border-0 bg-transparent px-0 shadow-none focus-visible:ring-0"
-        />
-      </div>
-
-      <div className="card-soft mt-6 overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[920px] text-sm">
-            <thead>
-              <tr className="border-b border-border bg-secondary/50 text-left text-xs uppercase tracking-wider text-muted-foreground">
-                <th className="w-10 px-2 py-3.5" aria-label="Reordenar" />
-                <th className="px-5 py-3.5 font-semibold">Humano de compañía</th>
-                <th className="px-5 py-3.5 font-semibold">Tipo / Doc</th>
-                <th className="px-5 py-3.5 font-semibold">Teléfono</th>
-                <th className="px-5 py-3.5 font-semibold">Correo</th>
-                <th className="px-5 py-3.5 font-semibold">Ciudad</th>
-                <th className="px-5 py-3.5 font-semibold">Mascotas</th>
-                <th className="px-5 py-3.5 font-semibold text-right">Acciones</th>
-              </tr>
-            </thead>
-            <tbody>
-              {list.map((o) => {
-                const isSystem = Boolean(o.system_key);
-                return (
-                <tr
-                  key={o.id}
-                  onClick={() => setSelected(o)}
-                  onDragOver={(e) => {
-                    if (!dragId || isSystem) return;
-                    e.preventDefault();
-                    e.dataTransfer.dropEffect = "move";
-                    if (overId !== o.id) setOverId(o.id);
-                  }}
-                  onDrop={(e) => {
-                    if (!dragId || isSystem) return;
-                    e.preventDefault();
-                    moveRow(dragId, o.id);
-                    setDragId(null);
-                    setOverId(null);
-                  }}
-                  className={cn(
-                    "cursor-pointer border-b border-border/60 transition-colors last:border-0 hover:bg-secondary/40",
-                    dragId === o.id && "opacity-60",
-                    overId === o.id && dragId && dragId !== o.id && "bg-primary/10",
-                  )}
-                >
-                  <td className="px-2 py-3.5">
-                    {isSystem ? (
-                      <span className="block h-8 w-8" />
-                    ) : (
-                    <div
-                      className="grid h-8 w-8 cursor-grab place-items-center rounded-lg text-muted-foreground hover:bg-secondary hover:text-primary active:cursor-grabbing"
-                      aria-label={`Reordenar ${o.full_name}`}
-                      title="Arrastrar para reordenar"
-                      draggable
-                      onClick={(e) => e.stopPropagation()}
-                      onDragStart={(e: DragEvent) => {
-                        setDragId(o.id);
-                        e.dataTransfer.effectAllowed = "move";
-                        e.dataTransfer.setData("text/plain", o.id);
-                        e.stopPropagation();
-                      }}
-                      onDragEnd={() => {
-                        setDragId(null);
-                        setOverId(null);
-                      }}
-                    >
-                      <GripVertical className="h-4 w-4" />
-                    </div>
-                    )}
-                  </td>
-                  <td className="px-5 py-3.5">
-                    <div className="flex min-w-0 items-center gap-3">
-                      {o.photo_url ? (
-                        <img
-                          src={o.photo_url}
-                          alt={o.full_name}
-                          className="h-10 w-10 shrink-0 rounded-xl object-cover"
-                        />
-                      ) : (
-                        <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-primary/10 text-xs font-semibold text-primary">
-                          {initials(o.full_name)}
-                        </span>
-                      )}
-                      <span className="truncate font-medium text-foreground">{o.full_name}</span>
-                      {isSystem ? (
-                        <span className="shrink-0 rounded-full bg-secondary px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-                          Sistema
-                        </span>
-                      ) : null}
-                    </div>
-                  </td>
-                  <td className="px-5 py-3.5 text-muted-foreground">
-                    {o.document_type ?? "CC"} {o.document_id}
-                  </td>
-                  <td className="px-5 py-3.5">
-                    <div className="flex items-center gap-2 text-muted-foreground">
-                      <Phone className="h-3.5 w-3.5" />
-                      {o.phone}
-                      {o.whatsapp ? (
-                        <MessageCircle className="h-3.5 w-3.5 text-success" />
-                      ) : null}
-                    </div>
-                  </td>
-                  <td className="px-5 py-3.5 text-muted-foreground">{o.email}</td>
-                  <td className="max-w-[180px] truncate px-5 py-3.5 text-muted-foreground">
-                    {o.city || o.address}
-                  </td>
-                  <td className="px-5 py-3.5">
-                    <span className="rounded-full bg-blush px-2.5 py-1 text-xs font-semibold text-blush-foreground">
-                      {petsOf(o.id).length}
-                    </span>
-                  </td>
-                  <td className="px-5 py-3.5 text-right">
-                    {isSystem ? (
-                      <span className="text-xs text-muted-foreground">—</span>
-                    ) : (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="icon"
-                      className="rounded-xl border-destructive/30 text-destructive hover:bg-destructive hover:text-destructive-foreground"
-                      title="Eliminar humano de compañía"
-                      aria-label={`Eliminar ${o.full_name}`}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setPendingDelete({ name: o.full_name, id: o.id });
-                      }}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                    )}
-                  </td>
-                </tr>
-              );
-              })}
-            </tbody>
-          </table>
+      {isAdmin ? (
+        <div className="mb-6 flex flex-wrap gap-2">
+          {(
+            [
+              { id: "cuentas", label: "Cuentas de acceso" },
+              { id: "auditoria", label: "Auditoría" },
+            ] as const
+          ).map((t) => (
+            <button
+              key={t.id}
+              type="button"
+              onClick={() => setPageTab(t.id)}
+              className={`rounded-full px-4 py-1.5 text-sm font-medium ${
+                pageTab === t.id
+                  ? "bg-primary text-primary-foreground"
+                  : "bg-secondary text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              {t.label}
+            </button>
+          ))}
         </div>
-        {!list.length ? <Empty message="Sin humanos de compañía que coincidan." /> : null}
-      </div>
+      ) : null}
+      {(!isAdmin || pageTab === "cuentas") ? (
+        <ConfigUsersPanel
+          currentUserId={user?.id}
+          canManageRoles={isAdmin}
+          clientsOnly={!isAdmin}
+          onOpenUser={openAccount}
+        />
+      ) : null}
+      {isAdmin && pageTab === "auditoria" ? <ConfigAuditPanel /> : null}
 
       <Dialog open={!!selected} onOpenChange={(o) => !o && setSelected(null)}>
         <DialogContent className="max-h-[88vh] max-w-3xl overflow-y-auto rounded-3xl p-6">
@@ -495,6 +342,8 @@ function Propietarios() {
                   </h2>
                   <p className="truncate text-sm text-muted-foreground">
                     {selected.document_type ?? "CC"} {selected.document_id}
+                    {selected.role ? ` · ${displayRole(selected.role)}` : ""}
+                    {selected.active === false ? " · sin acceso al panel" : ""}
                   </p>
                 </div>
               </div>
@@ -517,10 +366,11 @@ function Propietarios() {
                 >
                   <Pencil className="mr-2 h-4 w-4" /> Editar
                 </Button>
+                {["admin", "colaborador"].includes(normalizeRole(selected.role)) ? null : (
                 <Button
                   variant="destructive"
                   className="rounded-xl"
-                  title="Eliminar humano de compañía"
+                  title="Eliminar usuario"
                   aria-label={`Eliminar ${selected.full_name}`}
                   onClick={() => {
                     setPendingDelete({ name: selected.full_name, id: selected.id });
@@ -528,6 +378,7 @@ function Propietarios() {
                 >
                   <Trash2 className="mr-2 h-4 w-4" /> Eliminar
                 </Button>
+                )}
                   </>
                 )}
               </div>
@@ -662,7 +513,7 @@ function Propietarios() {
       <Dialog open={editing !== null} onOpenChange={(o) => !o && setEditing(null)}>
         <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto rounded-3xl">
           <h2 className="font-display text-xl font-bold text-primary">
-            {editing === "new" ? "Nuevo humano de compañía" : "Editar humano de compañía"}
+            {editing === "new" ? "Nuevo usuario" : "Editar usuario"}
           </h2>
           {maskPii && editing !== "new" ? (
             <p className="mt-2 text-sm text-muted-foreground">
@@ -874,7 +725,7 @@ function Propietarios() {
             ¿Eliminar a <span className="text-accent">{pendingDelete?.name}</span>?
           </>
         }
-        description="Se quitará este humano de compañía."
+        description="Se quitará esta ficha. Si tenía acceso de Usuario (cliente) también se elimina la cuenta."
         onConfirm={() => {
           if (pendingDelete) deleteMut.mutate(pendingDelete.id);
         }}

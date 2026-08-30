@@ -1,4 +1,4 @@
-/** Panel Configuración → Usuarios: invitar y cambiar rol con confirmación. */
+/** Usuarios → Cuentas de acceso: invitar y cambiar rol con confirmación. */
 
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -65,12 +65,22 @@ function roleChangeEffects(from: string, to: string): string[] {
 
 type RolePending = { user: AppUser; nextRole: AppRole };
 
-export function ConfigUsersPanel({ currentUserId }: { currentUserId?: string }) {
+export function ConfigUsersPanel({
+  currentUserId,
+  canManageRoles = true,
+  clientsOnly = false,
+  onOpenUser,
+}: {
+  currentUserId?: string;
+  canManageRoles?: boolean;
+  clientsOnly?: boolean;
+  onOpenUser?: (user: AppUser) => void;
+}) {
   const qc = useQueryClient();
   const users = useQuery(appUsersQuery);
   const [email, setEmail] = useState("");
   const [fullName, setFullName] = useState("");
-  const [role, setRole] = useState<AppRole>("colaborador");
+  const [role, setRole] = useState<AppRole>(canManageRoles ? "colaborador" : "cliente");
   const [q, setQ] = useState("");
   const [rolePending, setRolePending] = useState<RolePending | null>(null);
   const [deletePending, setDeletePending] = useState<AppUser | null>(null);
@@ -82,7 +92,9 @@ export function ConfigUsersPanel({ currentUserId }: { currentUserId?: string }) 
   const [newPassword2, setNewPassword2] = useState("");
 
   const filtered = useMemo(() => {
-    const list = users.data ?? [];
+    const list = (users.data ?? []).filter((u) =>
+      clientsOnly ? normalizeRole(u.role) === "cliente" : true,
+    );
     const needle = q.trim().toLowerCase();
     const ranked = [...list].sort((a, b) => {
       const ra = normalizeRole(a.role);
@@ -98,22 +110,23 @@ export function ConfigUsersPanel({ currentUserId }: { currentUserId?: string }) 
         (u.full_name || "").toLowerCase().includes(needle) ||
         displayRole(u.role).toLowerCase().includes(needle),
     );
-  }, [users.data, q]);
+  }, [users.data, q, clientsOnly]);
 
   const inviteMut = useMutation({
     mutationFn: () =>
       inviteAppUser({
         email: email.trim(),
         full_name: fullName.trim() || "Usuario Spa Kira",
-        role,
+        role: canManageRoles ? role : "cliente",
       }),
     onSuccess: async (res) => {
       toast.success(res.message);
       setEmail("");
       setFullName("");
-      setRole("colaborador");
+      setRole(canManageRoles ? "colaborador" : "cliente");
       await qc.invalidateQueries({ queryKey: ["app-users"] });
       await qc.invalidateQueries({ queryKey: ["staff"] });
+      await qc.invalidateQueries({ queryKey: ["owners"] });
     },
     onError: (err: Error) => toast.error(err.message),
   });
@@ -186,18 +199,26 @@ export function ConfigUsersPanel({ currentUserId }: { currentUserId?: string }) 
     <>
       <SectionCard title="Usuarios del panel">
         <p className="mb-4 text-sm text-muted-foreground">
-          Acá gestionás quién entra al panel y con qué perfil.{" "}
-          <strong>Admin</strong> y <strong>Staff</strong> solo con cuentas locales
-          (correo + contraseña / invitación). <strong>Google</strong> solo crea o entra
-          como <strong>Usuario</strong> (cliente). Al agregar alguien se envía correo de
-          activación.
+          {canManageRoles ? (
+            <>
+              Acá gestionás quién entra al panel y con qué perfil.{" "}
+              <strong>Admin</strong> y <strong>Staff</strong> solo con cuentas locales
+              (correo + contraseña / invitación). <strong>Google</strong> solo crea o entra
+              como <strong>Usuario</strong>. Al agregar alguien se envía correo de activación.
+            </>
+          ) : (
+            <>
+              Solo ves cuentas de <strong>Usuario</strong> (clientes). Podés invitar y
+              actualizar su ficha; no asignás roles. Al agregar alguien queda como Usuario.
+            </>
+          )}
         </p>
 
         <div className="rounded-2xl border border-border/80 bg-secondary/30 p-4">
           <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
             Invitar
           </p>
-          <div className="grid gap-3 sm:grid-cols-4">
+          <div className={`grid gap-3 ${canManageRoles ? "sm:grid-cols-4" : "sm:grid-cols-3"}`}>
             <div className="space-y-2 sm:col-span-2">
               <Label>Correo</Label>
               <Input
@@ -218,6 +239,7 @@ export function ConfigUsersPanel({ currentUserId }: { currentUserId?: string }) 
                 placeholder="Nombre visible"
               />
             </div>
+            {canManageRoles ? (
             <div className="space-y-2">
               <Label>Rol inicial</Label>
               <select
@@ -232,6 +254,7 @@ export function ConfigUsersPanel({ currentUserId }: { currentUserId?: string }) 
                 ))}
               </select>
             </div>
+            ) : null}
           </div>
           <Button
             className="mt-4 rounded-xl"
@@ -267,8 +290,12 @@ export function ConfigUsersPanel({ currentUserId }: { currentUserId?: string }) 
                 key={u.id}
                 className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 text-sm"
               >
-                <div className="min-w-0">
-                  <p className="truncate font-medium">
+                <button
+                  type="button"
+                  className="min-w-0 flex-1 text-left"
+                  onClick={() => onOpenUser?.(u)}
+                >
+                  <p className="truncate font-medium hover:text-primary">
                     {u.full_name || "Sin nombre"}
                     {isSelf ? (
                       <span className="ml-2 text-[11px] font-normal text-muted-foreground">
@@ -277,8 +304,9 @@ export function ConfigUsersPanel({ currentUserId }: { currentUserId?: string }) 
                     ) : null}
                   </p>
                   <p className="truncate text-xs text-muted-foreground">{u.email}</p>
-                </div>
+                </button>
                   <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+                  {canManageRoles ? (
                   <select
                     className="h-9 rounded-xl border border-input bg-background px-2 text-xs"
                     value={normalizeRole(u.role)}
@@ -301,6 +329,11 @@ export function ConfigUsersPanel({ currentUserId }: { currentUserId?: string }) 
                       );
                     })}
                   </select>
+                  ) : (
+                    <span className="rounded-full bg-secondary px-2.5 py-0.5 text-[11px] font-medium text-muted-foreground">
+                      {displayRole(u.role)}
+                    </span>
+                  )}
                   <span
                     className={`rounded-full px-2.5 py-0.5 text-[11px] font-medium ${
                       u.active
@@ -310,6 +343,8 @@ export function ConfigUsersPanel({ currentUserId }: { currentUserId?: string }) 
                   >
                     {u.active ? "Activo" : "Pendiente activación"}
                   </span>
+                  {canManageRoles ? (
+                    <>
                   {u.auth_provider === "google" || u.auth_provider === "both" ? (
                     <span className="text-xs text-muted-foreground">
                       {u.auth_provider === "both" ? "Google + clave" : "Google"}
@@ -354,6 +389,8 @@ export function ConfigUsersPanel({ currentUserId }: { currentUserId?: string }) 
                       <Trash2 className="mr-1 h-3.5 w-3.5" />
                       Eliminar
                     </Button>
+                  ) : null}
+                    </>
                   ) : null}
                 </div>
               </li>

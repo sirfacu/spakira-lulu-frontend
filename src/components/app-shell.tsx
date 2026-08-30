@@ -32,7 +32,7 @@ const NAV = [
   { to: "/panel/ventas", label: "Ventas", icon: ShoppingBag },
   { to: "/panel/inventario", label: "Inventario", icon: Boxes },
   { to: "/panel/mascotas", label: "Mascotas", icon: Dog },
-  { to: "/panel/propietarios", label: "Humanos", icon: Users },
+  { to: "/panel/propietarios", label: "Usuarios", icon: Users },
   { to: "/panel/personal", label: "Staff", icon: UserCog },
   { to: "/panel/precios", label: "Servicios", icon: Tags },
   { to: "/panel/reportes", label: "Reportes", icon: BarChart3 },
