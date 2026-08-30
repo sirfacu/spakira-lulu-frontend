@@ -293,6 +293,15 @@ export async function registerAccount(email: string, full_name: string, password
   return data;
 }
 
+export async function previewActivation(token: string) {
+  return api<{
+    email: string;
+    full_name: string;
+    role: string;
+    google_ok: boolean;
+  }>(`/auth/activate/preview?token=${encodeURIComponent(token)}`, { auth: false });
+}
+
 export async function activateAccount(token: string, password: string, full_name?: string) {
   const data = await api<{
     access_token: string;

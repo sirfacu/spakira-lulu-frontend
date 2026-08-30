@@ -201,15 +201,15 @@ export function ConfigUsersPanel({
         <p className="mb-4 text-sm text-muted-foreground">
           {canManageRoles ? (
             <>
-              Acá gestionás quién entra al panel y con qué perfil.{" "}
-              <strong>Admin</strong> y <strong>Staff</strong> solo con cuentas locales
-              (correo + contraseña / invitación). <strong>Google</strong> solo crea o entra
-              como <strong>Usuario</strong>. Al agregar alguien se envía correo de activación.
+              Al agregar un <strong>Usuario</strong>, el correo de activación permite unirse con
+              Google (mismo correo) o con contraseña. <strong>Admin</strong> y <strong>Staff</strong>{" "}
+              siguen siendo cuentas locales.
             </>
           ) : (
             <>
               Solo ves cuentas de <strong>Usuario</strong> (clientes). Podés invitar y
-              actualizar su ficha; no asignás roles. Al agregar alguien queda como Usuario.
+              actualizar su ficha; no asignás roles. Si el correo es de Google, en el enlace
+              pueden unirse con esa cuenta.
             </>
           )}
         </p>

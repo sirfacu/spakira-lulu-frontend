@@ -6,6 +6,7 @@ import {
   getApiBase,
   getToken,
   login,
+  previewActivation,
   roleFromAccessToken,
   seedMeCache,
   setToken,
@@ -138,6 +139,12 @@ function AuthPage() {
   const [loading, setLoading] = useState(false);
   const [googleReady, setGoogleReady] = useState(true);
   const [googleHint, setGoogleHint] = useState<string | null>(null);
+  const [invitePreview, setInvitePreview] = useState<{
+    email: string;
+    full_name: string;
+    role: string;
+    google_ok: boolean;
+  } | null>(null);
   const [splashTo, setSplashTo] = useState<string | null>(null);
   const [ticketBusy, setTicketBusy] = useState(false);
   /** Evita re-disparar el canje; no meter ticketBusy en deps (se auto-cancela el fetch). */
@@ -270,6 +277,27 @@ function AuthPage() {
     };
   }, []);
 
+  useEffect(() => {
+    const raw = (tokenFromUrl || token).trim();
+    if (!raw || raw.length < 10) {
+      setInvitePreview(null);
+      return;
+    }
+    let cancelled = false;
+    void previewActivation(raw)
+      .then((data) => {
+        if (cancelled) return;
+        setInvitePreview(data);
+        if (data.full_name) setFullName((prev) => prev || data.full_name);
+      })
+      .catch(() => {
+        if (!cancelled) setInvitePreview(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [tokenFromUrl, token]);
+
   const title = mode === "activate" ? "Activar cuenta" : "Ingresar";
 
   const submit = async (e: React.FormEvent) => {
@@ -282,6 +310,10 @@ function AuthPage() {
         const dest = destAfterAuth(data.role, data.profile_complete, undefined, data.needs_pet);
         setSplashTo(dest);
         scheduleAuthRedirect(dest);
+        return;
+      }
+      if (!password.trim()) {
+        toast.message("Uníte con Google o escribí una contraseña de al menos 8 caracteres.");
         return;
       }
       const data = await activateAccount(token, password, fullName || undefined);
@@ -297,6 +329,12 @@ function AuthPage() {
   };
 
   const googleLoginUrl = `${getApiBase()}/auth/google/login/start`;
+  const canJoinGoogle = mode === "activate" && !!invitePreview?.google_ok;
+  const googleStartUrl =
+    canJoinGoogle && token.trim()
+      ? `${googleLoginUrl}?invite=${encodeURIComponent(token.trim())}`
+      : googleLoginUrl;
+  const showGoogle = mode !== "activate" || canJoinGoogle;
 
   return (
     <div className="spa-canvas flex min-h-screen items-center justify-center bg-background px-4 py-12">
@@ -321,26 +359,36 @@ function AuthPage() {
               Panel · Spa Kira
             </p>
 
-            {mode !== "activate" ? (
+            {showGoogle ? (
               <div className="mt-6 space-y-3">
                 <Button
                   type="button"
                   variant="outline"
                   className="h-12 w-full rounded-xl border-border bg-card text-base font-medium text-foreground hover:bg-secondary/50"
-                  disabled={!googleReady || loading || ticketBusy}
+                  disabled={!googleReady || loading || ticketBusy || (canJoinGoogle && !token.trim())}
                   onClick={() => {
-                    window.location.href = googleLoginUrl;
+                    window.location.href = googleStartUrl;
                   }}
                 >
                   <GoogleGIcon className="mr-2 h-5 w-5" />
-                  Continuar con Google
+                  {canJoinGoogle ? "Unirme con Google" : "Continuar con Google"}
                 </Button>
                 {!googleReady && googleHint ? (
                   <p className="text-center text-[11px] text-muted-foreground">{googleHint}</p>
                 ) : null}
                 <p className="pt-1 text-center text-xs text-muted-foreground">
-                  Clientes nuevos: Google crea la cuenta. Después te pedimos cédula y tu mascota.
-                  Staff e invitados: correo y contraseña.
+                  {canJoinGoogle ? (
+                    <>
+                      Usá el mismo correo de la invitación
+                      {invitePreview?.email ? ` (${invitePreview.email})` : ""}. Google trae tu
+                      nombre; después completamos cédula y mascota si faltan.
+                    </>
+                  ) : (
+                    <>
+                      Clientes nuevos: Google crea la cuenta. Después te pedimos cédula y tu mascota.
+                      Staff: correo y contraseña.
+                    </>
+                  )}
                 </p>
               </div>
             ) : null}
@@ -352,6 +400,7 @@ function AuthPage() {
                   <Input
                     id="token"
                     required
+                    readOnly={!!tokenFromUrl}
                     value={token}
                     onChange={(e) => setActToken(e.target.value)}
                     placeholder="Pegá el token del correo / log"
@@ -385,16 +434,23 @@ function AuthPage() {
                     placeholder="Tu nombre"
                     className="h-12 rounded-xl"
                   />
+                  {canJoinGoogle ? (
+                    <p className="text-[11px] text-muted-foreground">
+                      Si unís con Google, el nombre de esa cuenta pisa este campo.
+                    </p>
+                  ) : null}
                 </div>
               ) : null}
 
               <div className="space-y-2">
-                <Label htmlFor="password">Contraseña</Label>
+                <Label htmlFor="password">
+                  {canJoinGoogle ? "Contraseña (si no usás Google)" : "Contraseña"}
+                </Label>
                 <Input
                   id="password"
                   type="password"
-                  required
-                  minLength={mode === "activate" ? 8 : 1}
+                  required={!canJoinGoogle}
+                  minLength={canJoinGoogle ? undefined : mode === "activate" ? 8 : 1}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="••••••••"
