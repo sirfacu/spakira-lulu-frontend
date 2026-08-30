@@ -22,6 +22,7 @@ export const PANEL_MODULES = [
   { id: "personal", path: "/panel/personal", label: "Staff" },
   { id: "precios", path: "/panel/precios", label: "Servicios" },
   { id: "reportes", path: "/panel/reportes", label: "Reportes" },
+  { id: "promociones", path: "/panel/promociones", label: "Promociones" },
   { id: "configuracion", path: "/panel/configuracion", label: "Configuración" },
   { id: "permisos", path: "/panel/permisos", label: "Roles y permisos" },
 ] as const;

@@ -11,6 +11,7 @@ import {
   UserCog,
   Tags,
   BarChart3,
+  Percent,
   Settings,
   Menu,
   X,
@@ -36,6 +37,7 @@ const NAV = [
   { to: "/panel/personal", label: "Staff", icon: UserCog },
   { to: "/panel/precios", label: "Servicios", icon: Tags },
   { to: "/panel/reportes", label: "Reportes", icon: BarChart3 },
+  { to: "/panel/promociones", label: "Promociones", icon: Percent },
   { to: "/panel/configuracion", label: "Configuración", icon: Settings },
   { to: "/panel/permisos", label: "Roles y permisos", icon: Shield },
 ] as const;

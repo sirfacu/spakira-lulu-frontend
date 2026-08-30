@@ -24,6 +24,7 @@ import { Route as AuthenticatedPanelMascotasRouteImport } from './routes/_authen
 import { Route as AuthenticatedPanelPermisosRouteImport } from './routes/_authenticated/panel.permisos'
 import { Route as AuthenticatedPanelPersonalRouteImport } from './routes/_authenticated/panel.personal'
 import { Route as AuthenticatedPanelPreciosRouteImport } from './routes/_authenticated/panel.precios'
+import { Route as AuthenticatedPanelPromocionesRouteImport } from './routes/_authenticated/panel.promociones'
 import { Route as AuthenticatedPanelPropietariosRouteImport } from './routes/_authenticated/panel.propietarios'
 import { Route as AuthenticatedPanelRazasRouteImport } from './routes/_authenticated/panel.razas'
 import { Route as AuthenticatedPanelReportesRouteImport } from './routes/_authenticated/panel.reportes'
@@ -111,6 +112,12 @@ const AuthenticatedPanelPreciosRoute =
     path: '/panel/precios',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
+const AuthenticatedPanelPromocionesRoute =
+  AuthenticatedPanelPromocionesRouteImport.update({
+    id: '/panel/promociones',
+    path: '/panel/promociones',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedPanelPropietariosRoute =
   AuthenticatedPanelPropietariosRouteImport.update({
     id: '/panel/propietarios',
@@ -149,6 +156,7 @@ export interface FileRoutesByFullPath {
   '/panel/permisos': typeof AuthenticatedPanelPermisosRoute
   '/panel/personal': typeof AuthenticatedPanelPersonalRoute
   '/panel/precios': typeof AuthenticatedPanelPreciosRoute
+  '/panel/promociones': typeof AuthenticatedPanelPromocionesRoute
   '/panel/propietarios': typeof AuthenticatedPanelPropietariosRoute
   '/panel/razas': typeof AuthenticatedPanelRazasRoute
   '/panel/reportes': typeof AuthenticatedPanelReportesRoute
@@ -169,6 +177,7 @@ export interface FileRoutesByTo {
   '/panel/permisos': typeof AuthenticatedPanelPermisosRoute
   '/panel/personal': typeof AuthenticatedPanelPersonalRoute
   '/panel/precios': typeof AuthenticatedPanelPreciosRoute
+  '/panel/promociones': typeof AuthenticatedPanelPromocionesRoute
   '/panel/propietarios': typeof AuthenticatedPanelPropietariosRoute
   '/panel/razas': typeof AuthenticatedPanelRazasRoute
   '/panel/reportes': typeof AuthenticatedPanelReportesRoute
@@ -191,6 +200,7 @@ export interface FileRoutesById {
   '/_authenticated/panel/permisos': typeof AuthenticatedPanelPermisosRoute
   '/_authenticated/panel/personal': typeof AuthenticatedPanelPersonalRoute
   '/_authenticated/panel/precios': typeof AuthenticatedPanelPreciosRoute
+  '/_authenticated/panel/promociones': typeof AuthenticatedPanelPromocionesRoute
   '/_authenticated/panel/propietarios': typeof AuthenticatedPanelPropietariosRoute
   '/_authenticated/panel/razas': typeof AuthenticatedPanelRazasRoute
   '/_authenticated/panel/reportes': typeof AuthenticatedPanelReportesRoute
@@ -213,6 +223,7 @@ export interface FileRouteTypes {
     | '/panel/permisos'
     | '/panel/personal'
     | '/panel/precios'
+    | '/panel/promociones'
     | '/panel/propietarios'
     | '/panel/razas'
     | '/panel/reportes'
@@ -233,6 +244,7 @@ export interface FileRouteTypes {
     | '/panel/permisos'
     | '/panel/personal'
     | '/panel/precios'
+    | '/panel/promociones'
     | '/panel/propietarios'
     | '/panel/razas'
     | '/panel/reportes'
@@ -254,6 +266,7 @@ export interface FileRouteTypes {
     | '/_authenticated/panel/permisos'
     | '/_authenticated/panel/personal'
     | '/_authenticated/panel/precios'
+    | '/_authenticated/panel/promociones'
     | '/_authenticated/panel/propietarios'
     | '/_authenticated/panel/razas'
     | '/_authenticated/panel/reportes'
@@ -377,6 +390,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedPanelPreciosRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/panel/promociones': {
+      id: '/_authenticated/panel/promociones'
+      path: '/panel/promociones'
+      fullPath: '/panel/promociones'
+      preLoaderRoute: typeof AuthenticatedPanelPromocionesRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/panel/propietarios': {
       id: '/_authenticated/panel/propietarios'
       path: '/panel/propietarios'
@@ -417,6 +437,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedPanelPermisosRoute: typeof AuthenticatedPanelPermisosRoute
   AuthenticatedPanelPersonalRoute: typeof AuthenticatedPanelPersonalRoute
   AuthenticatedPanelPreciosRoute: typeof AuthenticatedPanelPreciosRoute
+  AuthenticatedPanelPromocionesRoute: typeof AuthenticatedPanelPromocionesRoute
   AuthenticatedPanelPropietariosRoute: typeof AuthenticatedPanelPropietariosRoute
   AuthenticatedPanelRazasRoute: typeof AuthenticatedPanelRazasRoute
   AuthenticatedPanelReportesRoute: typeof AuthenticatedPanelReportesRoute
@@ -433,6 +454,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedPanelPermisosRoute: AuthenticatedPanelPermisosRoute,
   AuthenticatedPanelPersonalRoute: AuthenticatedPanelPersonalRoute,
   AuthenticatedPanelPreciosRoute: AuthenticatedPanelPreciosRoute,
+  AuthenticatedPanelPromocionesRoute: AuthenticatedPanelPromocionesRoute,
   AuthenticatedPanelPropietariosRoute: AuthenticatedPanelPropietariosRoute,
   AuthenticatedPanelRazasRoute: AuthenticatedPanelRazasRoute,
   AuthenticatedPanelReportesRoute: AuthenticatedPanelReportesRoute,

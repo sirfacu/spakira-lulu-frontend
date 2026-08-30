@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
+import { LoyaltyCard } from "@/components/loyalty-card";
 import {
   fetchMyOwner,
   updateMyOwner,
@@ -111,6 +112,8 @@ export function UserSelfProfile() {
           Guardar datos
         </Button>
       </SectionCard>
+
+      {me.data?.id ? <LoyaltyCard customerId={me.data.id} self /> : null}
 
       <SectionCard title="Notificaciones por correo">
         <p className="mb-4 text-sm text-muted-foreground">
