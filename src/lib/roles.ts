@@ -18,7 +18,7 @@ export const PANEL_MODULES = [
   { id: "ventas", path: "/panel/ventas", label: "Ventas" },
   { id: "inventario", path: "/panel/inventario", label: "Inventario" },
   { id: "mascotas", path: "/panel/mascotas", label: "Mascotas" },
-  { id: "propietarios", path: "/panel/propietarios", label: "Humanos" },
+  { id: "propietarios", path: "/panel/propietarios", label: "Usuarios" },
   { id: "personal", path: "/panel/personal", label: "Staff" },
   { id: "precios", path: "/panel/precios", label: "Servicios" },
   { id: "reportes", path: "/panel/reportes", label: "Reportes" },
@@ -40,7 +40,7 @@ export const ROLE_TABS: Record<AppRole, readonly string[]> = {
     "/panel/precios",
     "/panel/inventario",
   ],
-  cliente: ["/panel/agenda", "/panel/mascotas", "/panel/precios"],
+  cliente: ["/panel/agenda", "/panel/mascotas", "/panel/precios", "/panel/propietarios"],
 } as const;
 
 export function normalizeRole(role: string | undefined | null): AppRole {

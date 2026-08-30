@@ -23,12 +23,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { PaymentMethodFields } from "@/components/payment-method-fields";
 import {
   salesQuery,
   ownersQuery,
   staffQuery,
   panelServicesQuery,
   inventoryShopQuery,
+  paymentMethodsQuery,
   createSale,
   getMyStaff,
   type InventoryItem,
@@ -75,6 +77,7 @@ function Ventas() {
   const staff = useQuery({ ...staffQuery, enabled: perms.isAdmin });
   const services = useQuery(panelServicesQuery);
   const shop = useQuery(inventoryShopQuery);
+  const payMethods = useQuery(paymentMethodsQuery);
   const myStaff = useQuery({
     queryKey: ["staff-me"],
     queryFn: getMyStaff,
@@ -84,7 +87,8 @@ function Ventas() {
   const [ownerId, setOwnerId] = useState("");
   const [staffId, setStaffId] = useState("");
   const [serviceId, setServiceId] = useState("");
-  const [method, setMethod] = useState("efectivo");
+  const [method, setMethod] = useState("");
+  const [evidenceUrl, setEvidenceUrl] = useState("");
   const [productId, setProductId] = useState("");
   const [cart, setCart] = useState<CartLine[]>([]);
 
@@ -139,6 +143,7 @@ function Ventas() {
         owner_id: ownerId || null,
         staff_id: staffId || null,
         payment_method: method,
+        ...(evidenceUrl ? { payment_evidence_url: evidenceUrl } : {}),
         service_id: serviceId || null,
         lines: cart.map((l) => ({ inventory_item_id: l.id, quantity: l.quantity })),
       }),
@@ -148,6 +153,7 @@ function Ventas() {
       toast.success("Venta registrada");
       setServiceId("");
       setCart([]);
+      setEvidenceUrl("");
     },
     onError: (e) => toast.error(e instanceof Error ? e.message : "Error"),
   });
@@ -172,7 +178,12 @@ function Ventas() {
     };
   });
 
-  const canSubmit = (!!serviceId || cart.length > 0) && !create.isPending;
+  const selectedPay = (payMethods.data ?? []).find((m) => m.code === method);
+  const canSubmit =
+    (!!serviceId || cart.length > 0) &&
+    !!method &&
+    (!selectedPay?.require_evidence || !!evidenceUrl) &&
+    !create.isPending;
 
   return (
     <AppShell
@@ -261,18 +272,16 @@ function Ventas() {
                   ))}
                 </SelectContent>
               </Select>
-              <Select value={method} onValueChange={setMethod}>
-                <SelectTrigger className="h-12 rounded-xl">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {["efectivo", "tarjeta", "transferencia"].map((m) => (
-                    <SelectItem key={m} value={m} className="capitalize">
-                      {m}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+            </div>
+
+            <div className="mt-4">
+              <PaymentMethodFields
+                methods={payMethods.data ?? []}
+                methodCode={method}
+                onMethodChange={setMethod}
+                evidenceUrl={evidenceUrl}
+                onEvidenceUrl={setEvidenceUrl}
+              />
             </div>
 
             <div className="mt-4">
@@ -407,7 +416,9 @@ function Ventas() {
                             {s.owners?.full_name ?? "—"}
                           </td>
                           <td className="py-3 text-muted-foreground">{s.staff?.full_name ?? "—"}</td>
-                          <td className="py-3 capitalize text-muted-foreground">{s.payment_method}</td>
+                          <td className="py-3 text-muted-foreground">
+                            {s.payment_method_label || s.payment_method}
+                          </td>
                           <td className="py-3 text-right font-semibold text-accent">{cop(s.total)}</td>
                         </tr>
                       ))}

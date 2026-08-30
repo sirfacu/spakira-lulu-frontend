@@ -634,7 +634,7 @@ function Personal() {
             {editing ? "Editar Staff" : "Nuevo Staff"}
           </h2>
           <p className="mt-1 text-xs text-muted-foreground">
-            Es la misma persona que en Configuración → Usuarios (rol Staff). El correo es el login.
+            Es la misma persona que en Usuarios → Cuentas de acceso (rol Staff). El correo es el login.
           </p>
           <div className="mt-4 grid gap-3 sm:grid-cols-2">
             {(

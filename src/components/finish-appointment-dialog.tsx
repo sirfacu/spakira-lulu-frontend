@@ -5,9 +5,10 @@ import { Minus, Plus, Search, Trash2, FileText, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { completeAppointment, listAppointmentExtras, inventoryShopQuery, type Appointment } from "@/lib/spa-queries";
+import { completeAppointment, listAppointmentExtras, inventoryShopQuery, paymentMethodsQuery, type Appointment } from "@/lib/spa-queries";
 import { ApiError } from "@/lib/api";
 import { cop, time } from "@/lib/format";
+import { PaymentMethodFields } from "@/components/payment-method-fields";
 
 type CatalogItem = {
   id: string;
@@ -43,9 +44,12 @@ export function FinishAppointmentDialog({ appointment, open, onOpenChange, onDon
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [customPrice, setCustomPrice] = useState("");
   const [saving, setSaving] = useState(false);
+  const [paymentMethod, setPaymentMethod] = useState("");
+  const [evidenceUrl, setEvidenceUrl] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
 
   const shop = useQuery({ ...inventoryShopQuery, enabled: open });
+  const payMethods = useQuery({ ...paymentMethodsQuery, enabled: open });
   const catalog = useMemo(() => {
     return (shop.data ?? []).map((i) => ({
       id: i.id,
@@ -66,6 +70,8 @@ export function FinishAppointmentDialog({ appointment, open, onOpenChange, onDon
     setQuery("");
     setConfirmOpen(false);
     setCustomPrice("");
+    setPaymentMethod("");
+    setEvidenceUrl("");
     let cancelled = false;
     (async () => {
       try {
@@ -164,6 +170,15 @@ export function FinishAppointmentDialog({ appointment, open, onOpenChange, onDon
         return;
       }
     }
+    if (!paymentMethod) {
+      toast.error("Indicá el medio de pago");
+      return;
+    }
+    const selected = (payMethods.data ?? []).find((m) => m.code === paymentMethod);
+    if (selected?.require_evidence && !evidenceUrl) {
+      toast.error(`${selected.label} requiere foto de evidencia del pago`);
+      return;
+    }
     setConfirmOpen(true);
   };
 
@@ -179,6 +194,8 @@ export function FinishAppointmentDialog({ appointment, open, onOpenChange, onDon
           quantity: l.quantity,
           unit_price: l.unit_price,
         })),
+        payment_method: paymentMethod,
+        ...(evidenceUrl ? { payment_evidence_url: evidenceUrl } : {}),
       });
       const emailed = (res.email_notifications ?? []).filter((n) => n.sent).length;
       const targets = (res.email_notifications ?? []).filter((n) => n.email).length;
@@ -264,6 +281,14 @@ export function FinishAppointmentDialog({ appointment, open, onOpenChange, onDon
                 onChange={(e) => setServicePrice(e.target.value)}
               />
             </label>
+
+            <PaymentMethodFields
+              methods={payMethods.data ?? []}
+              methodCode={paymentMethod}
+              onMethodChange={setPaymentMethod}
+              evidenceUrl={evidenceUrl}
+              onEvidenceUrl={setEvidenceUrl}
+            />
 
             <div>
               <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
@@ -444,6 +469,12 @@ export function FinishAppointmentDialog({ appointment, open, onOpenChange, onDon
                 <span>{cop(l.unit_price * l.quantity)}</span>
               </li>
             ))}
+            <li className="flex justify-between gap-2 pt-1 text-muted-foreground">
+              <span>Medio de pago</span>
+              <span className="font-medium text-foreground">
+                {(payMethods.data ?? []).find((m) => m.code === paymentMethod)?.label ?? paymentMethod}
+              </span>
+            </li>
           </ul>
           <div className="mt-5 flex gap-2">
             <Button
