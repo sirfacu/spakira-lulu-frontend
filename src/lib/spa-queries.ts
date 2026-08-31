@@ -1605,6 +1605,7 @@ export async function issueLoyaltyReward(input: {
   discount_value: number;
   free_service_id?: string | null;
   valid_days?: number;
+  applies_to?: "services" | "store" | "both";
 }) {
   return api("/loyalty/rewards", { method: "POST", body: input });
 }
