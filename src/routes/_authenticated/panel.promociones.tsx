@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Tag, Ticket, Percent, Gift } from "lucide-react";
 import { createFileRoute } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -12,7 +12,6 @@ import { Switch } from "@/components/ui/switch";
 import { requirePathAccess } from "@/lib/route-access";
 import { cop, shortDate } from "@/lib/format";
 import {
-  couponsQuery,
   createPromotion,
   fetchPromoNotify,
   loyaltyProgramQuery,
@@ -35,12 +34,13 @@ export const Route = createFileRoute("/_authenticated/panel/promociones")({
 
 type Tab =
   | "resumen"
-  | "cupones"
   | "promos"
   | "fidelizacion"
   | "beneficios"
   | "notificaciones"
   | "historial";
+
+type CampaignFilter = "all" | "coupon" | "automatic";
 
 const DAYS = [
   { n: 1, l: "Lun" },
@@ -58,29 +58,51 @@ function statusLabel(s: string) {
   );
 }
 
+function campaignTypeLabel(p: Promotion) {
+  return p.requires_code || p.kind === "coupon" ? "Cupón" : "Automática";
+}
+
 function PromocionesPage() {
   const qc = useQueryClient();
   const [tab, setTab] = useState<Tab>("resumen");
+  const [campaignFilter, setCampaignFilter] = useState<CampaignFilter>("all");
   const summary = useQuery(promotionsSummaryQuery);
   const promos = useQuery(promotionsQuery);
-  const coupons = useQuery(couponsQuery);
   const usage = useQuery({ ...promotionUsageQuery, enabled: tab === "historial" });
   const loyalty = useQuery({ ...loyaltyProgramQuery, enabled: tab === "fidelizacion" || tab === "beneficios" });
   const notify = useQuery({ queryKey: ["promo-notify"], queryFn: fetchPromoNotify, enabled: tab === "notificaciones" });
   const services = useQuery(panelServicesQuery);
 
+  const filteredPromos = useMemo(() => {
+    const rows = promos.data ?? [];
+    if (campaignFilter === "coupon") return rows.filter((p) => p.requires_code);
+    if (campaignFilter === "automatic") return rows.filter((p) => !p.requires_code);
+    return rows;
+  }, [promos.data, campaignFilter]);
+
   const tabs: { id: Tab; label: string }[] = [
     { id: "resumen", label: "Resumen" },
-    { id: "cupones", label: "Cupones" },
-    { id: "promos", label: "Promociones" },
+    { id: "promos", label: "Campañas" },
     { id: "fidelizacion", label: "Fidelización" },
     { id: "beneficios", label: "Beneficios" },
     { id: "notificaciones", label: "Notificaciones" },
     { id: "historial", label: "Historial" },
   ];
 
+  const goCampaigns = (filter: CampaignFilter = "all") => {
+    setCampaignFilter(filter);
+    setTab("promos");
+  };
+
+  const toggleStatus = (id: string, active: boolean) =>
+    patchPromotion(id, { status: active ? "active" : "paused" }).then(() => {
+      void qc.invalidateQueries({ queryKey: ["promotions"] });
+      void qc.invalidateQueries({ queryKey: ["promotions-summary"] });
+      toast.success(active ? "Campaña activada" : "Campaña pausada");
+    });
+
   return (
-    <AppShell title="Promociones" subtitle="Cupones, campañas y fidelización">
+    <AppShell title="Promociones" subtitle="Campañas, fidelización y beneficios">
       <div className="mb-5 flex flex-wrap gap-2">
         {tabs.map((t) => (
           <button
@@ -99,17 +121,17 @@ function PromocionesPage() {
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <StatCard
               icon={Tag}
-              label="Promociones activas"
+              label="Campañas activas"
               value={String(summary.data?.active ?? "—")}
               hint="Ver campañas"
-              onClick={() => setTab("promos")}
+              onClick={() => goCampaigns("all")}
             />
             <StatCard
               icon={Ticket}
-              label="Cupones"
+              label="Cupones con código"
               value={String(summary.data?.coupons ?? "—")}
-              hint="Ver cupones"
-              onClick={() => setTab("cupones")}
+              hint="Filtrar cupones"
+              onClick={() => goCampaigns("coupon")}
             />
             <StatCard
               icon={Percent}
@@ -130,21 +152,21 @@ function PromocionesPage() {
               label="Próximas"
               value={String(summary.data?.upcoming ?? "—")}
               hint="Ver campañas"
-              onClick={() => setTab("promos")}
+              onClick={() => goCampaigns("all")}
             />
             <StatCard
               icon={Ticket}
               label="Vencidas"
               value={String(summary.data?.expired ?? "—")}
               hint="Ver campañas"
-              onClick={() => setTab("promos")}
+              onClick={() => goCampaigns("all")}
             />
             <StatCard
               icon={Percent}
               label="Más usada"
               value={summary.data?.top_promotion?.name || "—"}
               hint="Ver campañas"
-              onClick={() => setTab("promos")}
+              onClick={() => goCampaigns("all")}
             />
             <StatCard
               icon={Gift}
@@ -155,8 +177,8 @@ function PromocionesPage() {
             />
           </div>
           <div className="flex flex-wrap gap-2">
-            <Button className="rounded-xl" onClick={() => setTab("promos")}>
-              Nueva promoción
+            <Button className="rounded-xl" onClick={() => goCampaigns("all")}>
+              Nueva campaña
             </Button>
             <Button variant="outline" className="rounded-xl" onClick={() => setTab("fidelizacion")}>
               Niveles y reglas
@@ -168,29 +190,34 @@ function PromocionesPage() {
         </div>
       ) : null}
 
-      {tab === "cupones" ? (
-        <PromoTable
-          rows={(coupons.data ?? []).filter((p) => p.requires_code)}
-          onPause={(id, status) =>
-            patchPromotion(id, { status }).then(() => {
-              void qc.invalidateQueries({ queryKey: ["promotions"] });
-              toast.success("Actualizado");
-            })
-          }
-        />
-      ) : null}
-
       {tab === "promos" ? (
         <div className="grid gap-6 lg:grid-cols-[1fr_320px]">
-          <PromoTable
-            rows={promos.data ?? []}
-            onPause={(id, status) =>
-              patchPromotion(id, { status }).then(() => {
-                void qc.invalidateQueries({ queryKey: ["promotions"] });
-                toast.success("Actualizado");
-              })
-            }
-          />
+          <div className="space-y-4">
+            <CampaignIntro />
+            <div className="flex flex-wrap gap-2">
+              {(
+                [
+                  { id: "all", label: "Todas" },
+                  { id: "coupon", label: "Con código" },
+                  { id: "automatic", label: "Automáticas" },
+                ] as const
+              ).map((f) => (
+                <button
+                  key={f.id}
+                  type="button"
+                  onClick={() => setCampaignFilter(f.id)}
+                  className={`rounded-full px-3 py-1.5 text-xs font-semibold uppercase tracking-wide ${
+                    campaignFilter === f.id
+                      ? "bg-primary text-primary-foreground shadow-sm"
+                      : "bg-secondary/80 text-muted-foreground"
+                  }`}
+                >
+                  {f.label}
+                </button>
+              ))}
+            </div>
+            <PromoTable rows={filteredPromos} onToggleStatus={toggleStatus} />
+          </div>
           <NewPromoForm
             services={services.data ?? []}
             onCreated={() => {
@@ -267,61 +294,114 @@ function PromocionesPage() {
   );
 }
 
+function CampaignIntro() {
+  return (
+    <div className="rounded-2xl border border-primary/15 bg-gradient-to-br from-primary/5 via-background to-secondary/30 p-4 sm:p-5">
+      <h2 className="font-display text-lg font-bold text-primary">¿Cupón o automática?</h2>
+      <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+        Todas las campañas viven acá. Si llevan <strong>código</strong>, el cliente o el mostrador lo escriben al
+        cobrar. Si son <strong>automáticas</strong>, el sistema las aplica solas cuando se cumplen las reglas (día,
+        servicio, mascotas, etc.).
+      </p>
+      <div className="mt-4 grid gap-3 sm:grid-cols-2">
+        <div className="rounded-xl border border-border/80 bg-background/80 p-3 text-sm">
+          <p className="font-semibold text-primary">Ejemplo cupón</p>
+          <p className="mt-1 text-muted-foreground">
+            Código <span className="font-mono text-xs">BIENVENIDA</span> → $10.000 de descuento en la primera compra
+            (mínimo $40.000).
+          </p>
+        </div>
+        <div className="rounded-xl border border-border/80 bg-background/80 p-3 text-sm">
+          <p className="font-semibold text-primary">Ejemplo automática</p>
+          <p className="mt-1 text-muted-foreground">
+            <strong>Martes de Baño</strong> → 20% en baños los martes, sin escribir nada.
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function PromoTable({
   rows,
-  onPause,
+  onToggleStatus,
 }: {
   rows: Promotion[];
-  onPause: (id: string, status: string) => void;
+  onToggleStatus: (id: string, active: boolean) => Promise<void>;
 }) {
+  const [busyId, setBusyId] = useState<string | null>(null);
+
   return (
     <SectionCard title="Listado">
-      <div className="overflow-x-auto">
-        <table className="w-full min-w-[640px] text-left text-sm">
-          <thead className="text-xs uppercase text-muted-foreground">
-            <tr>
-              <th className="py-2">Código</th>
-              <th>Promoción</th>
-              <th>Descuento</th>
-              <th>Vigencia</th>
-              <th>Usos</th>
-              <th>Estado</th>
-              <th />
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((p) => (
-              <tr key={p.id} className="border-t border-border">
-                <td className="py-2 font-mono text-xs">{p.code || "—"}</td>
-                <td>{p.name}</td>
-                <td>
-                  {p.discount_type === "percent" ? `${p.discount_value}%` : cop(p.discount_value)}
-                </td>
-                <td className="text-xs text-muted-foreground">
-                  {p.starts_at ? shortDate(p.starts_at) : "—"} → {p.ends_at ? shortDate(p.ends_at) : "—"}
-                </td>
-                <td>
-                  {p.usage_count ?? 0}
-                  {p.max_uses != null ? ` / ${p.max_uses}` : ""}
-                </td>
-                <td>{statusLabel(p.status)}</td>
-                <td>
-                  {p.status === "active" ? (
-                    <Button variant="ghost" size="sm" onClick={() => onPause(p.id, "paused")}>
-                      Pausar
-                    </Button>
-                  ) : p.status === "paused" ? (
-                    <Button variant="ghost" size="sm" onClick={() => onPause(p.id, "active")}>
-                      Activar
-                    </Button>
+      {!rows.length ? <Empty message="No hay campañas con este filtro." /> : null}
+      <ul className="space-y-3">
+        {rows.map((p) => {
+          const isActive = p.status === "active";
+          const canToggle = p.status === "active" || p.status === "paused";
+          return (
+            <li
+              key={p.id}
+              className="rounded-2xl border border-border/90 bg-card p-4 shadow-sm transition-shadow hover:shadow-md"
+            >
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="min-w-0 flex-1 space-y-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span
+                      className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${
+                        p.requires_code
+                          ? "bg-primary/15 text-primary"
+                          : "bg-secondary text-muted-foreground"
+                      }`}
+                    >
+                      {campaignTypeLabel(p)}
+                    </span>
+                    {p.code ? (
+                      <span className="rounded-md bg-muted px-2 py-0.5 font-mono text-xs">{p.code}</span>
+                    ) : null}
+                    <span className="text-xs text-muted-foreground">{statusLabel(p.status)}</span>
+                  </div>
+                  <p className="font-medium text-foreground">{p.name}</p>
+                  {p.description ? (
+                    <p className="text-sm text-muted-foreground">{p.description}</p>
                   ) : null}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        {!rows.length ? <Empty message="No hay promociones." /> : null}
-      </div>
+                  <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                    <span>
+                      Descuento:{" "}
+                      {p.discount_type === "percent" ? `${p.discount_value}%` : cop(p.discount_value)}
+                    </span>
+                    <span>
+                      Vigencia: {p.starts_at ? shortDate(p.starts_at) : "—"} →{" "}
+                      {p.ends_at ? shortDate(p.ends_at) : "—"}
+                    </span>
+                    <span>
+                      Usos: {p.usage_count ?? 0}
+                      {p.max_uses != null ? ` / ${p.max_uses}` : ""}
+                    </span>
+                  </div>
+                </div>
+                {canToggle ? (
+                  <label className="flex shrink-0 items-center gap-2 rounded-xl bg-secondary/50 px-3 py-2">
+                    <span className="text-xs font-medium text-muted-foreground">
+                      {isActive ? "Activa" : "Pausada"}
+                    </span>
+                    <Switch
+                      checked={isActive}
+                      disabled={busyId === p.id}
+                      onCheckedChange={(checked) => {
+                        setBusyId(p.id);
+                        onToggleStatus(p.id, checked)
+                          .catch((e) => toast.error(e instanceof Error ? e.message : "Error"))
+                          .finally(() => setBusyId(null));
+                      }}
+                      aria-label={`Activar ${p.name}`}
+                    />
+                  </label>
+                ) : null}
+              </div>
+            </li>
+          );
+        })}
+      </ul>
     </SectionCard>
   );
 }
@@ -367,7 +447,7 @@ function NewPromoForm({
         service_ids: svc,
       } as never),
     onSuccess: () => {
-      toast.success("Promoción creada");
+      toast.success("Campaña creada");
       setName("");
       setCode("");
       onCreated();
@@ -376,14 +456,17 @@ function NewPromoForm({
   });
 
   return (
-    <SectionCard title="Nueva promoción">
+    <SectionCard title="Nueva campaña">
+      <p className="mb-3 text-sm text-muted-foreground">
+        Activá <strong>Requiere código</strong> para un cupón. Dejalo apagado para una promoción automática.
+      </p>
       <div className="space-y-3 text-sm">
         <div>
           <Label>Nombre</Label>
           <Input className="mt-1 rounded-xl" value={name} onChange={(e) => setName(e.target.value)} />
         </div>
-        <label className="flex items-center justify-between">
-          <span>Requiere código</span>
+        <label className="flex items-center justify-between rounded-xl bg-secondary/40 px-3 py-2">
+          <span>Requiere código (cupón)</span>
           <Switch checked={asCoupon} onCheckedChange={setAsCoupon} />
         </label>
         {asCoupon ? (

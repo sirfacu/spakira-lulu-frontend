@@ -46,6 +46,15 @@ type Reward = {
   label: string;
   customer_name: string;
   expires_at?: string | null;
+  applies_to?: string;
+  discount_type?: string;
+  discount_value?: number;
+};
+
+const APPLIES_TO_LABEL: Record<string, string> = {
+  services: "Solo servicios",
+  store: "Solo vitrina",
+  both: "Servicios y vitrina",
 };
 
 function asTier(t: Record<string, unknown>): Tier {
@@ -428,6 +437,7 @@ export function LoyaltyRewardsPanel({ rewards }: { rewards: Record<string, unkno
   const [dval, setDval] = useState("10");
   const [days, setDays] = useState("30");
   const [svc, setSvc] = useState("");
+  const [appliesTo, setAppliesTo] = useState("both");
 
   const issue = useMutation({
     mutationFn: () =>
@@ -438,6 +448,7 @@ export function LoyaltyRewardsPanel({ rewards }: { rewards: Record<string, unkno
         discount_value: Number(dval) || 0,
         free_service_id: svc || null,
         valid_days: Number(days) || 30,
+        applies_to: appliesTo,
       }),
     onSuccess: async () => {
       toast.success("Beneficio emitido");
@@ -466,37 +477,61 @@ export function LoyaltyRewardsPanel({ rewards }: { rewards: Record<string, unkno
     label: String(r.label),
     customer_name: String(r.customer_name || "—"),
     expires_at: r.expires_at ? String(r.expires_at) : null,
+    applies_to: r.applies_to ? String(r.applies_to) : "both",
+    discount_type: r.discount_type ? String(r.discount_type) : undefined,
+    discount_value: r.discount_value != null ? Number(r.discount_value) : undefined,
   })) as Reward[];
 
   const clientes = (owners.data ?? []).filter((o) => o.system_key !== "mostrador");
 
   return (
     <div className="grid gap-6 lg:grid-cols-[1fr_320px]">
-      <SectionCard title="Beneficios emitidos">
-        {list.length ? (
-          <ul className="space-y-2 text-sm">
-            {list.map((r) => (
-              <li key={r.id} className="flex items-center justify-between gap-2 rounded-xl border border-border p-3">
-                <span>
-                  {r.customer_name} · {r.label}
-                  <span className="ml-2 text-xs text-muted-foreground">{statusLabel(r.status)}</span>
-                </span>
-                {r.status === "available" ? (
-                  <Button variant="ghost" size="sm" onClick={() => cancel.mutate(r.id)}>
-                    Cancelar
-                  </Button>
-                ) : null}
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <Empty message="Todavía no hay beneficios emitidos." />
-        )}
-      </SectionCard>
+      <div className="space-y-4">
+        <div className="rounded-2xl border border-primary/15 bg-gradient-to-br from-primary/5 via-background to-secondary/30 p-4 sm:p-5">
+          <h2 className="font-display text-lg font-bold text-primary">Beneficios personales</h2>
+          <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+            Un beneficio es un premio <strong>para un cliente concreto</strong> (compensación, regalo manual o premio por
+            fidelización). No es un código público: el cliente lo elige al pagar en mostrador o al cerrar una cita.
+          </p>
+          <div className="mt-3 rounded-xl border border-border/80 bg-background/80 p-3 text-sm">
+            <p className="font-semibold text-primary">Ejemplo</p>
+            <p className="mt-1 text-muted-foreground">
+              Ana cumple 12 meses y 8 visitas → emitís &quot;Baño premium de regalo&quot; válido 30 días,{" "}
+              <strong>solo servicios</strong>. Si compra un collar en vitrina, ese ítem no recibe el descuento.
+            </p>
+          </div>
+        </div>
+        <SectionCard title="Beneficios emitidos">
+          {list.length ? (
+            <ul className="space-y-2 text-sm">
+              {list.map((r) => (
+                <li
+                  key={r.id}
+                  className="flex items-center justify-between gap-2 rounded-xl border border-border p-3 shadow-sm"
+                >
+                  <span>
+                    {r.customer_name} · {r.label}
+                    <span className="ml-2 text-xs text-muted-foreground">{statusLabel(r.status)}</span>
+                    <span className="ml-2 rounded-full bg-secondary px-2 py-0.5 text-[10px] font-semibold uppercase">
+                      {APPLIES_TO_LABEL[r.applies_to || "both"] || r.applies_to}
+                    </span>
+                  </span>
+                  {r.status === "available" ? (
+                    <Button variant="ghost" size="sm" onClick={() => cancel.mutate(r.id)}>
+                      Cancelar
+                    </Button>
+                  ) : null}
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <Empty message="Todavía no hay beneficios emitidos." />
+          )}
+        </SectionCard>
+      </div>
       <SectionCard title="Emitir beneficio">
         <p className="mb-3 text-sm text-muted-foreground">
-          Premio manual para un cliente (aniversario, compensación, etc.). Aparece en el cierre de
-          cita y en mostrador.
+          El alcance define sobre qué parte de la venta se calcula el descuento.
         </p>
         <div className="space-y-3 text-sm">
           <div>
@@ -551,6 +586,18 @@ export function LoyaltyRewardsPanel({ rewards }: { rewards: Record<string, unkno
               </select>
             </div>
           ) : null}
+          <div>
+            <Label>Aplica a</Label>
+            <select
+              className="mt-1 h-10 w-full rounded-xl border border-input bg-background px-2"
+              value={appliesTo}
+              onChange={(e) => setAppliesTo(e.target.value)}
+            >
+              <option value="both">Servicios y vitrina</option>
+              <option value="services">Solo servicios del spa</option>
+              <option value="store">Solo productos de vitrina</option>
+            </select>
+          </div>
           <div>
             <Label>Vigencia (días)</Label>
             <Input className="mt-1 rounded-xl" value={days} onChange={(e) => setDays(e.target.value)} />
