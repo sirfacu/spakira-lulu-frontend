@@ -8,7 +8,6 @@ import {
   Filter,
   Minus,
   Plus,
-  CalendarCheck,
   MessageCircle,
   Pencil,
   Trash2,
@@ -42,8 +41,6 @@ import {
   updateAppointmentExtra,
   deleteAppointmentExtra,
   notifyAppointmentUpdate,
-  googleIntegrationStatus,
-  startGoogleCalendarConnect,
   getMyStaff,
   listAppointmentReschedules,
   reviewAppointmentReschedule,
@@ -66,6 +63,7 @@ import {
 } from "@/lib/format";
 import { requirePathAccess } from "@/lib/route-access";
 import { editableAppointmentStatuses, permissionsFor } from "@/lib/roles";
+import { ClientAgenda } from "@/components/client-agenda";
 import { FinishAppointmentDialog } from "@/components/finish-appointment-dialog";
 import { ConfirmServicePriceDialog } from "@/components/confirm-service-price-dialog";
 import {
@@ -156,6 +154,13 @@ function petOwnerLabel(p: Pet) {
 function Agenda() {
   const { user } = useRouteContext({ from: "/_authenticated" });
   const perms = permissionsFor(user?.role);
+  if (perms.isCliente) return <ClientAgenda />;
+  return <StaffAgenda />;
+}
+
+function StaffAgenda() {
+  const { user } = useRouteContext({ from: "/_authenticated" });
+  const perms = permissionsFor(user?.role);
   const qc = useQueryClient();
   const search = useSearch({ from: "/_authenticated/panel/agenda" });
   const navigate = useNavigate();
@@ -178,12 +183,6 @@ function Agenda() {
     queryFn: getMyStaff,
     enabled: perms.isColaborador,
   });
-  const google = useQuery({
-    queryKey: ["google-status"],
-    queryFn: googleIntegrationStatus,
-    enabled: perms.canConnectGoogle,
-  });
-
   const [anchor, setAnchor] = useState(() => startOfWeek(new Date()));
   const [q, setQ] = useState("");
   const [breed, setBreed] = useState("todas");
@@ -324,7 +323,6 @@ function Agenda() {
 
   useEffect(() => {
     if (search.google === "connected") {
-      toast.success("Google Calendar conectado");
       qc.invalidateQueries({ queryKey: ["google-status"] });
     }
   }, [search.google, qc]);
@@ -636,31 +634,9 @@ function Agenda() {
           : `${rangeLabel} · tocá una ficha para gestionar`
       }
       actions={
-        <div className="flex flex-wrap items-center gap-2">
-          {perms.canConnectGoogle && google.data && !google.data.authorized ? (
-            <Button
-              variant="outline"
-              className="h-10 rounded-xl"
-              onClick={async () => {
-                try {
-                  const { url } = await startGoogleCalendarConnect();
-                  window.location.href = url;
-                } catch (err) {
-                  toast.error(err instanceof Error ? err.message : "No se pudo iniciar Google Calendar");
-                }
-              }}
-            >
-              <CalendarCheck className="mr-2 h-4 w-4" /> Conectar Google
-            </Button>
-          ) : perms.canConnectGoogle ? (
-            <span className="hidden text-xs text-muted-foreground sm:inline">
-              Google Calendar {google.data?.authorized ? "OK" : "…"}
-            </span>
-          ) : null}
-          <Button className="h-10 rounded-xl" onClick={() => openNewAppointment()}>
-            <Plus className="mr-2 h-4 w-4" /> Nueva cita
-          </Button>
-        </div>
+        <Button className="h-10 rounded-xl" onClick={() => openNewAppointment()}>
+          <Plus className="mr-2 h-4 w-4" /> Nueva cita
+        </Button>
       }
     >
       {perms.isAdmin && (pendingReschedules.data?.length ?? 0) > 0 ? (

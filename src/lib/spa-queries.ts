@@ -741,6 +741,40 @@ export async function fetchNextAppointmentSlot(opts?: {
   const qs = q.toString();
   return api<NextSlot>(`/appointments/next-slot${qs ? `?${qs}` : ""}`);
 }
+
+export type WeekSlot = {
+  hour: number;
+  label: string;
+  status: "closed" | "available" | "full";
+  capacity: number;
+  used: number;
+  remaining: number;
+  occupied_kind: "dog" | "cat" | "mixed" | null;
+};
+
+export type WeekDaySlots = {
+  date: string;
+  weekday: number;
+  label: string;
+  is_open: boolean;
+  slots: WeekSlot[];
+};
+
+export type WeekSlotsResponse = {
+  week_start: string;
+  week_end: string;
+  hours: string[];
+  days: WeekDaySlots[];
+};
+
+export function weekSlotsQuery(weekStart: string) {
+  return queryOptions({
+    queryKey: ["appointments", "week-slots", weekStart] as const,
+    queryFn: () =>
+      api<WeekSlotsResponse>(`/appointments/week-slots?week_start=${encodeURIComponent(weekStart)}`),
+  });
+}
+
 export function petHistoryQuery(petId: string) {
   return queryOptions({
     queryKey: ["pets", petId, "history"],
