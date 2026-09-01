@@ -10,6 +10,7 @@ import {
   Plus,
   Eye,
   EyeOff,
+  Trash2,
 } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
 import { StatCard, Empty, StatusPill } from "@/components/ui-kit";
@@ -18,13 +19,16 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
+import { ConfirmDialog } from "@/components/confirm-dialog";
 import {
   createInventoryCategory,
   createInventoryItem,
   createInventoryMove,
+  deleteInventoryItem,
   inventoryCategoriesQuery,
   inventoryMovementsQuery,
   inventoryQuery,
+  inventorySummaryQuery,
   patchInventoryItem,
   type InventoryItem,
 } from "@/lib/spa-queries";
@@ -41,7 +45,7 @@ import {
   kardexActor,
   kardexBalanceLabel,
 } from "@/lib/inventory-kardex";
-import { suggestedSale, unitPriceFromPack, inventoryLineValue } from "@/lib/inventory-pricing";
+import { suggestedSale, unitPriceFromPack } from "@/lib/inventory-pricing";
 import { requirePathAccess } from "@/lib/route-access";
 
 export const Route = createFileRoute("/_authenticated/panel/inventario")({
@@ -127,6 +131,7 @@ function nextExpiry(i: InventoryItem): string | null {
 function Inventario() {
   const qc = useQueryClient();
   const inv = useQuery(inventoryQuery);
+  const invSummary = useQuery(inventorySummaryQuery);
   const cats = useQuery(inventoryCategoriesQuery);
   const [q, setQ] = useState("");
   const [editing, setEditing] = useState<InventoryItem | "new" | null>(null);
@@ -138,6 +143,7 @@ function Inventario() {
   const [newCategory, setNewCategory] = useState("");
   const [showNewCategory, setShowNewCategory] = useState(false);
   const [costOpen, setCostOpen] = useState<Record<string, boolean>>({});
+  const [pendingDelete, setPendingDelete] = useState<InventoryItem | null>(null);
   const selectedId = editing && editing !== "new" ? editing.id : null;
   const moves = useQuery(inventoryMovementsQuery(selectedId));
 
@@ -157,10 +163,7 @@ function Inventario() {
     const exp = nextExpiry(i);
     return exp && Number(i.quantity) > 0 && new Date(exp) <= soon;
   });
-  const totalValue = (inv.data ?? []).reduce(
-    (a, i) => a + inventoryLineValue(i),
-    0,
-  );
+  const totalValue = invSummary.data?.total_cost_value ?? 0;
 
   const categoryOptions = useMemo(() => {
     const names = new Set((cats.data ?? []).map((c) => c.name));
@@ -255,6 +258,17 @@ function Inventario() {
       setMoveHasExpiry(false);
       setMoveExpires("");
       toast.success("Existencias actualizadas");
+    },
+    onError: (err: Error) => toast.error(err.message),
+  });
+
+  const deleteMut = useMutation({
+    mutationFn: (id: string) => deleteInventoryItem(id),
+    onSuccess: async () => {
+      await qc.invalidateQueries({ queryKey: ["inventory"] });
+      setPendingDelete(null);
+      setEditing(null);
+      toast.success("Producto eliminado");
     },
     onError: (err: Error) => toast.error(err.message),
   });
@@ -658,7 +672,22 @@ function Inventario() {
               />
             </div>
           </div>
-          <div className="mt-4 flex justify-end gap-2">
+          <div className="mt-4 flex flex-wrap justify-end gap-2">
+            {selectedId && liveItem ? (
+              <Button
+                variant="outline"
+                className="rounded-xl border-destructive/40 text-destructive hover:bg-destructive/10"
+                disabled={
+                  deleteMut.isPending ||
+                  Number(liveItem.quantity) !== 0 ||
+                  Number(liveItem.reserved ?? 0) > 0
+                }
+                onClick={() => setPendingDelete(liveItem)}
+              >
+                <Trash2 className="mr-2 h-4 w-4" />
+                Eliminar
+              </Button>
+            ) : null}
             <Button variant="outline" className="rounded-xl" onClick={() => setEditing(null)}>
               Cerrar
             </Button>
@@ -666,6 +695,16 @@ function Inventario() {
               Guardar
             </Button>
           </div>
+          {selectedId && liveItem && Number(liveItem.quantity) !== 0 ? (
+            <p className="mt-2 text-right text-xs text-muted-foreground">
+              Para eliminar, dejá las existencias en 0 desde el historial (merma o ajuste).
+            </p>
+          ) : null}
+          {selectedId && liveItem && Number(liveItem.reserved ?? 0) > 0 ? (
+            <p className="mt-1 text-right text-xs text-destructive">
+              Hay unidades reservadas en ventas; liberá reservas antes de eliminar.
+            </p>
+          ) : null}
 
           {selectedId ? (
             <div className="mt-6 border-t border-border pt-4">
@@ -748,6 +787,22 @@ function Inventario() {
           ) : null}
         </DialogContent>
       </Dialog>
+
+      <ConfirmDialog
+        open={!!pendingDelete}
+        onOpenChange={(open) => !open && setPendingDelete(null)}
+        title="Eliminar producto"
+        description={
+          pendingDelete
+            ? pendingDelete.sku
+              ? `¿Eliminar «${pendingDelete.name}» (${pendingDelete.sku})? Se borra del inventario y queda registrado en auditoría. Esta acción no se puede deshacer.`
+              : `¿Eliminar «${pendingDelete.name}»? Se borra del inventario y queda registrado en auditoría. Esta acción no se puede deshacer.`
+            : ""
+        }
+        confirmLabel="Eliminar"
+        pending={deleteMut.isPending}
+        onConfirm={() => pendingDelete && deleteMut.mutate(pendingDelete.id)}
+      />
     </AppShell>
   );
 }

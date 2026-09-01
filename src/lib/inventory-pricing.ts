@@ -29,13 +29,16 @@ export function inventoryLineValue(item: InventoryValueLine): number {
   const pack = Number(item.pack_size) || 1;
   const kind = (item.unit_kind || "unidad").toLowerCase();
 
-  // BARF, bidones ml, etc.: quantity = envases; pack_size = peso/volumen del envase
+  // BARF, bidones ml, etc.: quantity = envases; purchase_price = costo del envase
   if (kind === "g" || kind === "ml") {
     return cost * qty;
   }
-  // Gemas, bandas…: quantity = unidades sueltas; purchase_price = precio por presentación (pack_size u)
-  if (pack > 1 && kind === "unidad" && qty >= pack) {
-    return cost * (qty / pack);
+  // Gemas/bandas: qty >= pack → unidades sueltas; qty < pack → cantidad de presentaciones
+  if (pack > 1 && kind === "unidad") {
+    if (qty >= pack) {
+      return cost * (qty / pack);
+    }
+    return cost * qty;
   }
   return cost * qty;
 }

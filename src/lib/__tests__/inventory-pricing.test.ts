@@ -31,6 +31,22 @@ describe("inventory pricing", () => {
     ).toBe(25000);
     expect(
       inventoryLineValue({
+        quantity: 5,
+        purchase_price: 5000,
+        pack_size: 12,
+        unit_kind: "unidad",
+      }),
+    ).toBe(25000);
+    expect(
+      inventoryLineValue({
+        quantity: 1,
+        purchase_price: 34000,
+        pack_size: 2000,
+        unit_kind: "unidad",
+      }),
+    ).toBe(34000);
+    expect(
+      inventoryLineValue({
         quantity: 2000,
         purchase_price: 34000,
         pack_size: 2000,

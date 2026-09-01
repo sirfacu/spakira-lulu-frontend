@@ -254,6 +254,14 @@ export type InventoryItem = {
   accessory_type?: string | null;
   expires_at: string | null;
   next_expires_at?: string | null;
+  cost_value?: number;
+};
+
+export type InventorySummary = {
+  total_cost_value: number;
+  item_count: number;
+  out_of_stock: number;
+  expiring_soon: number;
 };
 
 export type InventoryCategory = {
@@ -608,6 +616,11 @@ export const appointmentsQuery = queryOptions({
 export const inventoryQuery = queryOptions({
   queryKey: ["inventory"],
   queryFn: () => api<InventoryItem[]>("/inventory"),
+});
+
+export const inventorySummaryQuery = queryOptions({
+  queryKey: ["inventory", "summary"],
+  queryFn: () => api<InventorySummary>("/inventory/summary"),
 });
 
 export const inventoryCategoriesQuery = queryOptions({
@@ -1575,6 +1588,10 @@ export async function patchInventoryItem(
   }>,
 ) {
   return api<InventoryItem>(`/inventory/${id}`, { method: "PATCH", body });
+}
+
+export async function deleteInventoryItem(id: string) {
+  await api(`/inventory/${id}`, { method: "DELETE" });
 }
 
 export async function createInventoryCategory(name: string) {
