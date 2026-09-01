@@ -3,6 +3,17 @@ import type { Service } from "@/lib/spa-queries";
 
 export const PENDING_SERVICE_PRICE_LABEL = "A confirmar en la cita";
 export const PENDING_SERVICE_PRICE_NOTE = "Se valida al llegar, según la mascota.";
+export const COUNTER_VALIDATION_LABEL = "Validar en mostrador";
+export const COUNTER_VALIDATION_NOTE =
+  "Esta raza no está en la lista tarifada; confirmamos el valor en recepción.";
+
+export type BreedPriceHint = {
+  has_profile?: boolean;
+  breed_id?: string | null;
+  breed_name?: string | null;
+  price_min?: number | null;
+  price_max?: number | null;
+};
 
 export const DEFAULT_PRICE_NOTE =
   "El rango es referencial; el valor final se confirma en recepción antes de ingresar al servicio.";
@@ -53,6 +64,47 @@ export function servicePriceNote(
   if (s.price_note?.trim()) return s.price_note.trim();
   if (isVariableServicePrice(s)) return DEFAULT_PRICE_NOTE;
   return PENDING_SERVICE_PRICE_NOTE;
+}
+
+export function breedPriceHeadline(hint: BreedPriceHint | null | undefined): string | null {
+  if (hint?.price_min == null) return null;
+  return `Desde ${cop(hint.price_min)}`;
+}
+
+export function breedPriceDetailLabel(hint: BreedPriceHint | null | undefined): string | null {
+  if (hint?.price_min == null) return null;
+  const { price_min: min, price_max: max } = hint;
+  if (max != null && max !== min) return copRange(min, max);
+  return cop(min);
+}
+
+export function breedPriceNote(hint: BreedPriceHint | null | undefined): string {
+  const breed = hint?.breed_name?.trim();
+  if (breed) {
+    return `Referencial para ${breed}; se confirma al llegar según la mascota.`;
+  }
+  return DEFAULT_PRICE_NOTE;
+}
+
+export function servicePriceHeadlineForClient(
+  s: Pick<Service, "price" | "price_min" | "price_max" | "price_pending">,
+  breedHint?: BreedPriceHint | null,
+  petSelected = false,
+): string {
+  const breed = breedPriceHeadline(breedHint);
+  if (breed) return breed;
+  if (petSelected && breedHint && !breedHint.has_profile) return COUNTER_VALIDATION_LABEL;
+  return servicePriceHeadline(s);
+}
+
+export function servicePriceNoteForClient(
+  s: Pick<Service, "price_note" | "price_min" | "price_max" | "price_pending">,
+  breedHint?: BreedPriceHint | null,
+  petSelected = false,
+): string {
+  if (breedHint?.price_min != null) return breedPriceNote(breedHint);
+  if (petSelected && breedHint && !breedHint.has_profile) return COUNTER_VALIDATION_NOTE;
+  return servicePriceNote(s);
 }
 
 export function servicePriceModeFromService(

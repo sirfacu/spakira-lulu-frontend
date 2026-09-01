@@ -41,7 +41,7 @@ import {
   kardexActor,
   kardexBalanceLabel,
 } from "@/lib/inventory-kardex";
-import { suggestedSale, unitPriceFromPack } from "@/lib/inventory-pricing";
+import { suggestedSale, unitPriceFromPack, inventoryLineValue } from "@/lib/inventory-pricing";
 import { requirePathAccess } from "@/lib/route-access";
 
 export const Route = createFileRoute("/_authenticated/panel/inventario")({
@@ -65,6 +65,10 @@ type ItemForm = {
   category: string;
   sku: string;
   barcode: string;
+  staff_description: string;
+  sell_by_shoot: boolean;
+  shoot_markup: string;
+  accessory_type: string;
   min_stock: string;
   purchase_price: string;
   sale_price: string;
@@ -80,6 +84,10 @@ const emptyForm = (): ItemForm => ({
   category: "",
   sku: "",
   barcode: "",
+  staff_description: "",
+  sell_by_shoot: false,
+  shoot_markup: "2.5",
+  accessory_type: "global",
   min_stock: "0",
   purchase_price: "0",
   sale_price: "0",
@@ -96,6 +104,10 @@ function toForm(i: InventoryItem): ItemForm {
     category: i.category ?? "",
     sku: i.sku ?? "",
     barcode: i.barcode ?? "",
+    staff_description: i.staff_description ?? "",
+    sell_by_shoot: Boolean(i.sell_by_shoot),
+    shoot_markup: String(i.shoot_markup ?? 2.5),
+    accessory_type: i.accessory_type ?? "global",
     min_stock: String(i.min_stock),
     purchase_price: String(i.purchase_price ?? 0),
     sale_price: String(i.sale_price ?? 0),
@@ -146,7 +158,7 @@ function Inventario() {
     return exp && Number(i.quantity) > 0 && new Date(exp) <= soon;
   });
   const totalValue = (inv.data ?? []).reduce(
-    (a, i) => a + Number(i.purchase_price) * i.quantity,
+    (a, i) => a + inventoryLineValue(i),
     0,
   );
 
@@ -166,6 +178,8 @@ function Inventario() {
   const isStockIn =
     moveKind === "compra" || (moveKind === "ajuste" && Number(moveDelta) > 0);
 
+  const isAccessoryCategory = form.category.trim().toLowerCase().includes("accesorio");
+
   const saveMut = useMutation({
     mutationFn: async () => {
       const payload = {
@@ -173,6 +187,10 @@ function Inventario() {
         category: form.category.trim() || null,
         sku: form.sku.trim() || null,
         barcode: form.barcode.trim() || null,
+        staff_description: form.staff_description.trim() || null,
+        sell_by_shoot: form.sell_by_shoot,
+        shoot_markup: Number(form.shoot_markup) || 2.5,
+        accessory_type: isAccessoryCategory ? form.accessory_type : null,
         min_stock: Number(form.min_stock) || 0,
         purchase_price: Number(form.purchase_price) || 0,
         margin_pct: Number(form.margin_pct) || 40,
@@ -382,6 +400,18 @@ function Inventario() {
                 onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
               />
             </div>
+            <div className="space-y-1">
+              <Label>Descripción (staff / mostrador)</Label>
+              <Input
+                className="h-11 rounded-xl"
+                placeholder="Ej. Shampoo mantos claros"
+                value={form.staff_description}
+                onChange={(e) => setForm((f) => ({ ...f, staff_description: e.target.value }))}
+              />
+              <p className="text-xs text-muted-foreground">
+                Texto corto que ven staff y mostrador al armar insumos de un servicio.
+              </p>
+            </div>
             <div className="grid gap-3 sm:grid-cols-2">
               <div className="space-y-1">
                 <Label>Categoría</Label>
@@ -425,6 +455,25 @@ function Inventario() {
                   </div>
                 ) : null}
               </div>
+              {isAccessoryCategory ? (
+                <div className="space-y-1 sm:col-span-2">
+                  <Label>Tipo de accesorio</Label>
+                  <select
+                    className="h-11 w-full rounded-xl border border-input bg-background px-3 text-sm"
+                    value={form.accessory_type}
+                    onChange={(e) =>
+                      setForm((f) => ({ ...f, accessory_type: e.target.value }))
+                    }
+                  >
+                    <option value="global">Global (todas las mascotas)</option>
+                    <option value="hembra">Solo hembras</option>
+                    <option value="macho">Solo machos</option>
+                  </select>
+                  <p className="text-xs text-muted-foreground">
+                    En agenda staff solo ve accesorios que aplican al sexo de la mascota.
+                  </p>
+                </div>
+              ) : null}
               <div className="space-y-1">
                 <Label>SKU</Label>
                 <Input
@@ -476,6 +525,43 @@ function Inventario() {
                   placeholder="bolsa, frasco, caja…"
                 />
               </div>
+            </div>
+            <div className="space-y-2 rounded-xl border border-border/80 bg-secondary/20 p-4">
+              <label className="flex cursor-pointer items-start gap-3">
+                <input
+                  type="checkbox"
+                  className="mt-1"
+                  checked={form.sell_by_shoot}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, sell_by_shoot: e.target.checked }))
+                  }
+                />
+                <span>
+                  <span className="block text-sm font-medium text-foreground">
+                    Cobro por dosis (shoot)
+                  </span>
+                  <span className="mt-1 block text-xs text-muted-foreground">
+                    En agenda, la cantidad sale del perfil de la raza (ml shampoo / acondicionador /
+                    medicado). El cobro = costo del ml usado × markup.
+                  </span>
+                </span>
+              </label>
+              {form.sell_by_shoot ? (
+                <div className="space-y-1 pl-7">
+                  <Label>Markup shoot (× costo)</Label>
+                  <Input
+                    type="number"
+                    min={0.1}
+                    step="0.1"
+                    className="h-11 max-w-[10rem] rounded-xl"
+                    value={form.shoot_markup}
+                    onChange={(e) => setForm((f) => ({ ...f, shoot_markup: e.target.value }))}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Ej. 2.0 = duplicar costo · 2.5 = costo × 2,5 · 3.0 = triplicar (útil en medicado).
+                  </p>
+                </div>
+              ) : null}
             </div>
             <div className="space-y-2">
               <Label>Uso del ítem</Label>

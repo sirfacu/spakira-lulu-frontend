@@ -182,6 +182,9 @@ export type Service = {
   publish_at?: string | null;
   /** IDs de actividades del catálogo (bano, secado, cepillado, …) */
   activities?: string[];
+  /** true si el servicio incluye accesorios configurados (texto genérico al cliente). */
+  has_included_accessories?: boolean;
+  client_inclusion_note?: string | null;
 };
 
 export type ServiceActivityCatalogItem = {
@@ -207,6 +210,8 @@ export type Appointment = {
   extras_total?: number;
   extras_count?: number;
   notes: string | null;
+  ready_at?: string | null;
+  paid_at?: string | null;
   photo_before_url: string | null;
   photo_after_url: string | null;
   pets?: (Pet & { owners?: Owner | null }) | null;
@@ -243,6 +248,10 @@ export type InventoryItem = {
   pack_size?: number;
   pack_label?: string | null;
   channel?: string;
+  staff_description?: string | null;
+  sell_by_shoot?: boolean;
+  shoot_markup?: number;
+  accessory_type?: string | null;
   expires_at: string | null;
   next_expires_at?: string | null;
 };
@@ -1205,6 +1214,9 @@ export type AppointmentExtra = {
   unit_price: number;
   total: number;
   notes?: string | null;
+  line_kind?: string | null;
+  material_role?: string | null;
+  shoot_ml?: number | null;
 };
 
 export async function listAppointmentExtras(appointmentId: string) {
@@ -1236,6 +1248,13 @@ export async function deleteAppointmentExtra(appointmentId: string, extraId: str
   await api(`/appointments/${appointmentId}/extras/${extraId}`, { method: "DELETE" });
 }
 
+export async function markAppointmentReady(appointmentId: string) {
+  return api<{ ok?: boolean; ready_at?: string; paid_at?: string | null; status?: string }>(
+    `/appointments/${appointmentId}/mark-ready`,
+    { method: "POST" },
+  );
+}
+
 export async function completeAppointment(
   id: string,
   input: {
@@ -1245,6 +1264,7 @@ export async function completeAppointment(
     notes?: string | null;
     payment_method: string;
     payment_evidence_url?: string | null;
+    payment_status?: string;
     coupon_code?: string | null;
     loyalty_reward_id?: string | null;
     promotion_id?: string | null;
@@ -1305,6 +1325,192 @@ export async function reorderServices(ordered_ids: string[]) {
   });
 }
 
+export type MaterialRole = {
+  id: string;
+  label: string;
+  sort_order: number;
+  default_unit: string;
+  allows_optional: boolean;
+};
+
+export type ServiceMaterial = {
+  service_id: string;
+  material_role: string;
+  inventory_item_id: string | null;
+  is_required: boolean;
+  is_optional: boolean;
+  staff_description?: string | null;
+  reference_qty?: number | null;
+  ratio_group?: string | null;
+  ratio_numerator?: number | null;
+  ratio_denominator?: number | null;
+  sort_order: number;
+  material_label?: string;
+  default_unit?: string;
+  allows_optional?: boolean;
+  inventory_item_name?: string | null;
+  inventory_sku?: string | null;
+  unit_kind?: string | null;
+  pack_size?: number | null;
+  purchase_price?: number | null;
+};
+
+export type BreedBathProfile = {
+  breed_id: string;
+  breed_name: string;
+  species: string;
+  price_min: number | null;
+  price_max: number | null;
+  ml_shampoo: number | null;
+  ml_conditioner: number | null;
+  ml_medicated: number | null;
+  updated_at?: string | null;
+};
+
+export type MaterialEstimateLine = {
+  material_role: string;
+  material_label: string;
+  inventory_item_id: string | null;
+  inventory_item_name: string | null;
+  inventory_sku?: string | null;
+  staff_description?: string | null;
+  display_label?: string;
+  quantity: number;
+  quantity_unit: string;
+  unit_cost: number;
+  line_cost: number;
+  enabled: boolean;
+  is_optional: boolean;
+  missing_profile?: boolean;
+  is_shoot?: boolean;
+  shoot_markup?: number | null;
+  line_charge?: number | null;
+  offers_shoot?: boolean;
+  shoot_preview_charge?: number | null;
+  included_in_service?: boolean;
+  is_accessory?: boolean;
+  accessory_type?: string | null;
+};
+
+export type MaterialEstimate = {
+  breed_id: string | null;
+  has_profile: boolean;
+  pet_sex?: string | null;
+  price_hint: { price_min?: number; price_max?: number };
+  lines: MaterialEstimateLine[];
+  total_material_cost: number;
+  total_included_cost?: number;
+  total_shoot_charge?: number;
+  warnings: string[];
+  selections?: Record<string, boolean>;
+  pet_name?: string;
+};
+
+export type BreedPriceHint = {
+  has_profile: boolean;
+  breed_id?: string | null;
+  breed_name?: string | null;
+  price_min?: number | null;
+  price_max?: number | null;
+};
+
+export function breedPriceHintQuery(petId: string | null | undefined) {
+  return queryOptions({
+    queryKey: ["breed-price-hint", petId],
+    queryFn: () => api<BreedPriceHint>(`/pets/${petId}/breed-price-hint`),
+    enabled: !!petId,
+  });
+}
+
+export const materialRolesQuery = {
+  queryKey: ["material-roles"],
+  queryFn: () => api<MaterialRole[]>("/material-roles"),
+};
+
+export const breedBathProfilesQuery = {
+  queryKey: ["breed-bath-profiles"],
+  queryFn: () => api<BreedBathProfile[]>("/breed-bath-profiles"),
+};
+
+export async function getServiceMaterials(serviceId: string) {
+  return api<ServiceMaterial[]>(`/services/${serviceId}/materials`);
+}
+
+export async function putServiceMaterials(
+  serviceId: string,
+  materials: Partial<ServiceMaterial>[],
+) {
+  return api<ServiceMaterial[]>(`/services/${serviceId}/materials`, {
+    method: "PUT",
+    body: { materials },
+  });
+}
+
+export async function upsertBreedBathProfile(
+  breedId: string,
+  body: Partial<BreedBathProfile>,
+) {
+  return api<BreedBathProfile>(`/breed-bath-profiles/${breedId}`, {
+    method: "PUT",
+    body: {
+      price_min: body.price_min ?? null,
+      price_max: body.price_max ?? null,
+      ml_shampoo: body.ml_shampoo ?? 0,
+      ml_conditioner: body.ml_conditioner ?? 0,
+      ml_medicated: body.ml_medicated ?? null,
+    },
+  });
+}
+
+export async function importBreedBathProfiles(file: File) {
+  const fd = new FormData();
+  fd.append("file", file);
+  const token = getToken();
+  const res = await fetch(`${getApiBase()}/admin/breed-bath-profiles/import`, {
+    method: "POST",
+    headers: {
+      Accept: "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    credentials: "include",
+    body: fd,
+  });
+  if (!res.ok) {
+    let message = res.statusText;
+    try {
+      const j = (await res.json()) as { detail?: unknown };
+      if (typeof j.detail === "string") message = j.detail;
+    } catch {
+      /* ignore */
+    }
+    throw new Error(message);
+  }
+  return res.json() as Promise<{
+    imported: number;
+    skipped: { line: string; breed: string; species: string; reason: string }[];
+    warnings: string[];
+  }>;
+}
+
+export async function fetchMaterialEstimatePreview(serviceId: string, petId: string) {
+  const q = new URLSearchParams({ service_id: serviceId, pet_id: petId });
+  return api<MaterialEstimate>(`/appointments/material-estimate-preview?${q}`);
+}
+
+export async function fetchAppointmentMaterialEstimate(appointmentId: string) {
+  return api<MaterialEstimate>(`/appointments/${appointmentId}/material-estimate`);
+}
+
+export async function patchAppointmentMaterialSelections(
+  appointmentId: string,
+  selections: Record<string, boolean>,
+) {
+  return api<MaterialEstimate>(`/appointments/${appointmentId}/material-selections`, {
+    method: "PATCH",
+    body: { selections },
+  });
+}
+
 export async function reorderPets(ordered_ids: string[]) {
   return api<{ ok: boolean }>("/pets/reorder", {
     method: "PUT",
@@ -1338,6 +1544,10 @@ export async function createInventoryItem(body: {
   pack_size?: number;
   pack_label?: string | null;
   channel?: string;
+  staff_description?: string | null;
+  sell_by_shoot?: boolean;
+  shoot_markup?: number;
+  accessory_type?: string | null;
 }) {
   return api<InventoryItem>("/inventory", { method: "POST", body });
 }
@@ -1358,6 +1568,10 @@ export async function patchInventoryItem(
     pack_size: number;
     pack_label: string | null;
     channel: string;
+    staff_description: string | null;
+    sell_by_shoot: boolean;
+    shoot_markup: number;
+    accessory_type: string | null;
   }>,
 ) {
   return api<InventoryItem>(`/inventory/${id}`, { method: "PATCH", body });
@@ -1390,6 +1604,8 @@ export async function createAppointment(input: {
   duration_min?: number;
   notes?: string;
   sync_google?: boolean;
+  allow_staff_overlap?: boolean;
+  material_selections?: Record<string, boolean>;
 }) {
   return api<
     Appointment & {

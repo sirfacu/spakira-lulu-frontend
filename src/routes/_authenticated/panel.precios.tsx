@@ -2,32 +2,57 @@ import { useEffect, useMemo, useState } from "react";
 import { createFileRoute, useNavigate, useRouteContext } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { Clock, Pencil, Plus, Trash2, CalendarClock, CalendarPlus, GripVertical } from "lucide-react";
+import {
+  ArrowLeft,
+  Clock,
+  Pencil,
+  Plus,
+  Trash2,
+  CalendarClock,
+  CalendarPlus,
+  GripVertical,
+} from "lucide-react";
 import { AppShell } from "@/components/app-shell";
 import { Empty } from "@/components/ui-kit";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Dialog, DialogContent } from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { ReorderList } from "@/components/reorder-list";
 import { ServiceDetailDialog } from "@/components/service-detail-dialog";
 import { ServiceActivityAdmin } from "@/components/service-activity-admin";
 import {
+  ServiceMaterialsEditor,
+  draftsToApiPayload,
+  type ServiceMaterialDraft,
+} from "@/components/service-materials-editor";
+import {
+  breedPriceHintQuery,
   panelServicesQuery,
+  petsQuery,
   serviceActivityCatalogQuery,
   upsertService,
   deleteService,
   reorderServices,
+  putServiceMaterials,
   type Service,
 } from "@/lib/spa-queries";
 import { copRange } from "@/lib/format";
 import {
   DEFAULT_PRICE_NOTE,
   servicePriceHeadline,
+  servicePriceHeadlineForClient,
   servicePriceModeFromService,
   servicePriceNote,
+  servicePriceNoteForClient,
 } from "@/lib/service-pricing";
 import { requirePathAccess } from "@/lib/route-access";
 import { permissionsFor } from "@/lib/roles";
@@ -125,6 +150,7 @@ function Servicios() {
   const navigate = useNavigate();
   const services = useQuery(panelServicesQuery);
   const activityCatalog = useQuery(serviceActivityCatalogQuery);
+  const pets = useQuery(petsQuery);
   const serverList = useMemo(
     () =>
       [...(services.data ?? [])].sort(
@@ -145,15 +171,35 @@ function Servicios() {
   const [form, setForm] = useState<ServiceForm>(emptyForm());
   const [detailService, setDetailService] = useState<Service | null>(null);
   const [pendingDelete, setPendingDelete] = useState<{ name: string; id: string } | null>(null);
+  const [materialDrafts, setMaterialDrafts] = useState<ServiceMaterialDraft[]>([]);
+  const [clientPetId, setClientPetId] = useState("");
+
+  const clientPets = pets.data ?? [];
+  useEffect(() => {
+    if (!perms.isCliente) return;
+    if (!clientPetId && clientPets[0]?.id) setClientPetId(clientPets[0].id);
+  }, [clientPets, clientPetId, perms.isCliente]);
+
+  const selectedClientPet = clientPets.find((p) => p.id === clientPetId) ?? clientPets[0] ?? null;
+  const breedHint = useQuery(breedPriceHintQuery(perms.isCliente ? selectedClientPet?.id : null));
+
+  const closeEditor = () => {
+    setEditing(null);
+    setMaterialDrafts([]);
+  };
 
   const openNew = () => {
     setForm(emptyForm());
+    setMaterialDrafts([]);
     setEditing("new");
+    window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
   const openEdit = (s: Service) => {
     setForm(serviceToForm(s));
+    setMaterialDrafts([]);
     setEditing(s);
+    window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
   const reorderMut = useMutation({
@@ -207,11 +253,18 @@ function Servicios() {
         is_public,
         publish_at,
         activities: form.activities,
+      }).then(async (saved) => {
+        if (materialDrafts.length) {
+          await putServiceMaterials(saved.id, draftsToApiPayload(materialDrafts));
+        } else if (saved.id) {
+          await putServiceMaterials(saved.id, []);
+        }
+        return saved;
       });
     },
     onSuccess: async () => {
       toast.success(editing === "new" ? "Servicio creado" : "Servicio actualizado");
-      setEditing(null);
+      closeEditor();
       await qc.invalidateQueries({ queryKey: ["services"] });
     },
     onError: (err: Error) => toast.error(err.message),
@@ -221,7 +274,7 @@ function Servicios() {
     mutationFn: (id: string) => deleteService(id),
     onSuccess: async () => {
       toast.success("Servicio eliminado");
-      setEditing(null);
+      closeEditor();
       await qc.invalidateQueries({ queryKey: ["services"] });
     },
     onError: (err: Error) => toast.error(err.message),
@@ -236,27 +289,327 @@ function Servicios() {
           : "Listado oficial (solo lectura)"
       }
       actions={
-        canManage ? (
+        canManage && !editing ? (
           <Button className="rounded-xl" onClick={openNew}>
             <Plus className="mr-2 h-4 w-4" /> Nuevo servicio
           </Button>
         ) : null
       }
     >
-      <div className="text-center">
-        <span className="font-script text-3xl text-accent">Nuestros</span>
-        <h2 className="font-display text-3xl font-bold text-primary">Servicios</h2>
-        <div className="gold-rule mx-auto mt-4 max-w-xs" />
-        {!canManage ? (
-          <p className="mt-3 text-sm text-muted-foreground">
-            {perms.isCliente
-              ? "Elegí un servicio y agendá. El valor se confirma al llegar."
-              : "Como Staff solo podés consultar. Crear, editar o programar es solo admin."}
-          </p>
-        ) : null}
-      </div>
+      {editing && canManage ? (
+        <div className="mt-2">
+          <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
+            <Button variant="outline" className="rounded-xl" onClick={closeEditor}>
+              <ArrowLeft className="mr-2 h-4 w-4" />
+              Volver al listado
+            </Button>
+            <div className="flex flex-wrap gap-2">
+              {editing !== "new" ? (
+                <Button
+                  variant="destructive"
+                  className="rounded-xl"
+                  onClick={() => {
+                    if (typeof editing === "object") {
+                      setPendingDelete({ name: editing.name, id: editing.id });
+                    }
+                  }}
+                >
+                  <Trash2 className="mr-2 h-4 w-4" />
+                  Eliminar
+                </Button>
+              ) : null}
+              <Button variant="outline" className="rounded-xl" onClick={closeEditor}>
+                Cancelar
+              </Button>
+              <Button
+                className="rounded-xl"
+                disabled={saveMut.isPending}
+                onClick={() => saveMut.mutate()}
+              >
+                Guardar
+              </Button>
+            </div>
+          </div>
 
-      <ReorderList
+          <div className="card-soft p-6 lg:p-8">
+            <h2 className="font-display text-2xl font-bold text-primary">
+              {editing === "new" ? "Nuevo servicio" : `Editar: ${editing.name}`}
+            </h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Datos, precio, publicación, actividades e insumos en la misma pantalla.
+            </p>
+
+            <div className="mt-8 grid gap-8 xl:grid-cols-2">
+              <div className="space-y-8">
+                <section className="space-y-4">
+                  <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    Datos del servicio
+                  </h3>
+                  <div className="space-y-2">
+                    <Label>Nombre *</Label>
+                    <Input
+                      value={form.name}
+                      onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
+                      className="h-11 rounded-xl"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Descripción</Label>
+                    <Textarea
+                      value={form.description}
+                      onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
+                      className="min-h-[180px] rounded-xl text-sm leading-relaxed"
+                      rows={8}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>URL imagen</Label>
+                    <Textarea
+                      value={form.image_url}
+                      onChange={(e) => setForm((f) => ({ ...f, image_url: e.target.value }))}
+                      className="min-h-[88px] rounded-xl font-mono text-xs leading-relaxed"
+                      rows={4}
+                      placeholder="https://…"
+                    />
+                  </div>
+                </section>
+
+                <section className="space-y-4 border-t border-border/70 pt-8">
+                  <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    Precio y duración
+                  </h3>
+                  <div className="space-y-2">
+                    <Label>Tipo de precio</Label>
+                    <div className="grid gap-2 sm:grid-cols-2">
+                      {(
+                        [
+                          ["fixed", "Precio fijo"],
+                          ["variable", "Precio variable (rango)"],
+                        ] as const
+                      ).map(([value, label]) => (
+                        <label
+                          key={value}
+                          className="flex cursor-pointer items-center gap-3 rounded-xl border border-border px-4 py-3 text-sm"
+                        >
+                          <input
+                            type="radio"
+                            name="price_mode"
+                            checked={form.price_mode === value}
+                            onChange={() => setForm((f) => ({ ...f, price_mode: value }))}
+                          />
+                          {label}
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                  {form.price_mode === "fixed" ? (
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      <div className="space-y-2">
+                        <Label>Precio (COP)</Label>
+                        <Input
+                          type="number"
+                          value={form.price}
+                          onChange={(e) => setForm((f) => ({ ...f, price: e.target.value }))}
+                          className="h-11 rounded-xl"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Duración (min)</Label>
+                        <Input
+                          type="number"
+                          value={form.duration_min}
+                          onChange={(e) => setForm((f) => ({ ...f, duration_min: e.target.value }))}
+                          className="h-11 rounded-xl"
+                        />
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="space-y-4">
+                      <div className="grid gap-4 sm:grid-cols-2">
+                        <div className="space-y-2">
+                          <Label>Precio mínimo (COP)</Label>
+                          <Input
+                            type="number"
+                            value={form.price_min}
+                            onChange={(e) => setForm((f) => ({ ...f, price_min: e.target.value }))}
+                            className="h-11 rounded-xl"
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label>Precio máximo (COP)</Label>
+                          <Input
+                            type="number"
+                            value={form.price_max}
+                            onChange={(e) => setForm((f) => ({ ...f, price_max: e.target.value }))}
+                            className="h-11 rounded-xl"
+                          />
+                        </div>
+                      </div>
+                      <div className="space-y-2 sm:max-w-xs">
+                        <Label>Duración (min)</Label>
+                        <Input
+                          type="number"
+                          value={form.duration_min}
+                          onChange={(e) => setForm((f) => ({ ...f, duration_min: e.target.value }))}
+                          className="h-11 rounded-xl"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Nota para el cliente</Label>
+                        <Textarea
+                          value={form.price_note}
+                          onChange={(e) => setForm((f) => ({ ...f, price_note: e.target.value }))}
+                          className="min-h-[88px] rounded-xl text-sm leading-relaxed"
+                          rows={4}
+                        />
+                        <p className="text-xs leading-relaxed text-muted-foreground">
+                          Aparece en la ficha del servicio y en los correos de cita. El valor final se
+                          confirma en recepción antes de ingresar al servicio.
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                </section>
+
+                <section className="space-y-4 border-t border-border/70 pt-8">
+                  <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    Publicación
+                  </h3>
+                  <div className="grid gap-2 sm:grid-cols-3">
+                    {(
+                      [
+                        ["now", "Publicar ahora"],
+                        ["scheduled", "Programar fecha"],
+                        ["draft", "Borrador (no visible)"],
+                      ] as const
+                    ).map(([value, label]) => (
+                      <label
+                        key={value}
+                        className="flex cursor-pointer items-center gap-3 rounded-xl border border-border px-4 py-3 text-sm"
+                      >
+                        <input
+                          type="radio"
+                          name="publish_mode"
+                          checked={form.publish_mode === value}
+                          onChange={() => setForm((f) => ({ ...f, publish_mode: value }))}
+                        />
+                        {label}
+                      </label>
+                    ))}
+                  </div>
+                  {form.publish_mode === "scheduled" ? (
+                    <div className="space-y-2 sm:max-w-sm">
+                      <Label>Fecha y hora de aparición</Label>
+                      <Input
+                        type="datetime-local"
+                        value={form.publish_at_local}
+                        onChange={(e) => setForm((f) => ({ ...f, publish_at_local: e.target.value }))}
+                        className="h-11 rounded-xl"
+                      />
+                    </div>
+                  ) : null}
+                </section>
+              </div>
+
+              <div className="space-y-8">
+                <section className="space-y-3">
+                  <div>
+                    <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                      Actividades incluidas
+                    </h3>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Matching de personal · visible en “Leer más”
+                    </p>
+                  </div>
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    {(activityCatalog.data ?? []).map((item) => {
+                      const on = form.activities.includes(item.id);
+                      return (
+                        <label
+                          key={item.id}
+                          className={`flex cursor-pointer items-center gap-3 rounded-xl border px-4 py-3 text-sm ${
+                            on
+                              ? "border-accent bg-accent/10 text-accent"
+                              : "border-border text-muted-foreground"
+                          }`}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={on}
+                            onChange={() =>
+                              setForm((f) => ({
+                                ...f,
+                                activities: on
+                                  ? f.activities.filter((a) => a !== item.id)
+                                  : [...f.activities, item.id],
+                              }))
+                            }
+                          />
+                          {item.label}
+                        </label>
+                      );
+                    })}
+                  </div>
+                </section>
+
+                <ServiceMaterialsEditor
+                  serviceId={editing && typeof editing === "object" ? editing.id : null}
+                  onChange={setMaterialDrafts}
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : (
+        <>
+          <div className="text-center">
+            <span className="font-script text-3xl text-accent">Nuestros</span>
+            <h2 className="font-display text-3xl font-bold text-primary">Servicios</h2>
+            <div className="gold-rule mx-auto mt-4 max-w-xs" />
+            {!canManage ? (
+              <p className="mt-3 text-sm text-muted-foreground">
+                {perms.isCliente
+                  ? breedHint.data?.price_min != null
+                    ? `Referencia según la raza de ${selectedClientPet?.name ?? "tu mascota"}. El valor final se confirma al llegar.`
+                    : selectedClientPet
+                      ? "Elegí un servicio y agendá. Si tenemos rango para su raza, lo verás abajo."
+                      : "Elegí un servicio y agendá. El valor se confirma al llegar."
+                  : "Como Staff solo podés consultar. Crear, editar o programar es solo admin."}
+              </p>
+            ) : null}
+          </div>
+
+          {perms.isCliente && clientPets.length ? (
+            <div className="mx-auto mt-5 max-w-md text-left">
+              <Label className="text-xs text-muted-foreground">
+                {clientPets.length > 1 ? "Precios para" : "Precios según"}
+              </Label>
+              {clientPets.length > 1 ? (
+                <Select value={clientPetId} onValueChange={setClientPetId}>
+                  <SelectTrigger className="mt-1.5 h-11 rounded-xl">
+                    <SelectValue placeholder="Elegí tu peludito" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {clientPets.map((p) => (
+                      <SelectItem key={p.id} value={p.id}>
+                        {p.name}
+                        {(p.breed_name || p.breed) ? ` · ${p.breed_name || p.breed}` : ""}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              ) : (
+                <p className="mt-1 text-sm font-medium text-foreground">
+                  {selectedClientPet?.name}
+                  {(selectedClientPet?.breed_name || selectedClientPet?.breed)
+                    ? ` · ${selectedClientPet?.breed_name || selectedClientPet?.breed}`
+                    : ""}
+                </p>
+              )}
+            </div>
+          ) : null}
+
+          <ReorderList
         items={list}
         disabled={!canManage}
         className="mt-8 grid gap-6 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4"
@@ -326,11 +679,17 @@ function Servicios() {
                 ) : null}
                 <div className="mt-4">
                   <p className="font-display text-xl font-bold text-accent">
-                    {servicePriceHeadline(s)}
+                    {perms.isCliente
+                      ? servicePriceHeadlineForClient(s, breedHint.data, !!selectedClientPet)
+                      : servicePriceHeadline(s)}
                   </p>
-                  {servicePriceNote(s) ? (
+                  {(perms.isCliente
+                    ? servicePriceNoteForClient(s, breedHint.data, !!selectedClientPet)
+                    : servicePriceNote(s)) ? (
                     <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
-                      {servicePriceNote(s)}
+                      {perms.isCliente
+                        ? servicePriceNoteForClient(s, breedHint.data, !!selectedClientPet)
+                        : servicePriceNote(s)}
                     </p>
                   ) : null}
                 </div>
@@ -410,8 +769,10 @@ function Servicios() {
       ) : null}
 
       {!list.length && !canManage ? <Empty message="Sin servicios." /> : null}
+        </>
+      )}
 
-      {canManage ? <ServiceActivityAdmin /> : null}
+      {canManage && !editing ? <ServiceActivityAdmin /> : null}
 
       <ServiceDetailDialog
         service={detailService}
@@ -420,235 +781,10 @@ function Servicios() {
           if (!open) setDetailService(null);
         }}
         showAgendar={!!detailService && (perms.isCliente || perms.isColaborador)}
+        breedHint={perms.isCliente ? breedHint.data : null}
+        petSelected={perms.isCliente && !!selectedClientPet}
       />
 
-      <Dialog open={!!editing} onOpenChange={(o) => !o && setEditing(null)}>
-        <DialogContent className="max-h-[92vh] max-w-xl overflow-y-auto rounded-3xl">
-          <h2 className="font-display text-xl font-bold text-primary">
-            {editing === "new" ? "Nuevo servicio" : "Editar servicio"}
-          </h2>
-          <div className="mt-5 flex flex-col gap-6">
-            <section className="space-y-4">
-              <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                Datos del servicio
-              </h3>
-              <div className="space-y-2">
-                <Label>Nombre *</Label>
-                <Input
-                  value={form.name}
-                  onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
-                  className="h-11 rounded-xl"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Descripción</Label>
-                <Textarea
-                  value={form.description}
-                  onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
-                  className="min-h-[160px] rounded-xl text-sm leading-relaxed"
-                  rows={7}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>URL imagen</Label>
-                <Textarea
-                  value={form.image_url}
-                  onChange={(e) => setForm((f) => ({ ...f, image_url: e.target.value }))}
-                  className="min-h-[88px] rounded-xl font-mono text-xs leading-relaxed"
-                  rows={4}
-                  placeholder="https://…"
-                />
-              </div>
-            </section>
-
-            <section className="space-y-4 border-t border-border/70 pt-6">
-              <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                Precio y duración
-              </h3>
-              <div className="space-y-2">
-                <Label>Tipo de precio</Label>
-                <div className="flex flex-col gap-2">
-                  {(
-                    [
-                      ["fixed", "Precio fijo"],
-                      ["variable", "Precio variable (rango)"],
-                    ] as const
-                  ).map(([value, label]) => (
-                    <label
-                      key={value}
-                      className="flex cursor-pointer items-center gap-3 rounded-xl border border-border px-4 py-3 text-sm"
-                    >
-                      <input
-                        type="radio"
-                        name="price_mode"
-                        checked={form.price_mode === value}
-                        onChange={() => setForm((f) => ({ ...f, price_mode: value }))}
-                      />
-                      {label}
-                    </label>
-                  ))}
-                </div>
-              </div>
-              {form.price_mode === "fixed" ? (
-                <>
-                  <div className="space-y-2">
-                    <Label>Precio (COP)</Label>
-                    <Input
-                      type="number"
-                      value={form.price}
-                      onChange={(e) => setForm((f) => ({ ...f, price: e.target.value }))}
-                      className="h-11 rounded-xl"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Duración (min)</Label>
-                    <Input
-                      type="number"
-                      value={form.duration_min}
-                      onChange={(e) => setForm((f) => ({ ...f, duration_min: e.target.value }))}
-                      className="h-11 rounded-xl"
-                    />
-                  </div>
-                </>
-              ) : (
-                <>
-                  <div className="space-y-2">
-                    <Label>Precio mínimo (COP)</Label>
-                    <Input
-                      type="number"
-                      value={form.price_min}
-                      onChange={(e) => setForm((f) => ({ ...f, price_min: e.target.value }))}
-                      className="h-11 rounded-xl"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Precio máximo (COP)</Label>
-                    <Input
-                      type="number"
-                      value={form.price_max}
-                      onChange={(e) => setForm((f) => ({ ...f, price_max: e.target.value }))}
-                      className="h-11 rounded-xl"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Duración (min)</Label>
-                    <Input
-                      type="number"
-                      value={form.duration_min}
-                      onChange={(e) => setForm((f) => ({ ...f, duration_min: e.target.value }))}
-                      className="h-11 rounded-xl"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Nota para el cliente</Label>
-                    <Textarea
-                      value={form.price_note}
-                      onChange={(e) => setForm((f) => ({ ...f, price_note: e.target.value }))}
-                      className="min-h-[88px] rounded-xl text-sm leading-relaxed"
-                      rows={4}
-                    />
-                    <p className="text-xs leading-relaxed text-muted-foreground">
-                      Aparece en la ficha del servicio y en los correos de cita. El valor final se
-                      confirma en recepción antes de ingresar al servicio.
-                    </p>
-                  </div>
-                </>
-              )}
-            </section>
-
-            <section className="space-y-4 border-t border-border/70 pt-6">
-              <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                Publicación
-              </h3>
-              <div className="flex flex-col gap-2">
-                {(
-                  [
-                    ["now", "Publicar ahora"],
-                    ["scheduled", "Programar fecha"],
-                    ["draft", "Borrador (no visible)"],
-                  ] as const
-                ).map(([value, label]) => (
-                  <label
-                    key={value}
-                    className="flex cursor-pointer items-center gap-3 rounded-xl border border-border px-4 py-3 text-sm"
-                  >
-                    <input
-                      type="radio"
-                      name="publish_mode"
-                      checked={form.publish_mode === value}
-                      onChange={() => setForm((f) => ({ ...f, publish_mode: value }))}
-                    />
-                    {label}
-                  </label>
-                ))}
-              </div>
-              {form.publish_mode === "scheduled" ? (
-                <div className="space-y-2">
-                  <Label>Fecha y hora de aparición</Label>
-                  <Input
-                    type="datetime-local"
-                    value={form.publish_at_local}
-                    onChange={(e) => setForm((f) => ({ ...f, publish_at_local: e.target.value }))}
-                    className="h-11 rounded-xl"
-                  />
-                </div>
-              ) : null}
-            </section>
-
-            <section className="space-y-3 border-t border-border/70 pt-6">
-              <div>
-                <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                  Actividades incluidas
-                </h3>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  Matching de personal · visible en “Leer más”
-                </p>
-              </div>
-              <div className="flex flex-col gap-2">
-                {(activityCatalog.data ?? []).map((item) => {
-                  const on = form.activities.includes(item.id);
-                  return (
-                    <label
-                      key={item.id}
-                      className={`flex cursor-pointer items-center gap-3 rounded-xl border px-4 py-3 text-sm ${
-                        on
-                          ? "border-accent bg-accent/10 text-accent"
-                          : "border-border text-muted-foreground"
-                      }`}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={on}
-                        onChange={() =>
-                          setForm((f) => ({
-                            ...f,
-                            activities: on
-                              ? f.activities.filter((a) => a !== item.id)
-                              : [...f.activities, item.id],
-                          }))
-                        }
-                      />
-                      {item.label}
-                    </label>
-                  );
-                })}
-              </div>
-            </section>
-          </div>
-          <div className="mt-5 flex justify-end gap-2">
-            <Button variant="outline" className="rounded-xl" onClick={() => setEditing(null)}>
-              Cancelar
-            </Button>
-            <Button
-              className="rounded-xl"
-              disabled={saveMut.isPending}
-              onClick={() => saveMut.mutate()}
-            >
-              Guardar
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
       <ConfirmDialog
         open={!!pendingDelete}
         title={

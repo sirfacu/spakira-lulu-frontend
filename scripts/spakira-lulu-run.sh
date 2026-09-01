@@ -6,6 +6,9 @@
 set -euo pipefail
 
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+WS_ROOT="$(cd "$PROJECT_DIR/.." && pwd)"
+# shellcheck disable=SC1091
+source "$WS_ROOT/scripts/lib/spakira-local-host.sh"
 BACKEND_DIR="${SPA_KIRA_BACKEND_DIR:-$(cd "$PROJECT_DIR/../spakira-lulu-backend" 2>/dev/null && pwd || true)}"
 FRONTEND_PID="$PROJECT_DIR/.spakira-lulu-frontend.pid"
 FRONTEND_LOG="$PROJECT_DIR/spakira-lulu-frontend.log"
@@ -34,7 +37,7 @@ stop_one() {
 
 start_frontend() {
   if running "$FRONTEND_PID"; then
-    echo "Frontend ya corre (PID $(cat "$FRONTEND_PID")) → http://localhost:${FE_PORT}/"
+    echo "Frontend ya corre (PID $(cat "$FRONTEND_PID")) → http://${SPA_KIRA_LOCAL_HOST}/"
     return 0
   fi
   if [ ! -d "$PROJECT_DIR/node_modules" ]; then
@@ -77,7 +80,7 @@ restart_frontend() {
 
 status() {
   if running "$FRONTEND_PID"; then
-    echo "Frontend: corriendo (PID $(cat "$FRONTEND_PID")) → http://localhost:${FE_PORT}/"
+    echo "Frontend: corriendo (PID $(cat "$FRONTEND_PID")) → http://${SPA_KIRA_LOCAL_HOST}/ (Vite :${FE_PORT})"
   else
     echo "Frontend: detenido"
   fi

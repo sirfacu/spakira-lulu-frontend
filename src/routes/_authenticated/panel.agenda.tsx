@@ -41,6 +41,7 @@ import {
   updateAppointmentExtra,
   deleteAppointmentExtra,
   notifyAppointmentUpdate,
+  markAppointmentReady,
   getMyStaff,
   listAppointmentReschedules,
   reviewAppointmentReschedule,
@@ -65,6 +66,7 @@ import { requirePathAccess } from "@/lib/route-access";
 import { editableAppointmentStatuses, permissionsFor } from "@/lib/roles";
 import { ClientAgenda } from "@/components/client-agenda";
 import { FinishAppointmentDialog } from "@/components/finish-appointment-dialog";
+import { MaterialEstimatePanel } from "@/components/material-estimate-panel";
 import { ConfirmServicePriceDialog } from "@/components/confirm-service-price-dialog";
 import {
   appointmentShowsChargedPrice,
@@ -200,6 +202,7 @@ function StaffAgenda() {
     enabled: perms.isAdmin,
   });
   const [notes, setNotes] = useState("");
+  const [shootSelections, setShootSelections] = useState<Record<string, boolean>>({});
   const [lastWa, setLastWa] = useState<
     { owner_id?: string; full_name?: string; link: string }[] | null
   >(null);
@@ -512,6 +515,15 @@ function StaffAgenda() {
     onError: (e) => toast.error(e instanceof Error ? e.message : "No se pudo eliminar"),
   });
 
+  const readyMut = useMutation({
+    mutationFn: (id: string) => markAppointmentReady(id),
+    onSuccess: () => {
+      toast.success("Mascota marcada lista para recoger");
+      void qc.invalidateQueries({ queryKey: ["appointments"] });
+    },
+    onError: (e) => toast.error(e instanceof Error ? e.message : "No se pudo marcar listo"),
+  });
+
   const create = useMutation({
     mutationFn: () =>
       createAppointment({
@@ -521,11 +533,13 @@ function StaffAgenda() {
         starts_at: new Date(startsAt).toISOString(),
         notes: notes || undefined,
         sync_google: perms.canConnectGoogle,
+        material_selections: Object.keys(shootSelections).length ? shootSelections : undefined,
       }),
     onSuccess: (data) => {
       qc.invalidateQueries({ queryKey: ["appointments"] });
       setOpenForm(false);
       setNotes("");
+      setShootSelections({});
       setPetId("");
       setServiceId("");
       setFormStaffId("");
@@ -832,6 +846,17 @@ function StaffAgenda() {
                 placeholder="Indicaciones para el groomer…"
               />
             </div>
+            {petId && serviceId ? (
+              <div className="sm:col-span-2">
+                <MaterialEstimatePanel
+                  serviceId={serviceId}
+                  petId={petId}
+                  compact
+                  draftSelections={shootSelections}
+                  onDraftSelectionsChange={setShootSelections}
+                />
+              </div>
+            ) : null}
           </div>
           <div className="mt-4 flex flex-wrap gap-2">
             <Button
@@ -1414,6 +1439,17 @@ function StaffAgenda() {
                   </div>
                 </div>
 
+                {selected.service_id && selected.pet_id ? (
+                  <div className="mt-4">
+                    <MaterialEstimatePanel
+                      appointmentId={selected.id}
+                      serviceId={selected.service_id}
+                      petId={selected.pet_id}
+                      onBillableChange={() => void loadExtras(selected.id, { syncBaseline: true })}
+                    />
+                  </div>
+                ) : null}
+
                 {perms.canSeeServiceProgress &&
                 normalizeStatus(selected.status) === "enproceso" ? (
                   <div className="mt-4 rounded-2xl border border-border bg-secondary/30 p-3">
@@ -1450,12 +1486,10 @@ function StaffAgenda() {
                 {perms.isStaff || perms.isCliente ? (
                 <div className="mt-6 rounded-2xl border border-border p-4">
                   <h3 className="font-display text-base font-bold text-primary">
-                    Vitrina / extras
+                    Cobro adicional (vitrina)
                   </h3>
                   <p className="mt-1 text-xs text-muted-foreground">
-                    {perms.isCliente
-                      ? "Galletas, collares, BARF… se reservan ahora y se descuentan del stock al finalizar."
-                      : "Los extras de vitrina se reservan al pedirlos; el stock físico baja al Finalizar. El correo al humano se envía al Guardar cambios."}
+                    Los shoots (shampoo, medicado…) se eligen arriba. Acá van galletas, BARF, collares, etc.
                   </p>
                   {(() => {
                     const extrasStatus = normalizeStatus(selected.status);
@@ -1559,6 +1593,11 @@ function StaffAgenda() {
                           <div className="flex items-start justify-between gap-2">
                             <p className="min-w-0 flex-1 font-medium leading-snug text-foreground">
                               {ex.item_name}
+                              {ex.line_kind === "shoot" ? (
+                                <span className="ml-2 text-[10px] uppercase tracking-wide text-accent">
+                                  shoot
+                                </span>
+                              ) : null}
                             </p>
                             <Button
                               type="button"
@@ -1566,7 +1605,11 @@ function StaffAgenda() {
                               size="icon"
                               className="h-8 w-8 shrink-0 text-destructive"
                               aria-label={`Eliminar ${ex.item_name}`}
-                              disabled={!canEditExtras || deleteExtraMut.isPending}
+                              disabled={
+                                !canEditExtras ||
+                                deleteExtraMut.isPending ||
+                                ex.line_kind === "shoot"
+                              }
                               onClick={() => {
                                 setConfirmAction({
                                   title: "Quitar extra",
@@ -1720,6 +1763,23 @@ function StaffAgenda() {
                         {saveMut.isPending ? "Guardando…" : "Guardar cambios"}
                       </Button>
                       {perms.canFinishAppointments &&
+                      normalizeStatus(selected.status) === "enproceso" &&
+                      !selected.ready_at ? (
+                        <Button
+                          variant="outline"
+                          className="rounded-xl"
+                          disabled={readyMut.isPending}
+                          onClick={() => readyMut.mutate(selected.id)}
+                        >
+                          Marcar listo
+                        </Button>
+                      ) : null}
+                      {selected.ready_at && normalizeStatus(selected.status) !== "finalizada" ? (
+                        <span className="inline-flex items-center rounded-full bg-mint/25 px-3 py-2 text-xs font-medium text-mint-foreground">
+                          Listo para recoger
+                        </span>
+                      ) : null}
+                      {perms.canFinishAppointments &&
                       normalizeStatus(selected.status) !== "finalizada" ? (
                       <Button
                         variant="outline"
@@ -1729,7 +1789,7 @@ function StaffAgenda() {
                           setSelected(null);
                         }}
                       >
-                        Finalizar servicio
+                        Cobrar y cerrar
                       </Button>
                       ) : null}
                       <Button

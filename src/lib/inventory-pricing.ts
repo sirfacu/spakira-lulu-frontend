@@ -15,4 +15,29 @@ export function unitPriceFromPack(salePack: number, packSize: number): number {
   return Math.round((Number(salePack) || 0) / (size > 0 ? size : 1));
 }
 
+export type InventoryValueLine = {
+  quantity: number;
+  purchase_price: number;
+  pack_size?: number | null;
+  unit_kind?: string | null;
+};
+
+/** Valor en costo de una línea (para totales del panel). */
+export function inventoryLineValue(item: InventoryValueLine): number {
+  const cost = Number(item.purchase_price) || 0;
+  const qty = Number(item.quantity) || 0;
+  const pack = Number(item.pack_size) || 1;
+  const kind = (item.unit_kind || "unidad").toLowerCase();
+
+  // BARF, bidones ml, etc.: quantity = envases; pack_size = peso/volumen del envase
+  if (kind === "g" || kind === "ml") {
+    return cost * qty;
+  }
+  // Gemas, bandas…: quantity = unidades sueltas; purchase_price = precio por presentación (pack_size u)
+  if (pack > 1 && kind === "unidad" && qty >= pack) {
+    return cost * (qty / pack);
+  }
+  return cost * qty;
+}
+
 export { isShoppable } from "@/lib/inventory-channel";

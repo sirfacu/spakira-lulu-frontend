@@ -7,6 +7,7 @@ import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { completeAppointment, listAppointmentExtras, inventoryShopQuery, paymentMethodsQuery, getLoyaltyCustomer, type Appointment, type PromoValidate } from "@/lib/spa-queries";
 import { CouponApplyFields } from "@/components/coupon-apply-fields";
+import { MaterialEstimatePanel } from "@/components/material-estimate-panel";
 import { ApiError } from "@/lib/api";
 import { cop, time } from "@/lib/format";
 import { PaymentMethodFields } from "@/components/payment-method-fields";
@@ -47,6 +48,7 @@ export function FinishAppointmentDialog({ appointment, open, onOpenChange, onDon
   const [saving, setSaving] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState("");
   const [evidenceUrl, setEvidenceUrl] = useState("");
+  const [markPaid, setMarkPaid] = useState(true);
   const [promo, setPromo] = useState<PromoValidate | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -80,9 +82,10 @@ export function FinishAppointmentDialog({ appointment, open, onOpenChange, onDon
     setCustomPrice("");
     setPaymentMethod("");
     setEvidenceUrl("");
+    setMarkPaid(true);
     setPromo(null);
     let cancelled = false;
-    (async () => {
+    const reloadExtras = async () => {
       try {
         const extras = await listAppointmentExtras(appointment.id);
         if (cancelled) return;
@@ -98,12 +101,27 @@ export function FinishAppointmentDialog({ appointment, open, onOpenChange, onDon
       } catch {
         if (!cancelled) setLines([]);
       }
-      setTimeout(() => inputRef.current?.focus(), 50);
-    })();
+    };
+    void reloadExtras();
+    setTimeout(() => inputRef.current?.focus(), 50);
     return () => {
       cancelled = true;
     };
   }, [open, appointment?.id]);
+
+  const reloadBillableExtras = async () => {
+    if (!appointment?.id) return;
+    const extras = await listAppointmentExtras(appointment.id);
+    setLines(
+      extras.map((ex) => ({
+        key: ex.id,
+        name: ex.item_name,
+        unit_price: Number(ex.unit_price) || 0,
+        quantity: Math.max(1, Number(ex.quantity) || 1),
+        fromCatalog: true,
+      })),
+    );
+  };
 
   const suggestions = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -206,6 +224,7 @@ export function FinishAppointmentDialog({ appointment, open, onOpenChange, onDon
           unit_price: l.unit_price,
         })),
         payment_method: paymentMethod,
+        payment_status: markPaid ? "pagado" : "pendiente",
         ...(evidenceUrl ? { payment_evidence_url: evidenceUrl } : {}),
         ...(promo?.valid && promo.code ? { coupon_code: promo.code } : {}),
         ...(promo?.valid && promo.loyalty_reward_id ? { loyalty_reward_id: promo.loyalty_reward_id } : {}),
@@ -269,6 +288,16 @@ export function FinishAppointmentDialog({ appointment, open, onOpenChange, onDon
           </div>
 
           <div className="space-y-5 px-6 py-5">
+            {appointment.service_id && appointment.pet_id ? (
+              <MaterialEstimatePanel
+                appointmentId={appointment.id}
+                serviceId={appointment.service_id}
+                petId={appointment.pet_id}
+                compact
+                onBillableChange={() => void reloadBillableExtras()}
+              />
+            ) : null}
+
             <label className="flex cursor-pointer flex-col gap-3 rounded-2xl border border-border bg-card px-4 py-3 text-sm shadow-soft sm:flex-row sm:items-center">
               <div className="flex min-w-0 flex-1 items-center gap-3">
                 <input
@@ -304,6 +333,21 @@ export function FinishAppointmentDialog({ appointment, open, onOpenChange, onDon
               onEvidenceUrl={setEvidenceUrl}
             />
 
+            <label className="flex cursor-pointer items-center gap-3 rounded-xl border border-border px-4 py-3 text-sm">
+              <input
+                type="checkbox"
+                className="h-4 w-4 accent-primary"
+                checked={markPaid}
+                onChange={(e) => setMarkPaid(e.target.checked)}
+              />
+              <span>
+                Pagado en mostrador (listo y pagado)
+                <span className="mt-0.5 block text-xs text-muted-foreground">
+                  La mascota puede retirarse; la factura queda como pagada.
+                </span>
+              </span>
+            </label>
+
             <CouponApplyFields
               subtotal={grandTotal}
               customerId={ownerId}
@@ -316,10 +360,10 @@ export function FinishAppointmentDialog({ appointment, open, onOpenChange, onDon
 
             <div>
               <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                Misceláneos / extras
+                Extras (shoots + vitrina)
               </p>
               <p className="mb-2 text-xs text-muted-foreground">
-                Se cargan los extras ya agregados a la cita; podés sumar más antes de cerrar.
+                Incluye adicionales por dosis y productos de vitrina ya agregados a la cita.
               </p>
               <div className="relative">
                 <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
