@@ -1,35 +1,12 @@
 import type { LucideIcon } from "lucide-react";
-import {
-  Brush,
-  Check,
-  Droplets,
-  Flower2,
-  Palette,
-  Scissors,
-  Sparkles,
-  Wind,
-} from "lucide-react";
+import { Check } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { cn } from "@/lib/utils";
+import { activityIconComponent } from "@/lib/service-activity-icons";
 import {
   serviceActivityCatalogQuery,
   type ServiceActivityCatalogItem,
 } from "@/lib/spa-queries";
-
-const ICON_BY_NAME: Record<string, LucideIcon> = {
-  droplets: Droplets,
-  wind: Wind,
-  palette: Palette,
-  scissors: Scissors,
-  sparkles: Sparkles,
-  "flower-2": Flower2,
-  brush: Brush,
-};
-
-function iconForActivity(item: ServiceActivityCatalogItem): LucideIcon {
-  const key = (item.icon ?? "").trim().toLowerCase();
-  return ICON_BY_NAME[key] ?? Sparkles;
-}
 
 export function activityLabel(
   id: string,
@@ -70,7 +47,7 @@ export function ServiceActivitiesList({
     >
       {ids.map((id) => {
         const meta = byId.get(id)!;
-        const Icon = iconForActivity(meta);
+        const Icon: LucideIcon = activityIconComponent(meta.icon);
         return (
           <li key={id} className="flex items-center gap-3 text-sm text-foreground">
             <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-secondary text-primary">

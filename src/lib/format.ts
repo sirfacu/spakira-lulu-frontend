@@ -97,8 +97,8 @@ export const STATUS = {
     className: "bg-gold/25 text-gold-foreground border-gold/50",
   },
   finalizada: {
-    label: "Finalizada",
-    hint: "El servicio terminó. Ya se registró el cierre y la factura.",
+    label: "Listo y pagado",
+    hint: "Servicio cerrado, cobro registrado. La mascota ya fue entregada o puede retirarse.",
     className: "bg-mint/25 text-mint-foreground border-mint/50",
   },
   cancelada: {

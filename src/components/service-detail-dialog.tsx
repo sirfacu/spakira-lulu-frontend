@@ -4,11 +4,19 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { ServiceActivitiesList } from "@/components/service-activities-list";
 import {
+  breedPriceDetailLabel,
+  breedPriceHeadline,
+  breedPriceNote,
+  COUNTER_VALIDATION_LABEL,
+  COUNTER_VALIDATION_NOTE,
   isPendingCatalogPrice,
   isVariableServicePrice,
   servicePriceHeadline,
+  servicePriceHeadlineForClient,
   servicePriceLabel,
   servicePriceNote,
+  servicePriceNoteForClient,
+  type BreedPriceHint,
 } from "@/lib/service-pricing";
 import type { Service } from "@/lib/spa-queries";
 
@@ -17,6 +25,8 @@ type ServiceDetailDialogProps = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   showAgendar?: boolean;
+  breedHint?: BreedPriceHint | null;
+  petSelected?: boolean;
 };
 
 export function ServiceDetailDialog({
@@ -24,12 +34,27 @@ export function ServiceDetailDialog({
   open,
   onOpenChange,
   showAgendar = false,
+  breedHint = null,
+  petSelected = false,
 }: ServiceDetailDialogProps) {
   const navigate = useNavigate();
   if (!service) return null;
 
   const variable = isVariableServicePrice(service);
-  const note = servicePriceNote(service);
+  const pending = isPendingCatalogPrice(service);
+  const breedHeadline = breedPriceHeadline(breedHint);
+  const note = breedHint?.price_min != null
+    ? breedPriceNote(breedHint)
+    : petSelected && breedHint && !breedHint.has_profile
+      ? COUNTER_VALIDATION_NOTE
+      : servicePriceNote(service);
+  const priceLabel = breedHint?.price_min != null
+    ? breedPriceDetailLabel(breedHint)
+    : petSelected && breedHint && !breedHint.has_profile
+      ? COUNTER_VALIDATION_LABEL
+      : variable
+        ? servicePriceLabel(service)
+        : servicePriceHeadlineForClient(service, breedHint, petSelected);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -62,14 +87,16 @@ export function ServiceDetailDialog({
 
           <div className="mt-5 rounded-2xl border border-border/70 bg-secondary/35 p-4">
             <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-              {isPendingCatalogPrice(service)
-                ? "Valor"
-                : variable
-                  ? "Rango referencial"
-                  : "Precio"}
+              {breedHint?.price_min != null
+                ? "Rango referencial para tu mascota"
+                : pending
+                  ? "Valor"
+                  : variable
+                    ? "Rango referencial"
+                    : "Precio"}
             </p>
             <p className="mt-1 font-display text-2xl font-bold text-accent">
-              {variable ? servicePriceLabel(service) : servicePriceHeadline(service)}
+              {breedHeadline ?? priceLabel}
             </p>
             {note ? (
               <p className="mt-2 text-xs leading-relaxed text-muted-foreground">{note}</p>
@@ -82,6 +109,20 @@ export function ServiceDetailDialog({
                 Lo que incluye este servicio
               </h3>
               <ServiceActivitiesList activities={service.activities} className="mt-4" />
+              {service.client_inclusion_note ? (
+                <p className="mt-3 text-xs leading-relaxed text-muted-foreground">
+                  {service.client_inclusion_note}
+                </p>
+              ) : null}
+            </div>
+          ) : service.client_inclusion_note ? (
+            <div className="mt-6">
+              <h3 className="font-display text-base font-bold text-primary">
+                Lo que incluye este servicio
+              </h3>
+              <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
+                {service.client_inclusion_note}
+              </p>
             </div>
           ) : null}
 

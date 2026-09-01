@@ -34,16 +34,9 @@ export function getApiBase(): string {
   }
   if (typeof window !== "undefined") {
     const { protocol, hostname, port } = window.location;
-    const localish =
-      hostname === "localhost" ||
-      hostname === "127.0.0.1" ||
-      hostname === "0.0.0.0" ||
-      /^\d{1,3}(?:\.\d{1,3}){3}$/.test(hostname);
-    // Producción detrás de ALB: mismo host + /api (api.* no resuelve en e-mac).
-    if (
-      hostname === "spakira.e-mac.co" ||
-      ((port === "" || port === "80" || port === "443") && !localish)
-    ) {
+    const localish = isLocalishHostname(hostname);
+    // Prod / dev local con Apache: mismo host + /api
+    if (usesSameHostApiPath(hostname, port)) {
       return `${protocol}//${hostname.replace(/^www\./, "")}/api`;
     }
     if (localish) {
@@ -56,13 +49,7 @@ export function getApiBase(): string {
 
 export function usesHttpOnlySession(): boolean {
   if (typeof window === "undefined") return false;
-  const { hostname } = window.location;
-  const localish =
-    hostname === "localhost" ||
-    hostname === "127.0.0.1" ||
-    hostname === "0.0.0.0" ||
-    /^\d{1,3}(?:\.\d{1,3}){3}$/.test(hostname);
-  return !localish;
+  return !isLocalDevHostname(window.location.hostname);
 }
 
 /**
@@ -160,6 +147,19 @@ export function isLocalishHostname(hostname: string): boolean {
   );
 }
 
+/** Dev local con nombre bonito (Apache :80 o Vite :9000). Sigue usando JWT en localStorage. */
+export function isLocalDevHostname(hostname: string): boolean {
+  return isLocalishHostname(hostname) || hostname === "dev.spakira.co";
+}
+
+function usesSameHostApiPath(hostname: string, port: string): boolean {
+  return (
+    hostname === "spakira.e-mac.co" ||
+    hostname === "dev.spakira.co" ||
+    ((port === "" || port === "80" || port === "443") && !isLocalishHostname(hostname))
+  );
+}
+
 export function isTunnelHostname(hostname: string): boolean {
   return (
     hostname.endsWith(".trycloudflare.com") ||
@@ -176,7 +176,7 @@ export function networkErrorMessage(raw: string, hostname?: string): string {
   if (isTunnelHostname(host)) {
     return "No se pudo contactar la API. El cierre no debe ir por el túnel de Cloudflare; usá localhost:9000 en esta PC.";
   }
-  if (isLocalishHostname(host)) {
+  if (isLocalishHostname(host) || host === "dev.spakira.co") {
     return "No se pudo contactar la API. ¿Está corriendo en el puerto 9001? Recargá e intentá de nuevo.";
   }
   return "No se pudo contactar la API. Recargá e intentá de nuevo. Si el servicio ya se cerró, revisá la agenda.";

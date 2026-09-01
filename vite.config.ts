@@ -14,7 +14,7 @@ export default defineConfig({
     host: "0.0.0.0",
     port: 9000,
     strictPort: true,
-    allowedHosts: ["spakira.e-mac.co", ".e-mac.co", ".trycloudflare.com"],
+    allowedHosts: ["dev.spakira.co", ".spakira.co", "spakira.e-mac.co", ".e-mac.co", ".trycloudflare.com"],
   },
   preview: {
     host: "0.0.0.0",

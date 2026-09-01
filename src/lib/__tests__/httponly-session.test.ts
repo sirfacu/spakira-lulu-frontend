@@ -27,6 +27,21 @@ describe("mayHaveSession / usesHttpOnlySession", () => {
     expect(mayHaveSession()).toBe(true);
   });
 
+  it("usesHttpOnlySession is false on dev.spakira.co", async () => {
+    vi.stubGlobal("localStorage", {
+      getItem: () => "dev-token",
+      setItem: () => {},
+      removeItem: () => {},
+    });
+    vi.stubGlobal("window", {
+      location: { hostname: "dev.spakira.co", protocol: "http:", port: "" },
+      localStorage: globalThis.localStorage,
+    });
+    const { usesHttpOnlySession, getToken } = await import("../api");
+    expect(usesHttpOnlySession()).toBe(false);
+    expect(getToken()).toBe("dev-token");
+  });
+
   it("usesHttpOnlySession is true on production host and getToken is null", async () => {
     vi.stubGlobal("localStorage", {
       getItem: () => "should-not-use",

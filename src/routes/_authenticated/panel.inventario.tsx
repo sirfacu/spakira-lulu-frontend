@@ -10,6 +10,7 @@ import {
   Plus,
   Eye,
   EyeOff,
+  Trash2,
 } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
 import { StatCard, Empty, StatusPill } from "@/components/ui-kit";
@@ -18,13 +19,16 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
+import { ConfirmDialog } from "@/components/confirm-dialog";
 import {
   createInventoryCategory,
   createInventoryItem,
   createInventoryMove,
+  deleteInventoryItem,
   inventoryCategoriesQuery,
   inventoryMovementsQuery,
   inventoryQuery,
+  inventorySummaryQuery,
   patchInventoryItem,
   type InventoryItem,
 } from "@/lib/spa-queries";
@@ -65,6 +69,10 @@ type ItemForm = {
   category: string;
   sku: string;
   barcode: string;
+  staff_description: string;
+  sell_by_shoot: boolean;
+  shoot_markup: string;
+  accessory_type: string;
   min_stock: string;
   purchase_price: string;
   sale_price: string;
@@ -80,6 +88,10 @@ const emptyForm = (): ItemForm => ({
   category: "",
   sku: "",
   barcode: "",
+  staff_description: "",
+  sell_by_shoot: false,
+  shoot_markup: "2.5",
+  accessory_type: "global",
   min_stock: "0",
   purchase_price: "0",
   sale_price: "0",
@@ -96,6 +108,10 @@ function toForm(i: InventoryItem): ItemForm {
     category: i.category ?? "",
     sku: i.sku ?? "",
     barcode: i.barcode ?? "",
+    staff_description: i.staff_description ?? "",
+    sell_by_shoot: Boolean(i.sell_by_shoot),
+    shoot_markup: String(i.shoot_markup ?? 2.5),
+    accessory_type: i.accessory_type ?? "global",
     min_stock: String(i.min_stock),
     purchase_price: String(i.purchase_price ?? 0),
     sale_price: String(i.sale_price ?? 0),
@@ -115,6 +131,7 @@ function nextExpiry(i: InventoryItem): string | null {
 function Inventario() {
   const qc = useQueryClient();
   const inv = useQuery(inventoryQuery);
+  const invSummary = useQuery(inventorySummaryQuery);
   const cats = useQuery(inventoryCategoriesQuery);
   const [q, setQ] = useState("");
   const [editing, setEditing] = useState<InventoryItem | "new" | null>(null);
@@ -126,6 +143,7 @@ function Inventario() {
   const [newCategory, setNewCategory] = useState("");
   const [showNewCategory, setShowNewCategory] = useState(false);
   const [costOpen, setCostOpen] = useState<Record<string, boolean>>({});
+  const [pendingDelete, setPendingDelete] = useState<InventoryItem | null>(null);
   const selectedId = editing && editing !== "new" ? editing.id : null;
   const moves = useQuery(inventoryMovementsQuery(selectedId));
 
@@ -145,10 +163,7 @@ function Inventario() {
     const exp = nextExpiry(i);
     return exp && Number(i.quantity) > 0 && new Date(exp) <= soon;
   });
-  const totalValue = (inv.data ?? []).reduce(
-    (a, i) => a + Number(i.purchase_price) * i.quantity,
-    0,
-  );
+  const totalValue = invSummary.data?.total_cost_value ?? 0;
 
   const categoryOptions = useMemo(() => {
     const names = new Set((cats.data ?? []).map((c) => c.name));
@@ -166,6 +181,8 @@ function Inventario() {
   const isStockIn =
     moveKind === "compra" || (moveKind === "ajuste" && Number(moveDelta) > 0);
 
+  const isAccessoryCategory = form.category.trim().toLowerCase().includes("accesorio");
+
   const saveMut = useMutation({
     mutationFn: async () => {
       const payload = {
@@ -173,6 +190,10 @@ function Inventario() {
         category: form.category.trim() || null,
         sku: form.sku.trim() || null,
         barcode: form.barcode.trim() || null,
+        staff_description: form.staff_description.trim() || null,
+        sell_by_shoot: form.sell_by_shoot,
+        shoot_markup: Number(form.shoot_markup) || 2.5,
+        accessory_type: isAccessoryCategory ? form.accessory_type : null,
         min_stock: Number(form.min_stock) || 0,
         purchase_price: Number(form.purchase_price) || 0,
         margin_pct: Number(form.margin_pct) || 40,
@@ -237,6 +258,17 @@ function Inventario() {
       setMoveHasExpiry(false);
       setMoveExpires("");
       toast.success("Existencias actualizadas");
+    },
+    onError: (err: Error) => toast.error(err.message),
+  });
+
+  const deleteMut = useMutation({
+    mutationFn: (id: string) => deleteInventoryItem(id),
+    onSuccess: async () => {
+      await qc.invalidateQueries({ queryKey: ["inventory"] });
+      setPendingDelete(null);
+      setEditing(null);
+      toast.success("Producto eliminado");
     },
     onError: (err: Error) => toast.error(err.message),
   });
@@ -382,6 +414,18 @@ function Inventario() {
                 onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
               />
             </div>
+            <div className="space-y-1">
+              <Label>Descripción (staff / mostrador)</Label>
+              <Input
+                className="h-11 rounded-xl"
+                placeholder="Ej. Shampoo mantos claros"
+                value={form.staff_description}
+                onChange={(e) => setForm((f) => ({ ...f, staff_description: e.target.value }))}
+              />
+              <p className="text-xs text-muted-foreground">
+                Texto corto que ven staff y mostrador al armar insumos de un servicio.
+              </p>
+            </div>
             <div className="grid gap-3 sm:grid-cols-2">
               <div className="space-y-1">
                 <Label>Categoría</Label>
@@ -425,6 +469,25 @@ function Inventario() {
                   </div>
                 ) : null}
               </div>
+              {isAccessoryCategory ? (
+                <div className="space-y-1 sm:col-span-2">
+                  <Label>Tipo de accesorio</Label>
+                  <select
+                    className="h-11 w-full rounded-xl border border-input bg-background px-3 text-sm"
+                    value={form.accessory_type}
+                    onChange={(e) =>
+                      setForm((f) => ({ ...f, accessory_type: e.target.value }))
+                    }
+                  >
+                    <option value="global">Global (todas las mascotas)</option>
+                    <option value="hembra">Solo hembras</option>
+                    <option value="macho">Solo machos</option>
+                  </select>
+                  <p className="text-xs text-muted-foreground">
+                    En agenda staff solo ve accesorios que aplican al sexo de la mascota.
+                  </p>
+                </div>
+              ) : null}
               <div className="space-y-1">
                 <Label>SKU</Label>
                 <Input
@@ -476,6 +539,43 @@ function Inventario() {
                   placeholder="bolsa, frasco, caja…"
                 />
               </div>
+            </div>
+            <div className="space-y-2 rounded-xl border border-border/80 bg-secondary/20 p-4">
+              <label className="flex cursor-pointer items-start gap-3">
+                <input
+                  type="checkbox"
+                  className="mt-1"
+                  checked={form.sell_by_shoot}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, sell_by_shoot: e.target.checked }))
+                  }
+                />
+                <span>
+                  <span className="block text-sm font-medium text-foreground">
+                    Cobro por dosis (shoot)
+                  </span>
+                  <span className="mt-1 block text-xs text-muted-foreground">
+                    En agenda, la cantidad sale del perfil de la raza (ml shampoo / acondicionador /
+                    medicado). El cobro = costo del ml usado × markup.
+                  </span>
+                </span>
+              </label>
+              {form.sell_by_shoot ? (
+                <div className="space-y-1 pl-7">
+                  <Label>Markup shoot (× costo)</Label>
+                  <Input
+                    type="number"
+                    min={0.1}
+                    step="0.1"
+                    className="h-11 max-w-[10rem] rounded-xl"
+                    value={form.shoot_markup}
+                    onChange={(e) => setForm((f) => ({ ...f, shoot_markup: e.target.value }))}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Ej. 2.0 = duplicar costo · 2.5 = costo × 2,5 · 3.0 = triplicar (útil en medicado).
+                  </p>
+                </div>
+              ) : null}
             </div>
             <div className="space-y-2">
               <Label>Uso del ítem</Label>
@@ -572,7 +672,22 @@ function Inventario() {
               />
             </div>
           </div>
-          <div className="mt-4 flex justify-end gap-2">
+          <div className="mt-4 flex flex-wrap justify-end gap-2">
+            {selectedId && liveItem ? (
+              <Button
+                variant="outline"
+                className="rounded-xl border-destructive/40 text-destructive hover:bg-destructive/10"
+                disabled={
+                  deleteMut.isPending ||
+                  Number(liveItem.quantity) !== 0 ||
+                  Number(liveItem.reserved ?? 0) > 0
+                }
+                onClick={() => setPendingDelete(liveItem)}
+              >
+                <Trash2 className="mr-2 h-4 w-4" />
+                Eliminar
+              </Button>
+            ) : null}
             <Button variant="outline" className="rounded-xl" onClick={() => setEditing(null)}>
               Cerrar
             </Button>
@@ -580,6 +695,16 @@ function Inventario() {
               Guardar
             </Button>
           </div>
+          {selectedId && liveItem && Number(liveItem.quantity) !== 0 ? (
+            <p className="mt-2 text-right text-xs text-muted-foreground">
+              Para eliminar, dejá las existencias en 0 desde el historial (merma o ajuste).
+            </p>
+          ) : null}
+          {selectedId && liveItem && Number(liveItem.reserved ?? 0) > 0 ? (
+            <p className="mt-1 text-right text-xs text-destructive">
+              Hay unidades reservadas en ventas; liberá reservas antes de eliminar.
+            </p>
+          ) : null}
 
           {selectedId ? (
             <div className="mt-6 border-t border-border pt-4">
@@ -662,6 +787,22 @@ function Inventario() {
           ) : null}
         </DialogContent>
       </Dialog>
+
+      <ConfirmDialog
+        open={!!pendingDelete}
+        onOpenChange={(open) => !open && setPendingDelete(null)}
+        title="Eliminar producto"
+        description={
+          pendingDelete
+            ? pendingDelete.sku
+              ? `¿Eliminar «${pendingDelete.name}» (${pendingDelete.sku})? Se borra del inventario y queda registrado en auditoría. Esta acción no se puede deshacer.`
+              : `¿Eliminar «${pendingDelete.name}»? Se borra del inventario y queda registrado en auditoría. Esta acción no se puede deshacer.`
+            : ""
+        }
+        confirmLabel="Eliminar"
+        pending={deleteMut.isPending}
+        onConfirm={() => pendingDelete && deleteMut.mutate(pendingDelete.id)}
+      />
     </AppShell>
   );
 }

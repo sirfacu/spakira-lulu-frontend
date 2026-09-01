@@ -8,14 +8,23 @@ import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Switch } from "@/components/ui/switch";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   deactivateServiceActivity,
   serviceActivityCatalogAdminQuery,
   skillCatalog,
   upsertServiceActivity,
   type ServiceActivityCatalogItem,
 } from "@/lib/spa-queries";
-
-const ICON_HINT = "droplets, wind, scissors, brush, flower-2, sparkles, palette";
+import {
+  SERVICE_ACTIVITY_ICON_OPTIONS,
+  normalizeActivityIcon,
+} from "@/lib/service-activity-icons";
 
 type ActivityForm = {
   id: string;
@@ -30,7 +39,7 @@ function emptyForm(): ActivityForm {
   return {
     id: "",
     label: "",
-    icon: "",
+    icon: "sparkles",
     sort_order: 80,
     required_skills: ["groomer"],
     active: true,
@@ -41,7 +50,7 @@ function toForm(item: ServiceActivityCatalogItem): ActivityForm {
   return {
     id: item.id,
     label: item.label,
-    icon: item.icon ?? "",
+    icon: normalizeActivityIcon(item.icon) ?? item.icon ?? "sparkles",
     sort_order: item.sort_order ?? 50,
     required_skills: [...(item.required_skills ?? [])],
     active: item.active !== false,
@@ -65,10 +74,12 @@ export function ServiceActivityAdmin() {
     mutationFn: async () => {
       const id = form.id.trim().toLowerCase().replace(/\s+/g, "_");
       if (!id || !form.label.trim()) throw new Error("ID y nombre son obligatorios");
+      const icon = normalizeActivityIcon(form.icon);
+      if (!icon) throw new Error("Elegí un ícono del catálogo fijo");
       return upsertServiceActivity({
         id,
         label: form.label.trim(),
-        icon: form.icon.trim() || null,
+        icon,
         sort_order: Number(form.sort_order) || 0,
         required_skills: form.required_skills,
         active: form.active,
@@ -201,13 +212,25 @@ export function ServiceActivityAdmin() {
             </div>
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
-                <Label>Icono (Lucide)</Label>
-                <Input
-                  className="h-11 rounded-xl"
+                <Label>Ícono</Label>
+                <Select
                   value={form.icon}
-                  placeholder={ICON_HINT}
-                  onChange={(e) => setForm((f) => ({ ...f, icon: e.target.value }))}
-                />
+                  onValueChange={(v) => setForm((f) => ({ ...f, icon: v }))}
+                >
+                  <SelectTrigger className="h-11 rounded-xl">
+                    <SelectValue placeholder="Elegí ícono" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {SERVICE_ACTIVITY_ICON_OPTIONS.map((opt) => (
+                      <SelectItem key={opt.id} value={opt.id}>
+                        {opt.label} ({opt.id})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  Lista fija del sistema (Lucide). Para oídos usá <code className="text-[11px]">ear</code>.
+                </p>
               </div>
               <div className="space-y-2">
                 <Label>Orden</Label>

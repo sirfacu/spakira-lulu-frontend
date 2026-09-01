@@ -291,13 +291,19 @@ export function ClientAgenda() {
                 <dt className="text-muted-foreground">Sucursal</dt>
                 <dd className="text-right font-medium">Spa Kira — Principal</dd>
               </div>
-              {nextAdventure?.services?.name ? (
+              {nextAdventure ? (
                 <div className="rounded-2xl bg-secondary/80 px-3 py-2">
                   <dt className="text-[11px] uppercase tracking-wide text-muted-foreground">
                     Próxima aventura
                   </dt>
                   <dd className="text-sm font-semibold text-primary">
-                    {nextAdventure.services.name} 🛁
+                    {nextAdventure.services?.name ?? "Cita"} 🛁
+                  </dd>
+                  <dd className="mt-0.5 text-xs text-muted-foreground">
+                    {slotWhenLabel(
+                      ymd(new Date(nextAdventure.starts_at)),
+                      new Date(nextAdventure.starts_at).getHours(),
+                    )}
                   </dd>
                 </div>
               ) : null}
@@ -476,6 +482,11 @@ export function ClientAgenda() {
                 ))}
               </SelectContent>
             </Select>
+            {selectedService?.client_inclusion_note ? (
+              <p className="text-xs leading-relaxed text-muted-foreground">
+                {selectedService.client_inclusion_note}
+              </p>
+            ) : null}
           </div>
           <div className="flex justify-end gap-2 pt-2">
             <Button variant="ghost" className="rounded-xl" onClick={() => setBook(null)}>
