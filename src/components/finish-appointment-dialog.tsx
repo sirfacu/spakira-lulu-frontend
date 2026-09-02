@@ -259,7 +259,11 @@ export function FinishAppointmentDialog({ appointment, open, onOpenChange, onDon
         onOpenChange(false);
         onDone();
       } else {
-        toast.error(e instanceof Error ? e.message : "No se pudo finalizar");
+        const msg =
+          e instanceof Error && e.message.trim()
+            ? e.message
+            : "No se pudo finalizar el servicio. Revisá la agenda o reintentá.";
+        toast.error(msg);
       }
     } finally {
       setSaving(false);
