@@ -50,6 +50,10 @@ export function FinishAppointmentDialog({ appointment, open, onOpenChange, onDon
   const [evidenceUrl, setEvidenceUrl] = useState("");
   const [markPaid, setMarkPaid] = useState(true);
   const [promo, setPromo] = useState<PromoValidate | null>(null);
+  const [priceHint, setPriceHint] = useState<{
+    price_min?: number;
+    price_max?: number;
+  } | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const shop = useQuery({ ...inventoryShopQuery, enabled: open });
@@ -84,6 +88,7 @@ export function FinishAppointmentDialog({ appointment, open, onOpenChange, onDon
     setEvidenceUrl("");
     setMarkPaid(true);
     setPromo(null);
+    setPriceHint(null);
     let cancelled = false;
     const reloadExtras = async () => {
       try {
@@ -292,82 +297,60 @@ export function FinishAppointmentDialog({ appointment, open, onOpenChange, onDon
           </div>
 
           <div className="space-y-5 px-6 py-5">
+            <div className="space-y-2">
+              <label className="flex cursor-pointer flex-col gap-3 rounded-2xl border border-border bg-card px-4 py-3 text-sm shadow-soft sm:flex-row sm:items-center">
+                <div className="flex min-w-0 flex-1 items-center gap-3">
+                  <input
+                    type="checkbox"
+                    className="h-4 w-4 accent-primary"
+                    checked={includeService}
+                    onChange={(e) => setIncludeService(e.target.checked)}
+                  />
+                  <span className="min-w-0 flex-1">
+                    Incluir servicio en la factura
+                    <span className="mt-0.5 block text-xs text-muted-foreground">
+                      {appointment.services?.name ?? "Servicio prestado"}
+                    </span>
+                  </span>
+                </div>
+                <Input
+                  type="number"
+                  min={0}
+                  step={1000}
+                  disabled={!includeService}
+                  className="h-10 w-full rounded-xl sm:w-36"
+                  placeholder="Cobrado $"
+                  value={servicePrice}
+                  onChange={(e) => setServicePrice(e.target.value)}
+                />
+              </label>
+              {priceHint?.price_min != null ? (
+                <p className="px-1 text-xs text-muted-foreground">
+                  Referencia{" "}
+                  {cop(priceHint.price_min)}
+                  {priceHint.price_max != null &&
+                  priceHint.price_max !== priceHint.price_min
+                    ? ` – ${cop(priceHint.price_max)}`
+                    : ""}
+                </p>
+              ) : null}
+            </div>
+
             {appointment.service_id && appointment.pet_id ? (
               <MaterialEstimatePanel
                 appointmentId={appointment.id}
                 serviceId={appointment.service_id}
                 petId={appointment.pet_id}
-                compact
+                mode="checkout"
+                checkoutPart="addons"
                 onBillableChange={() => void reloadBillableExtras()}
+                onPriceHint={setPriceHint}
               />
             ) : null}
 
-            <label className="flex cursor-pointer flex-col gap-3 rounded-2xl border border-border bg-card px-4 py-3 text-sm shadow-soft sm:flex-row sm:items-center">
-              <div className="flex min-w-0 flex-1 items-center gap-3">
-                <input
-                  type="checkbox"
-                  className="h-4 w-4 accent-primary"
-                  checked={includeService}
-                  onChange={(e) => setIncludeService(e.target.checked)}
-                />
-                <span className="min-w-0 flex-1">
-                  Incluir servicio en la factura
-                  <span className="mt-0.5 block text-xs text-muted-foreground">
-                    {appointment.services?.name ?? "Servicio prestado"} · valor según apreciación
-                  </span>
-                </span>
-              </div>
-              <Input
-                type="number"
-                min={0}
-                step={1000}
-                disabled={!includeService}
-                className="h-10 w-full rounded-xl sm:w-36"
-                placeholder="Cobrado $"
-                value={servicePrice}
-                onChange={(e) => setServicePrice(e.target.value)}
-              />
-            </label>
-
-            <PaymentMethodFields
-              methods={payMethods.data ?? []}
-              methodCode={paymentMethod}
-              onMethodChange={setPaymentMethod}
-              evidenceUrl={evidenceUrl}
-              onEvidenceUrl={setEvidenceUrl}
-            />
-
-            <label className="flex cursor-pointer items-center gap-3 rounded-xl border border-border px-4 py-3 text-sm">
-              <input
-                type="checkbox"
-                className="h-4 w-4 accent-primary"
-                checked={markPaid}
-                onChange={(e) => setMarkPaid(e.target.checked)}
-              />
-              <span>
-                Pagado en mostrador (listo y pagado)
-                <span className="mt-0.5 block text-xs text-muted-foreground">
-                  La mascota puede retirarse; la factura queda como pagada.
-                </span>
-              </span>
-            </label>
-
-            <CouponApplyFields
-              subtotal={grandTotal}
-              customerId={ownerId}
-              petId={appointment.pet_id}
-              serviceIds={appointment.service_id ? [appointment.service_id] : []}
-              value={promo}
-              onChange={setPromo}
-              rewards={loyalty.data?.available ?? []}
-            />
-
             <div>
               <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                Extras (shoots + vitrina)
-              </p>
-              <p className="mb-2 text-xs text-muted-foreground">
-                Incluye adicionales por dosis y productos de vitrina ya agregados a la cita.
+                Productos
               </p>
               <div className="relative">
                 <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -381,7 +364,7 @@ export function FinishAppointmentDialog({ appointment, open, onOpenChange, onDon
                       addCatalogItem(suggestions[0]);
                     }
                   }}
-                  placeholder="Escribí: galletas, collar, BARF…"
+                  placeholder="Buscar en vitrina…"
                   className="h-12 rounded-2xl border-border/80 bg-card pl-10 shadow-soft"
                 />
               </div>
@@ -433,18 +416,13 @@ export function FinishAppointmentDialog({ appointment, open, onOpenChange, onDon
                   </Button>
                 </div>
               ) : null}
-            </div>
 
-            <div>
-              <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                En la factura
-              </p>
               {lines.length === 0 ? (
-                <p className="rounded-2xl border border-dashed border-border px-4 py-8 text-center text-sm text-muted-foreground">
-                  Los artículos que elijas aparecerán acá para ajustar unidades.
+                <p className="mt-3 rounded-2xl border border-dashed border-border px-4 py-6 text-center text-sm text-muted-foreground">
+                  Sin productos en la factura. Buscá arriba para agregar.
                 </p>
               ) : (
-                <ul className="space-y-2">
+                <ul className="mt-3 space-y-2">
                   {lines.map((line) => (
                     <li
                       key={line.key}
@@ -493,9 +471,42 @@ export function FinishAppointmentDialog({ appointment, open, onOpenChange, onDon
               )}
             </div>
 
+            <PaymentMethodFields
+              methods={payMethods.data ?? []}
+              methodCode={paymentMethod}
+              onMethodChange={setPaymentMethod}
+              evidenceUrl={evidenceUrl}
+              onEvidenceUrl={setEvidenceUrl}
+            />
+
+            <label className="flex cursor-pointer items-center gap-3 rounded-xl border border-border px-4 py-3 text-sm">
+              <input
+                type="checkbox"
+                className="h-4 w-4 accent-primary"
+                checked={markPaid}
+                onChange={(e) => setMarkPaid(e.target.checked)}
+              />
+              <span>
+                Pagado en mostrador
+                <span className="mt-0.5 block text-xs text-muted-foreground">
+                  La factura queda como pagada; la mascota puede retirarse.
+                </span>
+              </span>
+            </label>
+
+            <CouponApplyFields
+              subtotal={grandTotal}
+              customerId={ownerId}
+              petId={appointment.pet_id}
+              serviceIds={appointment.service_id ? [appointment.service_id] : []}
+              value={promo}
+              onChange={setPromo}
+              rewards={loyalty.data?.available ?? []}
+            />
+
             <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border pt-4">
               <div>
-                <p className="text-xs text-muted-foreground">Total estimado</p>
+                <p className="text-xs text-muted-foreground">Total a cobrar</p>
                 <p className="font-display text-xl font-bold text-primary">{cop(netTotal)}</p>
                 {discount > 0 ? (
                   <p className="text-xs text-muted-foreground">Antes {cop(grandTotal)}</p>
@@ -510,6 +521,16 @@ export function FinishAppointmentDialog({ appointment, open, onOpenChange, onDon
                 </Button>
               </div>
             </div>
+
+            {appointment.service_id && appointment.pet_id ? (
+              <MaterialEstimatePanel
+                appointmentId={appointment.id}
+                serviceId={appointment.service_id}
+                petId={appointment.pet_id}
+                mode="checkout"
+                checkoutPart="supplies"
+              />
+            ) : null}
           </div>
         </DialogContent>
       </Dialog>

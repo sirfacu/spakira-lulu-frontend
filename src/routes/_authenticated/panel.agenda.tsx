@@ -1489,7 +1489,8 @@ function StaffAgenda() {
                     Cobro adicional (vitrina)
                   </h3>
                   <p className="mt-1 text-xs text-muted-foreground">
-                    Los shoots (shampoo, medicado…) se eligen arriba. Acá van galletas, BARF, collares, etc.
+                    Los adicionales (medicado, etc.) se eligen arriba. Acá van galletas, BARF,
+                    collares, etc.
                   </p>
                   {(() => {
                     const extrasStatus = normalizeStatus(selected.status);
@@ -1595,7 +1596,7 @@ function StaffAgenda() {
                               {ex.item_name}
                               {ex.line_kind === "shoot" ? (
                                 <span className="ml-2 text-[10px] uppercase tracking-wide text-accent">
-                                  shoot
+                                  adicional
                                 </span>
                               ) : null}
                             </p>

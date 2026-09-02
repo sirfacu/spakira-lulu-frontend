@@ -552,17 +552,17 @@ function Inventario() {
                 />
                 <span>
                   <span className="block text-sm font-medium text-foreground">
-                    Cobro por dosis (shoot)
+                    Se vende como adicional
                   </span>
                   <span className="mt-1 block text-xs text-muted-foreground">
-                    En agenda, la cantidad sale del perfil de la raza (ml shampoo / acondicionador /
-                    medicado). El cobro = costo del ml usado × markup.
+                    En agenda, la cantidad sale del perfil de la raza (ml). El cobro = costo del ml
+                    usado × multiplicador.
                   </span>
                 </span>
               </label>
               {form.sell_by_shoot ? (
                 <div className="space-y-1 pl-7">
-                  <Label>Markup shoot (× costo)</Label>
+                  <Label>Multiplicador de cobro (× costo)</Label>
                   <Input
                     type="number"
                     min={0.1}
