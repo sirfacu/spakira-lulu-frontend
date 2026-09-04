@@ -6,9 +6,9 @@ import {
 
 describe("inventory channel", () => {
   it("labels usage types", () => {
-    expect(inventoryChannelLabel("interno")).toBe("Consumo interno");
-    expect(inventoryChannelLabel("externo")).toBe("Venta al público");
-    expect(inventoryChannelLabel("interno_externo")).toContain("legacy");
+    expect(inventoryChannelLabel("interno")).toBe("Uso interno");
+    expect(inventoryChannelLabel("externo")).toBe("Solo venta");
+    expect(inventoryChannelLabel("interno_externo")).toBe("Interno y venta");
   });
 
   it("marks only sale channels as shoppable", () => {

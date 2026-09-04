@@ -8,6 +8,7 @@ import {
   type MaterialEstimate,
 } from "@/lib/spa-queries";
 import { cop } from "@/lib/format";
+import { formatMaterialQtyParts } from "@/lib/material-qty-label";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
@@ -16,8 +17,13 @@ type Props = {
   petId?: string;
   appointmentId?: string;
   compact?: boolean;
-  /** full = agenda/admin; checkout = cierre de servicio (sin costos internos). */
+  /** full = agenda; checkout = cierre de servicio. */
   mode?: "full" | "checkout";
+  /**
+   * Mostrar $ de costo interno de insumos incluidos.
+   * En agenda: false (van en el precio del servicio). Admin usa ServiceCostByBreedPanel.
+   */
+  showInternalCosts?: boolean;
   /**
    * En checkout, el diálogo puede ubicar adicionales y insumos en distintos
    * lugares del layout.
@@ -36,18 +42,20 @@ function lineKey(l: { material_role: string; inventory_item_id?: string | null }
   return `${l.material_role}:${l.inventory_item_id ?? ""}`;
 }
 
-function qtyLabel(l: {
+function qtyParts(l: {
   quantity: number;
   quantity_unit: string;
-  has_profile?: boolean;
-}): string | null {
-  if (l.quantity > 0) {
-    if (l.quantity_unit === "ml" || l.quantity_unit === "g") {
-      return `${l.quantity} ${l.quantity_unit}`;
-    }
-    return `${l.quantity} u`;
-  }
-  return null;
+  mix_quantity?: number | null;
+  dilution_product?: number | null;
+  dilution_water?: number | null;
+}) {
+  return formatMaterialQtyParts({
+    quantity: l.quantity,
+    quantity_unit: l.quantity_unit,
+    mix_quantity: l.mix_quantity,
+    dilution_product: l.dilution_product,
+    dilution_water: l.dilution_water,
+  });
 }
 
 export function MaterialEstimatePanel({
@@ -56,6 +64,7 @@ export function MaterialEstimatePanel({
   appointmentId,
   compact,
   mode = "full",
+  showInternalCosts = false,
   checkoutPart = "all",
   draftSelections,
   onDraftSelectionsChange,
@@ -227,11 +236,20 @@ export function MaterialEstimatePanel({
         {suppliesOpen ? (
           <ul className="space-y-1 border-t border-border/60 px-3 py-2.5 text-sm text-muted-foreground">
             {[...liquidLines, ...accessoryLines].map((l) => {
-              const qty = qtyLabel(l);
+              const qty = qtyParts(l);
               return (
                 <li key={lineKey(l)}>
-                  {l.display_label || l.staff_description || l.material_label}
-                  {qty ? ` · ${qty}` : ""}
+                  <span className="text-foreground">
+                    {l.display_label || l.staff_description || l.material_label}
+                  </span>
+                  {qty.primary ? (
+                    <span className="mt-0.5 block text-xs">
+                      {qty.primary}
+                      {qty.secondary ? (
+                        <span className="block text-muted-foreground">{qty.secondary}</span>
+                      ) : null}
+                    </span>
+                  ) : null}
                 </li>
               );
             })}
@@ -282,7 +300,7 @@ export function MaterialEstimatePanel({
 
       {!data.has_profile ? (
         <p className="text-xs text-amber-700">
-          Sin perfil de consumo para la raza de esta mascota (ml y rango sugerido).
+          Esta raza aún no tiene perfil de consumo: no podemos estimar ml ni el rango sugerido.
         </p>
       ) : null}
 
@@ -291,35 +309,69 @@ export function MaterialEstimatePanel({
       {includedLines.length > 0 ? (
         <>
           <p className="text-xs text-muted-foreground">
-            Costo interno informativo (no modifica precio al cliente)
+            {showInternalCosts
+              ? "Costo interno informativo (no cambia el precio al cliente)."
+              : "Cantidad a usar del envase. Incluido en el precio del servicio."}
           </p>
           {liquidLines.length > 0 ? (
-            <ul className="space-y-1 text-sm">
-              {liquidLines.map((l) => (
-                <li key={lineKey(l)} className="flex justify-between gap-2">
-                  <span>
-                    {l.display_label || l.material_label}
-                    {qtyLabel(l) ? ` · ${qtyLabel(l)}` : ""}
-                  </span>
-                  <span className="tabular-nums text-muted-foreground">{cop(l.line_cost)}</span>
-                </li>
-              ))}
+            <ul className="space-y-2 text-sm">
+              {liquidLines.map((l) => {
+                const qty = qtyParts(l);
+                return (
+                  <li key={lineKey(l)} className="flex justify-between gap-2">
+                    <span className="min-w-0">
+                      <span className="font-medium">
+                        {l.display_label || l.material_label}
+                      </span>
+                      {qty.primary ? (
+                        <span className="mt-0.5 block text-xs text-muted-foreground">
+                          {qty.primary}
+                          {qty.secondary ? (
+                            <span className="block">{qty.secondary}</span>
+                          ) : null}
+                        </span>
+                      ) : null}
+                    </span>
+                    {showInternalCosts ? (
+                      <span className="shrink-0 tabular-nums text-muted-foreground">
+                        {cop(l.line_cost)}
+                      </span>
+                    ) : null}
+                  </li>
+                );
+              })}
             </ul>
           ) : null}
           {accessoryLines.length > 0 ? (
             <div className="space-y-1">
               <p className="text-xs font-medium text-foreground">Accesorios incluidos</p>
-              <ul className="space-y-1 text-sm">
-                {accessoryLines.map((l) => (
-                  <li key={lineKey(l)} className="flex justify-between gap-2">
-                    <span>{l.display_label || l.material_label}</span>
-                    <span className="tabular-nums text-muted-foreground">{cop(l.line_cost)}</span>
-                  </li>
-                ))}
+              <ul className="space-y-2 text-sm">
+                {accessoryLines.map((l) => {
+                  const qty = qtyParts(l);
+                  return (
+                    <li key={lineKey(l)} className="flex justify-between gap-2">
+                      <span className="min-w-0">
+                        <span className="font-medium">
+                          {l.display_label || l.material_label}
+                        </span>
+                        {qty.primary ? (
+                          <span className="mt-0.5 block text-xs text-muted-foreground">
+                            {qty.primary}
+                          </span>
+                        ) : null}
+                      </span>
+                      {showInternalCosts ? (
+                        <span className="shrink-0 tabular-nums text-muted-foreground">
+                          {cop(l.line_cost)}
+                        </span>
+                      ) : null}
+                    </li>
+                  );
+                })}
               </ul>
             </div>
           ) : null}
-          {includedTotal > 0 ? (
+          {showInternalCosts && includedTotal > 0 ? (
             <div className="flex justify-between border-t border-border/60 pt-2 text-sm font-medium text-muted-foreground">
               <span>Total costo interno</span>
               <span className="tabular-nums">{cop(includedTotal)}</span>

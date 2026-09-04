@@ -63,8 +63,9 @@ export function BreedBathProfilesAdmin() {
         <div>
           <h2 className="font-display text-xl font-bold text-primary">Perfiles por raza</h2>
           <p className="mt-1 text-sm text-muted-foreground">
-            Consumo ml y rango de precio sugerido (Excel: RAZA, ESPECIE, PRECIO MIN, PRECIO
-            MAXIMO, ml SHAMPOO, ml ACONDICIONADOR, ml MEDICADO)
+            Consumo en ml de mezcla lista (producto + agua). Con dilución 1/10, de 100 ml
+            de mezcla se descuentan 10 ml del envase. Excel: RAZA, ESPECIE, PRECIO MIN,
+            PRECIO MAXIMO, ml SHAMPOO, ml ACONDICIONADOR, ml MEDICADO.
           </p>
         </div>
         <label className="cursor-pointer">
@@ -101,9 +102,9 @@ export function BreedBathProfilesAdmin() {
               <th className="px-3 py-2">Raza</th>
               <th className="px-3 py-2">Especie</th>
               <th className="px-3 py-2">Precio min–max</th>
-              <th className="px-3 py-2">Shampoo ml</th>
-              <th className="px-3 py-2">Acond. ml</th>
-              <th className="px-3 py-2">Medicado ml</th>
+              <th className="px-3 py-2">Shampoo ml mezcla</th>
+              <th className="px-3 py-2">Acond. ml mezcla</th>
+              <th className="px-3 py-2">Medicado ml mezcla</th>
               <th className="px-3 py-2" />
             </tr>
           </thead>
@@ -145,9 +146,9 @@ export function BreedBathProfilesAdmin() {
             [
               ["price_min", "Precio mínimo"],
               ["price_max", "Precio máximo"],
-              ["ml_shampoo", "ml shampoo"],
-              ["ml_conditioner", "ml acondicionador"],
-              ["ml_medicated", "ml medicado"],
+              ["ml_shampoo", "Ml mezcla shampoo (listos para usar)"],
+              ["ml_conditioner", "Ml mezcla acondicionador"],
+              ["ml_medicated", "Ml mezcla medicado"],
             ] as const
           ).map(([key, label]) => (
             <label key={key} className="block space-y-1 text-sm">

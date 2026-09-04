@@ -20,8 +20,16 @@ import {
   deleteEmailTemplate,
   getMailSettings,
   putMailSettings,
+  sendMailTest,
   type EmailTemplate,
 } from "@/lib/spa-queries";
+import { allowsFromAlias, consumerMailHint, extractEmailAddress } from "@/lib/mail-account";
+
+const DELIVERY_REASON_LABEL: Record<string, string> = {
+  deshabilitado_en_panel: "envío desactivado",
+  mail_log_only: "bloqueado por el servidor",
+  smtp_incompleto: "faltan datos del correo",
+};
 
 export function MailConfigPanel() {
   const qc = useQueryClient();
@@ -32,6 +40,11 @@ export function MailConfigPanel() {
   const [from, setFrom] = useState("");
   const [tls, setTls] = useState(true);
   const [password, setPassword] = useState("");
+  const [sendingEnabled, setSendingEnabled] = useState(true);
+  const [testTo, setTestTo] = useState("");
+
+  const fromAliasAllowed = useMemo(() => allowsFromAlias(userSmtp), [userSmtp]);
+  const providerHint = useMemo(() => consumerMailHint(userSmtp), [userSmtp]);
 
   useEffect(() => {
     if (!mail.data) return;
@@ -40,24 +53,61 @@ export function MailConfigPanel() {
     setUserSmtp(mail.data.smtp_user || "");
     setFrom(mail.data.smtp_from || "");
     setTls(!!mail.data.smtp_tls);
+    setSendingEnabled(mail.data.sending_enabled !== false);
     setPassword("");
   }, [mail.data]);
 
+  useEffect(() => {
+    if (fromAliasAllowed) return;
+    const account = extractEmailAddress(userSmtp);
+    if (account) setFrom(account);
+  }, [fromAliasAllowed, userSmtp]);
+
   const saveMut = useMutation({
-    mutationFn: () =>
-      putMailSettings({
+    mutationFn: () => {
+      const account = extractEmailAddress(userSmtp);
+      const smtpFrom = fromAliasAllowed ? from.trim() : account || from.trim();
+      return putMailSettings({
         smtp_host: host.trim(),
         smtp_port: Number(port) || 587,
         smtp_user: userSmtp.trim(),
-        smtp_from: from.trim(),
+        smtp_from: smtpFrom,
         smtp_tls: tls,
+        sending_enabled: sendingEnabled,
         ...(password.trim() ? { smtp_password: password.trim() } : {}),
-      }),
+      });
+    },
     onSuccess: async (res) => {
-      toast.success("Correo guardado");
-      if (res.backup) toast.message("Copia de seguridad de correo guardada");
+      toast.success("Configuración de correo guardada");
+      if (res.backup) toast.message("Se guardó una copia de seguridad");
       setPassword("");
       await qc.invalidateQueries({ queryKey: ["mail-settings"] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const toggleSendMut = useMutation({
+    mutationFn: (enabled: boolean) => putMailSettings({ sending_enabled: enabled }),
+    onSuccess: async (res) => {
+      setSendingEnabled(res.sending_enabled !== false);
+      toast.success(
+        res.sending_enabled !== false
+          ? "Los correos del spa ya se pueden enviar"
+          : "El envío de correos quedó pausado",
+      );
+      await qc.invalidateQueries({ queryKey: ["mail-settings"] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const testMut = useMutation({
+    mutationFn: () =>
+      sendMailTest({
+        ...(testTo.trim() ? { to: testTo.trim() } : {}),
+        template_key: "appointment_created",
+      }),
+    onSuccess: (res) => {
+      toast.success(`Listo: enviamos la prueba a ${res.to}`);
     },
     onError: (e: Error) => toast.error(e.message),
   });
@@ -66,51 +116,150 @@ export function MailConfigPanel() {
     return <KiraLoader variant="inline" />;
   }
 
+  const deliveryActive = !!mail.data?.delivery_active;
+  const blockedLabels = (mail.data?.delivery_blocked_reasons || []).map(
+    (r) => DELIVERY_REASON_LABEL[r] || r,
+  );
+
   return (
     <div className="space-y-4">
+      <div className="rounded-xl border border-border/70 bg-muted/30 p-4 space-y-3">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="space-y-1 min-w-0">
+            <Label className="text-base">Envío de correos</Label>
+            <p className="text-sm text-muted-foreground">
+              Activá o pausá los mensajes automáticos del spa (citas, facturas y cancelaciones).
+            </p>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <Switch
+              checked={sendingEnabled}
+              disabled={toggleSendMut.isPending}
+              onCheckedChange={(v) => {
+                setSendingEnabled(v);
+                toggleSendMut.mutate(v);
+              }}
+            />
+            <span className="text-sm font-medium">
+              {sendingEnabled ? "Activo" : "Pausado"}
+            </span>
+          </div>
+        </div>
+        <p
+          className={`text-sm ${deliveryActive ? "text-emerald-700 dark:text-emerald-400" : "text-amber-800 dark:text-amber-300"}`}
+        >
+          {deliveryActive
+            ? "Ahora mismo los correos se están enviando."
+            : `Ahora mismo no se envían${blockedLabels.length ? ` (${blockedLabels.join(", ")})` : ""}.`}
+        </p>
+      </div>
+
+      <div className="rounded-xl border border-border/70 p-4 space-y-3">
+        <div className="space-y-1">
+          <Label className="text-base">Probar envío</Label>
+          <p className="text-sm text-muted-foreground">
+            Te mandamos un mensaje de ejemplo (confirmación de cita) para verificar que todo llega
+            bien. Si no escribís un destino, lo enviamos a tu correo de administrador.
+          </p>
+        </div>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+          <div className="space-y-2 flex-1 min-w-0">
+            <Label>Correo de destino (opcional)</Label>
+            <Input
+              className="h-11 rounded-xl"
+              type="email"
+              value={testTo}
+              onChange={(e) => setTestTo(e.target.value)}
+              placeholder="tu@correo.com"
+            />
+          </div>
+          <Button
+            type="button"
+            className="rounded-xl h-11 shrink-0"
+            disabled={testMut.isPending || !sendingEnabled || !deliveryActive}
+            onClick={() => testMut.mutate()}
+          >
+            {testMut.isPending ? "Enviando…" : "Enviar prueba"}
+          </Button>
+        </div>
+        {!sendingEnabled || !deliveryActive ? (
+          <p className="text-xs text-muted-foreground">
+            Activá el envío y completá los datos de la cuenta para poder probar.
+          </p>
+        ) : null}
+      </div>
+
       <p className="text-sm text-muted-foreground">
-        Valores efectivos (fuente: <code>{mail.data?.source}</code>
-        {mail.data?.smtp_configured ? " · SMTP listo" : " · SMTP incompleto"}). La contraseña nunca
-        se muestra; dejá el campo vacío para no cambiarla.
+        Datos de la cuenta que usa el spa para enviar correos.
+        {mail.data?.password_set
+          ? " La contraseña ya está guardada; dejá el campo vacío si no querés cambiarla."
+          : " Completá también la contraseña de la cuenta."}
       </p>
       <div className="grid gap-4 sm:grid-cols-2">
         <div className="space-y-2 sm:col-span-2">
-          <Label>SMTP host</Label>
-          <Input className="h-11 rounded-xl" value={host} onChange={(e) => setHost(e.target.value)} />
+          <Label>Servidor de correo</Label>
+          <Input
+            className="h-11 rounded-xl"
+            value={host}
+            onChange={(e) => setHost(e.target.value)}
+            placeholder="ej. smtp.tudominio.com"
+          />
         </div>
         <div className="space-y-2">
           <Label>Puerto</Label>
           <Input className="h-11 rounded-xl" value={port} onChange={(e) => setPort(e.target.value)} />
         </div>
         <div className="space-y-2">
-          <Label>TLS</Label>
+          <Label>Conexión segura</Label>
           <div className="flex h-11 items-center gap-2">
             <Switch checked={tls} onCheckedChange={setTls} />
-            <span className="text-sm text-muted-foreground">{tls ? "Activado" : "Desactivado"}</span>
+            <span className="text-sm text-muted-foreground">{tls ? "Activada" : "Desactivada"}</span>
           </div>
         </div>
-        <div className="space-y-2">
-          <Label>Usuario (cuenta real)</Label>
+        <div className={`space-y-2 ${fromAliasAllowed ? "" : "sm:col-span-2"}`}>
+          <Label>Cuenta de correo</Label>
           <Input
             className="h-11 rounded-xl"
             value={userSmtp}
             onChange={(e) => setUserSmtp(e.target.value)}
+            placeholder="cuenta@tudominio.com"
           />
         </div>
-        <div className="space-y-2">
-          <Label>From (alias visible)</Label>
-          <Input className="h-11 rounded-xl" value={from} onChange={(e) => setFrom(e.target.value)} />
-        </div>
+        {fromAliasAllowed ? (
+          <div className="space-y-2">
+            <Label>Remitente visible (alias)</Label>
+            <Input
+              className="h-11 rounded-xl"
+              value={from}
+              onChange={(e) => setFrom(e.target.value)}
+              placeholder={'Spa Kira <hola@tudominio.com>'}
+            />
+            <p className="text-xs text-muted-foreground">
+              Con un correo de tu dominio podés mostrar un nombre o dirección distinta a la cuenta
+              de envío.
+            </p>
+          </div>
+        ) : (
+          <div className="space-y-2 sm:col-span-2 rounded-xl border border-border/60 bg-muted/20 px-3 py-2">
+            <p className="text-sm text-muted-foreground">
+              {providerHint ||
+                "Con cuentas como Gmail, Hotmail u Outlook el remitente tiene que ser la misma cuenta. El alias solo se puede usar con un correo de tu dominio (por ejemplo @e-mac.co)."}
+            </p>
+          </div>
+        )}
         <div className="space-y-2 sm:col-span-2">
           <Label>
-            Password {mail.data?.password_set ? "(•••• configurada — opcional cambiar)" : ""}
+            Contraseña
+            {mail.data?.password_set ? " (ya guardada — opcional cambiar)" : ""}
           </Label>
           <Input
             type="password"
             className="h-11 rounded-xl"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            placeholder={mail.data?.password_set ? "Dejar vacío para no cambiar" : "App Password"}
+            placeholder={
+              mail.data?.password_set ? "Dejar vacío para no cambiar" : "Contraseña de la cuenta"
+            }
             autoComplete="new-password"
           />
         </div>
@@ -120,7 +269,7 @@ export function MailConfigPanel() {
         disabled={saveMut.isPending}
         onClick={() => saveMut.mutate()}
       >
-        Guardar correo
+        Guardar configuración
       </Button>
     </div>
   );
