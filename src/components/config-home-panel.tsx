@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { GripVertical } from "lucide-react";
@@ -44,19 +44,38 @@ export function ConfigHomePanel() {
   const [sectionOrder, setSectionOrder] = useState<HomeSectionId[]>(() =>
     normalizeSectionOrder(null),
   );
-  const [preview, setPreview] = useState<HomeNewsItem | null>(null);
+  /** Solo el id: el ítem se resuelve desde `news` en vivo (evita preview stale). */
+  const [previewId, setPreviewId] = useState<string | null>(null);
+  const preview = useMemo(
+    () => (previewId ? news.find((n) => n.id === previewId) ?? null : null),
+    [news, previewId],
+  );
+  const hydrated = useRef(false);
 
   useEffect(() => {
     if (!q.data) return;
+    // No pisar ediciones locales en cada refetch (p.ej. al reordenar secciones).
+    if (hydrated.current) return;
     setNews(q.data.news ?? []);
     setVideos(q.data.client_videos ?? []);
     setSectionOrder(normalizeSectionOrder(q.data.section_order));
+    hydrated.current = true;
   }, [q.data]);
 
   const sectionRows = useMemo(
     () => sectionOrder.map((id) => ({ id, label: HOME_SECTION_LABELS[id] })),
     [sectionOrder],
   );
+
+  const applyHomePayload = (data: {
+    news?: HomeNewsItem[];
+    client_videos?: HomeVideoItem[];
+    section_order?: string[] | null;
+  }) => {
+    if (data.news) setNews(data.news);
+    if (data.client_videos) setVideos(data.client_videos);
+    if (data.section_order) setSectionOrder(normalizeSectionOrder(data.section_order));
+  };
 
   const saveMut = useMutation({
     mutationFn: () =>
@@ -65,8 +84,9 @@ export function ConfigHomePanel() {
         client_videos: videos.map((v, i) => ({ ...v, sort: i })),
         section_order: sectionOrder,
       }),
-    onSuccess: async () => {
+    onSuccess: async (data) => {
       toast.success("Inicio actualizado");
+      applyHomePayload(data);
       await qc.invalidateQueries({ queryKey: ["home-content"] });
       await qc.invalidateQueries({ queryKey: ["home-content-public"] });
     },
@@ -87,9 +107,9 @@ export function ConfigHomePanel() {
             const ids = next.map((row) => row.id);
             setSectionOrder(ids);
             putHomeContent({ section_order: ids })
-              .then(async () => {
+              .then(async (data) => {
                 toast.success("Orden del inicio actualizado");
-                await qc.invalidateQueries({ queryKey: ["home-content"] });
+                applyHomePayload(data);
                 await qc.invalidateQueries({ queryKey: ["home-content-public"] });
               })
               .catch((e: Error) => toast.error(e.message));
@@ -143,7 +163,7 @@ export function ConfigHomePanel() {
                     variant="outline"
                     size="sm"
                     className="rounded-xl"
-                    onClick={() => setPreview(item)}
+                    onClick={() => setPreviewId(item.id)}
                   >
                     Preview
                   </Button>
@@ -348,11 +368,14 @@ export function ConfigHomePanel() {
         Guardar contenido del inicio
       </Button>
 
-      <Dialog open={!!preview} onOpenChange={(open) => !open && setPreview(null)}>
-        <DialogContent className="max-h-[85vh] max-w-lg overflow-y-auto rounded-2xl">
+      <Dialog open={!!previewId} onOpenChange={(open) => !open && setPreviewId(null)}>
+        <DialogContent
+          key={previewId ?? "closed"}
+          className="max-h-[85vh] max-w-lg overflow-y-auto rounded-2xl"
+        >
           <DialogHeader>
             <DialogTitle className="font-display text-2xl text-primary">
-              {preview?.title}
+              {preview?.title || "Nota"}
             </DialogTitle>
           </DialogHeader>
           {preview?.kind === "image" && preview.image_url ? (
@@ -364,9 +387,11 @@ export function ConfigHomePanel() {
           ) : null}
           {preview?.kind === "html" && preview.html ? (
             <div
-              className="prose prose-sm mt-2 max-w-none text-foreground"
+              className="prose prose-sm mt-2 max-w-none whitespace-pre-wrap text-foreground"
               dangerouslySetInnerHTML={{ __html: sanitizePreviewHtml(preview.html) }}
             />
+          ) : preview?.kind === "html" ? (
+            <p className="mt-2 text-sm text-muted-foreground">Sin contenido HTML aún.</p>
           ) : null}
         </DialogContent>
       </Dialog>
