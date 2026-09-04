@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Plus, Trash2, Minus } from "lucide-react";
-import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import {
@@ -10,11 +9,7 @@ import {
   type InventoryItem,
   type ServiceMaterial,
 } from "@/lib/spa-queries";
-import {
-  duplicateLiquidRoleMessage,
-  inferMaterialRole,
-  isLiquidMaterialRole,
-} from "@/lib/service-material-role";
+import { inferMaterialRole } from "@/lib/service-material-role";
 
 export type ServiceMaterialDraft = {
   key: string;
@@ -306,20 +301,8 @@ export function ServiceMaterialsEditor({ serviceId, onChange }: Props) {
                       items={catalogItems}
                       autoFocus={adding}
                       onPick={(picked) => {
-                        const role = inferMaterialRole(picked);
-                        if (isLiquidMaterialRole(role)) {
-                          const clash = rows.some(
-                            (r) =>
-                              r.key !== row.key &&
-                              r.inventory_item_id &&
-                              r.material_role === role,
-                          );
-                          if (clash) {
-                            toast.error(duplicateLiquidRoleMessage(role));
-                            return;
-                          }
-                        }
                         setAdding(false);
+                        const role = inferMaterialRole(picked);
                         pushRows(
                           rows.map((r) =>
                             r.key === row.key
@@ -339,9 +322,13 @@ export function ServiceMaterialsEditor({ serviceId, onChange }: Props) {
                   ) : (
                     <>
                       <p className="text-sm font-medium text-primary">
+                        {item?.category?.trim() ? (
+                          <span className="mr-2 text-xs font-normal text-muted-foreground">
+                            {item.category.trim()}
+                          </span>
+                        ) : null}
                         {item ? itemLabel(item) : "Producto no encontrado"}
-                      </p>
-                      {item?.dilution_enabled ? (
+                      </p>                      {item?.dilution_enabled ? (
                         <p className="text-xs text-muted-foreground">
                           Dilución {item.dilution_product ?? 1}/{item.dilution_water ?? 1}
                         </p>

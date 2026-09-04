@@ -1,9 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  duplicateLiquidRoleMessage,
-  inferMaterialRole,
-  isLiquidMaterialRole,
-} from "../service-material-role";
+import { inferMaterialRole, isLiquidMaterialRole } from "../service-material-role";
 
 describe("service-material-role", () => {
   it("infers accessory and conditioner", () => {
@@ -31,9 +27,8 @@ describe("service-material-role", () => {
     expect(inferMaterialRole({ name: "Producto X", category: "Baño" })).toBe("shampoo");
   });
 
-  it("detects liquid roles and builds message", () => {
+  it("detects liquid roles", () => {
     expect(isLiquidMaterialRole("shampoo")).toBe(true);
     expect(isLiquidMaterialRole("accessory")).toBe(false);
-    expect(duplicateLiquidRoleMessage("shampoo")).toMatch(/un shampoo/i);
   });
 });
