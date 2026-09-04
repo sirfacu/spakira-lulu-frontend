@@ -1,13 +1,7 @@
-/** Roles líquidos: un solo ítem por rol y servicio (índice único en BD). */
+/** Roles líquidos usados para dosis / perfil de raza. */
 export const LIQUID_MATERIAL_ROLES = ["shampoo", "conditioner", "medicated"] as const;
 
 export type LiquidMaterialRole = (typeof LIQUID_MATERIAL_ROLES)[number];
-
-export const LIQUID_ROLE_LABELS: Record<LiquidMaterialRole, string> = {
-  shampoo: "shampoo",
-  conditioner: "acondicionador",
-  medicated: "tratamiento / medicado",
-};
 
 export function isLiquidMaterialRole(role: string): role is LiquidMaterialRole {
   return (LIQUID_MATERIAL_ROLES as readonly string[]).includes(role);
@@ -85,12 +79,4 @@ export function inferMaterialRole(item: InferItem): string {
   }
 
   return "shampoo";
-}
-
-export function duplicateLiquidRoleMessage(role: LiquidMaterialRole): string {
-  const label = LIQUID_ROLE_LABELS[role];
-  return (
-    `Solo puede haber un ${label} por servicio. ` +
-    "Quitá el duplicado o elegí un producto de otro tipo (acondicionador / tratamiento medicado)."
-  );
 }
