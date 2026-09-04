@@ -12,6 +12,7 @@ import {
   draftsToApiPayload,
   type ServiceMaterialDraft,
 } from "@/components/service-materials-editor";
+import { ApiError } from "@/lib/api";
 import {
   breedsQuery,
   breedBathProfilesQuery,
@@ -20,6 +21,16 @@ import {
 } from "@/lib/spa-queries";
 import { cop } from "@/lib/format";
 import { formatMaterialQtyParts } from "@/lib/material-qty-label";
+
+function estimateErrorMessage(err: unknown): string {
+  if (err instanceof ApiError) {
+    const msg = (err.message || "").trim();
+    if (msg && msg.toLowerCase() !== "internal server error") return msg;
+    if (typeof err.detail === "string" && err.detail.trim()) return err.detail.trim();
+  }
+  if (err instanceof Error && err.message.trim()) return err.message.trim();
+  return "No se pudo estimar el costo. Revisá insumos, perfil de la raza y tallas de pañoleta.";
+}
 
 type Props = {
   serviceId: string | null;
@@ -131,9 +142,7 @@ export function ServiceCostByBreedPanel({ serviceId, materialDrafts = [] }: Prop
           ) : null}
 
           {estimate.isError ? (
-            <p className="text-xs text-destructive">
-              {(estimate.error as Error)?.message || "No se pudo estimar"}
-            </p>
+            <p className="text-xs text-destructive">{estimateErrorMessage(estimate.error)}</p>
           ) : null}
 
           {data && breedId ? (
@@ -141,8 +150,13 @@ export function ServiceCostByBreedPanel({ serviceId, materialDrafts = [] }: Prop
               {!data.has_profile ? (
                 <p className="text-xs text-amber-700 dark:text-amber-400">
                   Esta raza no tiene perfil de consumo: el champú y el acondicionador quedan en
-                  0. Cargá el perfil en Configuración → perfiles de baño, o elegí una raza de la
-                  parte de arriba del listado.
+                  0. Cargá ml y precios en Mascotas → Razas, o elegí una raza de la parte de
+                  arriba del listado.
+                </p>
+              ) : data.lines.some((l) => !l.is_accessory && Number(l.quantity) === 0) ? (
+                <p className="text-xs text-amber-700 dark:text-amber-400">
+                  El perfil de esta raza tiene 0 ml en algún líquido: esos renglones salen en
+                  $0. Completá shampoo / acondicionador / medicado en Mascotas → Razas.
                 </p>
               ) : null}
               {data.lines.length === 0 ? (

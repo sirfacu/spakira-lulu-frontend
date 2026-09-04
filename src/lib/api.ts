@@ -219,24 +219,50 @@ export async function api<T>(path: string, opts: FetchOpts = {}): Promise<T> {
     });
 
     if (!res.ok) {
-      let detail: unknown = res.statusText;
-      let message = res.statusText;
+      let detail: unknown = res.statusText || `Error ${res.status}`;
+      let message =
+        (res.statusText && res.statusText.trim()) || `Error ${res.status}`;
       try {
-        const j = (await res.json()) as { detail?: unknown };
-        if (j.detail !== undefined) {
-          detail = j.detail;
-          message =
-            typeof j.detail === "string"
-              ? j.detail
-              : j.detail &&
-                  typeof j.detail === "object" &&
-                  "message" in j.detail &&
-                  typeof (j.detail as { message: unknown }).message === "string"
-                ? (j.detail as { message: string }).message
-                : JSON.stringify(j.detail);
+        const raw = await res.text();
+        if (raw.trim()) {
+          try {
+            const j = JSON.parse(raw) as { detail?: unknown };
+            if (j.detail !== undefined) {
+              detail = j.detail;
+              message =
+                typeof j.detail === "string"
+                  ? j.detail
+                  : Array.isArray(j.detail)
+                    ? j.detail
+                        .map((e) =>
+                          e && typeof e === "object" && "msg" in e
+                            ? String((e as { msg: unknown }).msg)
+                            : JSON.stringify(e),
+                        )
+                        .filter(Boolean)
+                        .join(" · ") || JSON.stringify(j.detail)
+                    : j.detail &&
+                        typeof j.detail === "object" &&
+                        "message" in j.detail &&
+                        typeof (j.detail as { message: unknown }).message ===
+                          "string"
+                      ? (j.detail as { message: string }).message
+                      : JSON.stringify(j.detail);
+            } else if (typeof j === "object" && j && "message" in j) {
+              message = String((j as { message: unknown }).message);
+              detail = j;
+            }
+          } catch {
+            // HTTP/2 often leaves statusText vacío; el cuerpo plain-text es la pista.
+            message = raw.trim();
+            detail = message;
+          }
         }
       } catch {
         /* ignore */
+      }
+      if (!message.trim()) {
+        message = `No se pudo completar la solicitud (${res.status})`;
       }
       logError({
         event: "api_error",
