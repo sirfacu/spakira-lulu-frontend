@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Plus, Trash2, Minus } from "lucide-react";
+import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import {
@@ -9,7 +10,12 @@ import {
   type InventoryItem,
   type ServiceMaterial,
 } from "@/lib/spa-queries";
-import { inferMaterialRole } from "@/lib/service-material-role";
+import {
+  inferMaterialRole,
+  isPanoletaItem,
+  panoletaFamilyKey,
+  stripAccents,
+} from "@/lib/service-material-role";
 
 export type ServiceMaterialDraft = {
   key: string;
@@ -27,19 +33,47 @@ function newKey() {
   return `mat-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
-function savedToDrafts(saved: ServiceMaterial[]): ServiceMaterialDraft[] {
-  return saved.map((s) => ({
+function itemLabel(i: InventoryItem) {
+  const desc = i.staff_description?.trim();
+  return desc || i.name;
+}
+
+function collapsePanoletaDrafts(
+  drafts: ServiceMaterialDraft[],
+  itemsById: Map<string, InventoryItem>,
+): ServiceMaterialDraft[] {
+  const out: ServiceMaterialDraft[] = [];
+  const seen = new Set<string>();
+  for (const d of drafts) {
+    const item = d.inventory_item_id ? itemsById.get(d.inventory_item_id) : undefined;
+    if (item && isPanoletaItem(item)) {
+      const fam = panoletaFamilyKey(item) || "panoleta";
+      if (seen.has(fam)) continue;
+      seen.add(fam);
+      out.push({
+        ...d,
+        material_role: "accessory",
+        reference_qty: d.reference_qty || "1",
+      });
+      continue;
+    }
+    out.push(d);
+  }
+  return out;
+}
+
+function savedToDrafts(
+  saved: ServiceMaterial[],
+  itemsById: Map<string, InventoryItem>,
+): ServiceMaterialDraft[] {
+  const raw = saved.map((s) => ({
     key: newKey(),
     material_role: s.material_role === "towel" ? "accessory" : s.material_role,
     inventory_item_id: s.inventory_item_id ?? "",
     reference_qty:
       s.reference_qty != null && s.reference_qty > 0 ? String(s.reference_qty) : "",
   }));
-}
-
-function itemLabel(i: InventoryItem) {
-  const desc = i.staff_description?.trim();
-  return desc || i.name;
+  return collapsePanoletaDrafts(raw, itemsById);
 }
 
 function isPieceAccessory(role: string) {
@@ -230,7 +264,8 @@ export function ServiceMaterialsEditor({ serviceId, onChange }: Props) {
       try {
         const saved = await getServiceMaterials(serviceId);
         if (cancelled) return;
-        const next = savedToDrafts(saved);
+        const map = new Map((inventory.data ?? []).map((i) => [i.id, i]));
+        const next = savedToDrafts(saved, map);
         setRows(next);
         onChange(next.filter((r) => r.inventory_item_id && r.material_role));
       } catch {
@@ -243,6 +278,7 @@ export function ServiceMaterialsEditor({ serviceId, onChange }: Props) {
     return () => {
       cancelled = true;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [serviceId]);
 
   return (
@@ -303,6 +339,29 @@ export function ServiceMaterialsEditor({ serviceId, onChange }: Props) {
                       onPick={(picked) => {
                         setAdding(false);
                         const role = inferMaterialRole(picked);
+                        if (isPanoletaItem(picked)) {
+                          const fam = panoletaFamilyKey(picked) || "panoleta";
+                          const withoutFamily = rows.filter((r) => {
+                            if (r.key === row.key) return false;
+                            if (!r.inventory_item_id) return true;
+                            const other = itemsById.get(r.inventory_item_id);
+                            if (!other || !isPanoletaItem(other)) return true;
+                            return (panoletaFamilyKey(other) || "panoleta") !== fam;
+                          });
+                          toast.message("Pañoletas agrupadas", {
+                            description: "La talla se elige según la raza de la mascota.",
+                          });
+                          pushRows([
+                            ...withoutFamily,
+                            {
+                              key: row.key,
+                              inventory_item_id: picked.id,
+                              material_role: "accessory",
+                              reference_qty: "1",
+                            },
+                          ]);
+                          return;
+                        }
                         pushRows(
                           rows.map((r) =>
                             r.key === row.key
@@ -327,8 +386,16 @@ export function ServiceMaterialsEditor({ serviceId, onChange }: Props) {
                             {item.category.trim()}
                           </span>
                         ) : null}
-                        {item ? itemLabel(item) : "Producto no encontrado"}
-                      </p>                      {item?.dilution_enabled ? (
+                        {item && isPanoletaItem(item)
+                          ? "Pañoletas"
+                          : item
+                            ? itemLabel(item)
+                            : "Producto no encontrado"}
+                      </p>
+                      {item && isPanoletaItem(item) ? (
+                        <p className="text-xs text-muted-foreground">talla según raza</p>
+                      ) : null}
+                      {item?.dilution_enabled && !(item && isPanoletaItem(item)) ? (
                         <p className="text-xs text-muted-foreground">
                           Dilución {item.dilution_product ?? 1}/{item.dilution_water ?? 1}
                         </p>

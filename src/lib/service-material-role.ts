@@ -18,6 +18,7 @@ type InferItem = {
   name?: string | null;
   sku?: string | null;
   category?: string | null;
+  staff_description?: string | null;
 };
 
 function isMoñaItem(item: InferItem) {
@@ -39,13 +40,41 @@ function isMoñaItem(item: InferItem) {
   return false;
 }
 
+export function isPanoletaItem(item: InferItem): boolean {
+  const blob = stripAccents(
+    `${item.name ?? ""} ${item.staff_description ?? ""} ${item.sku ?? ""}`,
+  );
+  return blob.includes("panolet");
+}
+
+export function parsePanoletaSize(item: InferItem): "S" | "M" | "L" | null {
+  const blob = stripAccents(
+    `${item.name ?? ""} ${item.staff_description ?? ""} ${item.sku ?? ""}`,
+  );
+  const matches = [...blob.matchAll(/(?:talla|size)?[\s\-_/]*\b([sml])\b/g)];
+  if (!matches.length) return null;
+  return matches[matches.length - 1]![1]!.toUpperCase() as "S" | "M" | "L";
+}
+
+export function panoletaFamilyKey(item: InferItem): string {
+  let blob = stripAccents(
+    `${item.name ?? ""} ${item.staff_description ?? ""} ${item.sku ?? ""}`,
+  );
+  blob = blob.replace(/(?:talla|size)?[\s\-_/]*\b[sml]\b/g, " ");
+  blob = blob.replace(/\bpanoletas\b/g, "panoleta");
+  blob = blob.replace(/[^a-z0-9]+/g, " ");
+  return blob.split(/\s+/).filter(Boolean).join(" ");
+}
+
 /** Infiera material_role desde el producto de inventario. */
 export function inferMaterialRole(item: InferItem): string {
   const cat = stripAccents(item.category ?? "");
   const name = stripAccents(item.name ?? "");
   const blob = `${name} ${cat}`;
 
-  if (cat.includes("accesorio") || isMoñaItem(item)) return "accessory";
+  if (cat.includes("accesorio") || isMoñaItem(item) || isPanoletaItem(item)) {
+    return "accessory";
+  }
 
   if (
     name.includes("acondicion") ||

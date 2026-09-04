@@ -65,6 +65,7 @@ export type Breed = {
   active: boolean;
   image_url?: string | null;
   breed_group?: string | null;
+  panoleta_size?: string | null;
 };
 
 export type StorePurchase = {
