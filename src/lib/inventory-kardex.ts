@@ -8,6 +8,7 @@ export function kardexActionLabel(kind: string, delta: number): string {
   }
   if (kind === "compra") return `Alta de stock ${n} ${units}`;
   if (kind === "merma") return `Baja ${n} ${units}`;
+  if (kind === "consumo_servicio") return `Consumo servicio ${n} ${units}`;
   if (delta > 0) return `Alta de stock ${n} ${units}`;
   return `Ajuste −${n} ${units}`;
 }

@@ -3,19 +3,23 @@
 export type InventoryChannel = "interno" | "externo" | "interno_externo";
 
 export function inventoryChannelLabel(channel: string | null | undefined): string {
-  if (channel === "externo") return "Venta al público";
-  if (channel === "interno_externo") return "Interno + venta (legacy)";
-  return "Consumo interno";
+  if (channel === "externo") return "Solo venta";
+  if (channel === "interno_externo") return "Interno y venta";
+  return "Uso interno";
 }
 
 export function inventoryChannelHint(channel: string | null | undefined): string {
   if (channel === "externo") {
-    return "Aparece en tienda / extras de cita para clientes.";
+    return "🛒 Solo venta — está destinado exclusivamente a la venta.";
   }
   if (channel === "interno_externo") {
-    return "Registro antiguo mixto. Conviene separar en dos ítems (consumo y venta).";
+    return "🔄 Uso interno y venta — puede utilizarse internamente y también venderse.";
   }
-  return "Insumos del spa (shampoo, tijeras, etc.) — no se vende al público.";
+  return "🔧 Uso interno — solo puede utilizarse dentro del negocio.";
+}
+
+export function inventoryChannelFormLabel(channel: InventoryChannel): string {
+  return inventoryChannelHint(channel);
 }
 
 export function inventoryChannelBadgeClass(channel: string | null | undefined): string {

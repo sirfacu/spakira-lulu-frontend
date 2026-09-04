@@ -251,7 +251,17 @@ export type InventoryItem = {
   staff_description?: string | null;
   sell_by_shoot?: boolean;
   shoot_markup?: number;
+  portion_size?: number | null;
+  portions_available?: number | null;
+  dilution_enabled?: boolean | null;
+  dilution_product?: number | null;
+  dilution_water?: number | null;
+  packages_on_hand?: number | null;
   accessory_type?: string | null;
+  wear_every_n_uses?: number | null;
+  wear_use_count?: number | null;
+  wear_action?: string | null;
+  wear_alert_pending?: boolean | null;
   expires_at: string | null;
   next_expires_at?: string | null;
   cost_value?: number;
@@ -1026,6 +1036,10 @@ export type MailSettings = {
   smtp_tls: boolean;
   smtp_configured: boolean;
   password_set: boolean;
+  sending_enabled?: boolean;
+  delivery_active?: boolean;
+  delivery_blocked_reasons?: string[];
+  from_alias_allowed?: boolean;
   source: string;
   app_env?: string;
   backup?: string;
@@ -1042,8 +1056,20 @@ export async function putMailSettings(input: {
   smtp_from?: string;
   smtp_tls?: boolean;
   smtp_password?: string;
+  sending_enabled?: boolean;
 }) {
   return api<MailSettings>("/settings/mail", { method: "PUT", body: input });
+}
+
+export async function sendMailTest(input?: { to?: string; template_key?: string }) {
+  return api<{
+    ok: boolean;
+    sent: boolean;
+    to: string;
+    template_key: string;
+    subject?: string;
+    reason?: string | null;
+  }>("/settings/mail/test", { method: "POST", body: input || {} });
 }
 
 export async function patchAppUser(
@@ -1357,6 +1383,8 @@ export type ServiceMaterial = {
   ratio_group?: string | null;
   ratio_numerator?: number | null;
   ratio_denominator?: number | null;
+  dilution_num?: number | null;
+  dilution_den?: number | null;
   sort_order: number;
   material_label?: string;
   default_unit?: string;
@@ -1403,6 +1431,10 @@ export type MaterialEstimateLine = {
   included_in_service?: boolean;
   is_accessory?: boolean;
   accessory_type?: string | null;
+  /** Ml de mezcla del perfil (antes de dilución). */
+  mix_quantity?: number | null;
+  dilution_product?: number | null;
+  dilution_water?: number | null;
 };
 
 export type MaterialEstimate = {
@@ -1456,6 +1488,55 @@ export async function putServiceMaterials(
   return api<ServiceMaterial[]>(`/services/${serviceId}/materials`, {
     method: "PUT",
     body: { materials },
+  });
+}
+
+export type ServiceCostEstimate = {
+  service_id: string;
+  breed_id: string;
+  has_profile: boolean;
+  pet_sex?: string | null;
+  price_hint: { price_min?: number; price_max?: number };
+  lines: Array<{
+    material_role: string;
+    display_label: string;
+    quantity: number;
+    quantity_unit: string;
+    unit_cost: number;
+    line_cost: number;
+    is_accessory?: boolean;
+    mix_quantity?: number | null;
+    dilution_product?: number | null;
+    dilution_water?: number | null;
+  }>;
+  total_cost: number;
+  warnings: string[];
+};
+
+export async function getServiceCostEstimate(
+  serviceId: string,
+  breedId: string,
+  petSex: "hembra" | "macho" = "hembra",
+) {
+  const q = new URLSearchParams({ breed_id: breedId, pet_sex: petSex });
+  return api<ServiceCostEstimate>(`/services/${serviceId}/cost-estimate?${q}`);
+}
+
+export async function previewServiceCostEstimate(
+  serviceId: string,
+  body: {
+    breed_id: string;
+    pet_sex?: "hembra" | "macho";
+    materials: Partial<ServiceMaterial>[];
+  },
+) {
+  return api<ServiceCostEstimate>(`/services/${serviceId}/cost-estimate`, {
+    method: "POST",
+    body: {
+      breed_id: body.breed_id,
+      pet_sex: body.pet_sex ?? "hembra",
+      materials: body.materials,
+    },
   });
 }
 
@@ -1560,7 +1641,13 @@ export async function createInventoryItem(body: {
   staff_description?: string | null;
   sell_by_shoot?: boolean;
   shoot_markup?: number;
+  portion_size?: number | null;
+  dilution_enabled?: boolean;
+  dilution_product?: number | null;
+  dilution_water?: number | null;
   accessory_type?: string | null;
+  wear_every_n_uses?: number | null;
+  wear_action?: string;
 }) {
   return api<InventoryItem>("/inventory", { method: "POST", body });
 }
@@ -1584,7 +1671,15 @@ export async function patchInventoryItem(
     staff_description: string | null;
     sell_by_shoot: boolean;
     shoot_markup: number;
+    portion_size: number | null;
+    dilution_enabled: boolean;
+    dilution_product: number | null;
+    dilution_water: number | null;
     accessory_type: string | null;
+    wear_every_n_uses: number | null;
+    wear_action: string;
+    wear_alert_pending: boolean;
+    wear_use_count: number;
   }>,
 ) {
   return api<InventoryItem>(`/inventory/${id}`, { method: "PATCH", body });
@@ -1605,10 +1700,37 @@ export async function createInventoryMove(
   return api<InventoryMovement>(`/inventory/${id}/movements`, { method: "POST", body });
 }
 
-export function inventoryMovementsQuery(id: string | null) {
+export type InventoryMovementsPage = {
+  items: InventoryMovement[];
+  total: number;
+  limit: number;
+  offset: number;
+};
+
+export function inventoryMovementsQuery(id: string | null, page = 0) {
   return queryOptions({
-    queryKey: ["inventory", id, "movements"] as const,
-    queryFn: () => api<InventoryMovement[]>(`/inventory/${id}/movements`),
+    queryKey: ["inventory", id, "movements", page] as const,
+    queryFn: async (): Promise<InventoryMovementsPage> => {
+      const data = await api<InventoryMovementsPage | InventoryMovement[]>(
+        `/inventory/${id}/movements?limit=20&offset=${page * 20}`,
+      );
+      // Compat: API vieja devolvía array; la nueva pagina { items, total, ... }.
+      // Sin esto el panel hace .map sobre un objeto y cae el error boundary.
+      if (Array.isArray(data)) {
+        return {
+          items: data,
+          total: data.length,
+          limit: data.length || 20,
+          offset: page * 20,
+        };
+      }
+      return {
+        items: Array.isArray(data?.items) ? data.items : [],
+        total: Number(data?.total ?? 0),
+        limit: Number(data?.limit ?? 20),
+        offset: Number(data?.offset ?? page * 20),
+      };
+    },
     enabled: !!id,
   });
 }

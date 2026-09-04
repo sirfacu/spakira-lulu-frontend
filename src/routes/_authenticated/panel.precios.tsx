@@ -34,6 +34,7 @@ import {
   draftsToApiPayload,
   type ServiceMaterialDraft,
 } from "@/components/service-materials-editor";
+import { ServiceCostByBreedPanel } from "@/components/service-cost-by-breed-panel";
 import {
   breedPriceHintQuery,
   panelServicesQuery,
@@ -132,7 +133,7 @@ function serviceToForm(s: Service): ServiceForm {
     is_public: s.is_public,
     publish_mode: !s.is_public ? "draft" : scheduled ? "scheduled" : "now",
     publish_at_local: toLocalInput(s.publish_at),
-    activities: [...(s.activities ?? [])],
+    activities: [...(s.activities ?? [])].filter((a) => a !== "accesorios"),
   };
 }
 
@@ -252,7 +253,7 @@ function Servicios() {
             : list.length,
         is_public,
         publish_at,
-        activities: form.activities,
+        activities: form.activities.filter((a) => a !== "accesorios"),
       }).then(async (saved) => {
         if (materialDrafts.length) {
           await putServiceMaterials(saved.id, draftsToApiPayload(materialDrafts));
@@ -522,7 +523,9 @@ function Servicios() {
                     </p>
                   </div>
                   <div className="grid gap-2 sm:grid-cols-2">
-                    {(activityCatalog.data ?? []).map((item) => {
+                    {(activityCatalog.data ?? [])
+                      .filter((item) => item.id !== "accesorios")
+                      .map((item) => {
                       const on = form.activities.includes(item.id);
                       return (
                         <label
@@ -555,6 +558,11 @@ function Servicios() {
                 <ServiceMaterialsEditor
                   serviceId={editing && typeof editing === "object" ? editing.id : null}
                   onChange={setMaterialDrafts}
+                />
+
+                <ServiceCostByBreedPanel
+                  serviceId={editing && typeof editing === "object" ? editing.id : null}
+                  materialDrafts={materialDrafts}
                 />
               </div>
             </div>
