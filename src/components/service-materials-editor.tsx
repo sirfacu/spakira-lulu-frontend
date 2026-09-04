@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Plus, Trash2, Minus } from "lucide-react";
+import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import {
@@ -9,6 +10,11 @@ import {
   type InventoryItem,
   type ServiceMaterial,
 } from "@/lib/spa-queries";
+import {
+  duplicateLiquidRoleMessage,
+  inferMaterialRole,
+  isLiquidMaterialRole,
+} from "@/lib/service-material-role";
 
 export type ServiceMaterialDraft = {
   key: string;
@@ -24,41 +30,6 @@ type Props = {
 
 function newKey() {
   return `mat-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-}
-
-function stripAccents(s: string) {
-  return s
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/\p{M}/gu, "");
-}
-
-function isMoñaItem(item: InventoryItem) {
-  const name = stripAccents(item.name ?? "");
-  const sku = stripAccents(item.sku ?? "");
-  if (name.includes("obsoleto")) return false;
-  if (/\bmonitas?\b/.test(name) || /\bmonas?\b/.test(name) || /\bmonos?\b/.test(name)) {
-    return true;
-  }
-  if (sku === "acc-mon" || sku.includes("mon-") || sku.includes("mona") || sku.includes("mono") || sku.includes("monita")) {
-    return true;
-  }
-  return false;
-}
-
-function inferRole(item: InventoryItem): string {
-  const cat = (item.category ?? "").toLowerCase();
-  const name = stripAccents(item.name ?? "");
-  // Accesorios (moñas, pañoletas, etc.) → role accessory; el resto por nombre/categoría.
-  if (cat.includes("accesorio") || isMoñaItem(item)) return "accessory";
-  if (name.includes("acondicion") || cat.includes("acondicion")) return "conditioner";
-  if (name.includes("medicad") || cat.includes("tratamiento") || cat.includes("medicad")) {
-    return "medicated";
-  }
-  if (name.includes("shampoo") || cat.includes("shampoo") || cat.includes("banio") || cat.includes("baño")) {
-    return "shampoo";
-  }
-  return "shampoo";
 }
 
 function savedToDrafts(saved: ServiceMaterial[]): ServiceMaterialDraft[] {
@@ -335,8 +306,20 @@ export function ServiceMaterialsEditor({ serviceId, onChange }: Props) {
                       items={catalogItems}
                       autoFocus={adding}
                       onPick={(picked) => {
+                        const role = inferMaterialRole(picked);
+                        if (isLiquidMaterialRole(role)) {
+                          const clash = rows.some(
+                            (r) =>
+                              r.key !== row.key &&
+                              r.inventory_item_id &&
+                              r.material_role === role,
+                          );
+                          if (clash) {
+                            toast.error(duplicateLiquidRoleMessage(role));
+                            return;
+                          }
+                        }
                         setAdding(false);
-                        const role = inferRole(picked);
                         pushRows(
                           rows.map((r) =>
                             r.key === row.key
