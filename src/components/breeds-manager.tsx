@@ -147,6 +147,29 @@ export function BreedsManager() {
                 <p className="text-xs capitalize text-muted-foreground">{b.species}</p>
               </div>
               <div className="flex items-center gap-3">
+                <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                  Pañoleta
+                  <select
+                    className="h-8 rounded-lg border border-border bg-background px-2 text-xs text-foreground"
+                    value={b.panoleta_size ?? ""}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      updateBreed(b.id, {
+                        panoleta_size: v ? v : null,
+                      } as Partial<Breed>)
+                        .then(async () => {
+                          toast.success("Talla de pañoleta guardada");
+                          await qc.invalidateQueries({ queryKey: ["breeds"] });
+                        })
+                        .catch((err: Error) => toast.error(err.message));
+                    }}
+                  >
+                    <option value="">—</option>
+                    <option value="S">S</option>
+                    <option value="M">M</option>
+                    <option value="L">L</option>
+                  </select>
+                </label>
                 <div className="flex items-center gap-2">
                   <span className="text-xs text-muted-foreground">Activa</span>
                   <Switch checked={b.active} onCheckedChange={() => toggleMut.mutate(b)} />

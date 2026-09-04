@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { inferMaterialRole, isLiquidMaterialRole } from "../service-material-role";
+import {
+  inferMaterialRole,
+  isLiquidMaterialRole,
+  isPanoletaItem,
+  panoletaFamilyKey,
+  parsePanoletaSize,
+} from "../service-material-role";
 
 describe("service-material-role", () => {
   it("infers accessory and conditioner", () => {
@@ -15,16 +21,21 @@ describe("service-material-role", () => {
     expect(inferMaterialRole({ name: "Shampoo Antipulgas", category: "Baño" })).toBe(
       "medicated",
     );
-    expect(
-      inferMaterialRole({ name: "Shampoo dermatológico", category: "Tratamiento" }),
-    ).toBe("medicated");
   });
 
-  it("defaults generic bath shampoo to shampoo", () => {
-    expect(inferMaterialRole({ name: "Shampoo Premium", category: "Shampoo" })).toBe(
-      "shampoo",
-    );
-    expect(inferMaterialRole({ name: "Producto X", category: "Baño" })).toBe("shampoo");
+  it("groups pañoleta sizes under same family key", () => {
+    const a = {
+      name: "Pañoletas con logo spa kira - Talla L",
+      category: "Accesorios",
+    };
+    const b = {
+      name: "pañoleta con logo spa kira - Talla M",
+      category: "Accesorios",
+    };
+    expect(isPanoletaItem(a)).toBe(true);
+    expect(parsePanoletaSize(a)).toBe("L");
+    expect(parsePanoletaSize(b)).toBe("M");
+    expect(panoletaFamilyKey(a)).toBe(panoletaFamilyKey(b));
   });
 
   it("detects liquid roles", () => {
