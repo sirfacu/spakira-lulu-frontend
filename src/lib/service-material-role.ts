@@ -47,20 +47,20 @@ export function isPanoletaItem(item: InferItem): boolean {
   return blob.includes("panolet");
 }
 
-export function parsePanoletaSize(item: InferItem): "S" | "M" | "L" | null {
+export function parsePanoletaSize(item: InferItem): "XS" | "S" | "M" | "L" | null {
   const blob = stripAccents(
     `${item.name ?? ""} ${item.staff_description ?? ""} ${item.sku ?? ""}`,
   );
-  const matches = [...blob.matchAll(/(?:talla|size)?[\s\-_/]*\b([sml])\b/g)];
+  const matches = [...blob.matchAll(/(?:talla|size)?[\s\-_/]*\b(xs|[sml])\b/g)];
   if (!matches.length) return null;
-  return matches[matches.length - 1]![1]!.toUpperCase() as "S" | "M" | "L";
+  return matches[matches.length - 1]![1]!.toUpperCase() as "XS" | "S" | "M" | "L";
 }
 
 export function panoletaFamilyKey(item: InferItem): string {
   let blob = stripAccents(
     `${item.name ?? ""} ${item.staff_description ?? ""} ${item.sku ?? ""}`,
   );
-  blob = blob.replace(/(?:talla|size)?[\s\-_/]*\b[sml]\b/g, " ");
+  blob = blob.replace(/(?:talla|size)?[\s\-_/]*\b(xs|[sml])\b/g, " ");
   blob = blob.replace(/\bpanoletas\b/g, "panoleta");
   blob = blob.replace(/[^a-z0-9]+/g, " ");
   return blob.split(/\s+/).filter(Boolean).join(" ");

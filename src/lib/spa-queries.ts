@@ -1401,6 +1401,8 @@ export type BreedBathProfile = {
   breed_id: string;
   breed_name: string;
   species: string;
+  active?: boolean | null;
+  panoleta_size?: string | null;
   price_min: number | null;
   price_max: number | null;
   ml_shampoo: number | null;
@@ -1553,8 +1555,36 @@ export async function upsertBreedBathProfile(
       ml_shampoo: body.ml_shampoo ?? 0,
       ml_conditioner: body.ml_conditioner ?? 0,
       ml_medicated: body.ml_medicated ?? null,
+      panoleta_size: body.panoleta_size ?? null,
+      active: body.active ?? undefined,
+      name: body.breed_name ?? undefined,
+      species: body.species ?? undefined,
     },
   });
+}
+
+export async function createBreedWithProfile(
+  body: Partial<BreedBathProfile> & { breed_name: string; species?: string },
+) {
+  return api<BreedBathProfile>("/breed-bath-profiles", {
+    method: "POST",
+    body: {
+      name: body.breed_name,
+      species: body.species ?? "perro",
+      active: body.active ?? true,
+      panoleta_size: body.panoleta_size ?? null,
+      price_min: body.price_min ?? null,
+      price_max: body.price_max ?? null,
+      ml_shampoo: body.ml_shampoo ?? 0,
+      ml_conditioner: body.ml_conditioner ?? 0,
+      ml_medicated: body.ml_medicated ?? null,
+    },
+  });
+}
+
+/** Descarga el template (local FileResponse o redirect a S3 en AWS). */
+export function breedsTemplateDownloadUrl() {
+  return `${getApiBase()}/templates/razas-banho`;
 }
 
 export async function importBreedBathProfiles(file: File) {
