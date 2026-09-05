@@ -377,6 +377,12 @@ export function MaterialEstimatePanel({
               <span className="tabular-nums">{cop(includedTotal)}</span>
             </div>
           ) : null}
+          {showInternalCosts && mode === "checkout" ? (
+            <p className="text-[11px] leading-snug text-muted-foreground">
+              Al cerrar se suma la comisión del groomer (si el pago es % o mixto) al costo variable.
+              El margen queda en Reportes → Margen servicios.
+            </p>
+          ) : null}
         </>
       ) : null}
 

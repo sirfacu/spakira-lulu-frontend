@@ -1316,6 +1316,9 @@ export async function completeAppointment(
     invoice_id?: string;
     sale_id?: string;
     total: number;
+    labor_cost?: number;
+    materials_cost?: number | null;
+    contribution_margin?: number;
     misc: { id: string; name: string; quantity: number; unit_price: number; total: number }[];
     email_notifications: {
       owner_id?: string;
@@ -2030,4 +2033,149 @@ export async function fetchPromoNotify() {
 
 export async function runPromoNotifyDue() {
   return api<{ ok: boolean }>("/promotions/notify-due", { method: "POST", body: {} });
+}
+
+/* —— Finanzas / Reportes —— */
+
+export type ServiceMarginLine = {
+  appointment_id: string;
+  closed_at: string | null;
+  starts_at: string | null;
+  service_id: string | null;
+  service_name: string;
+  pet_name: string | null;
+  staff_id: string | null;
+  staff_name: string | null;
+  revenue: number;
+  materials_cost: number;
+  labor_cost: number;
+  variable_cost: number;
+  contribution_margin: number;
+  margin_pct: number | null;
+  has_materials_snapshot: boolean;
+};
+
+export type ServiceMarginsResponse = {
+  date_from: string;
+  date_to: string;
+  summary: {
+    appointments: number;
+    revenue: number;
+    materials_cost: number;
+    labor_cost: number;
+    variable_cost: number;
+    contribution_margin: number;
+    margin_pct: number | null;
+    missing_materials_snapshot: number;
+  };
+  by_service: {
+    service_id: string | null;
+    service_name: string;
+    count: number;
+    revenue: number;
+    materials_cost: number;
+    labor_cost: number;
+    contribution_margin: number;
+  }[];
+  lines: ServiceMarginLine[];
+};
+
+export type FixedCostEntry = {
+  id: string;
+  year_month: string;
+  category: string;
+  label: string;
+  amount: number;
+  notes?: string | null;
+  template_id?: string | null;
+};
+
+export type FixedCostTemplate = {
+  id: string;
+  category: string;
+  label: string;
+  default_amount: number;
+  active: boolean;
+  sort_order: number;
+};
+
+export type MonthFinanceSummary = {
+  year_month: string;
+  service_margins: ServiceMarginsResponse["summary"];
+  sales: { cita: number; mostrador: number; total: number };
+  fixed_costs: { total: number; entries: FixedCostEntry[] };
+  operating_result: number;
+  indicators: {
+    proration_fixed_per_appointment: number | null;
+    breakeven_appointments: number | null;
+    avg_contribution_margin: number;
+    note: string;
+  };
+};
+
+export function serviceMarginsQuery(dateFrom: string, dateTo: string) {
+  return queryOptions({
+    queryKey: ["finance-service-margins", dateFrom, dateTo],
+    queryFn: () => {
+      const q = new URLSearchParams({ date_from: dateFrom, date_to: dateTo });
+      return api<ServiceMarginsResponse>(`/finance/service-margins?${q}`);
+    },
+  });
+}
+
+export function monthFinanceQuery(yearMonth: string) {
+  return queryOptions({
+    queryKey: ["finance-month", yearMonth],
+    queryFn: () => api<MonthFinanceSummary>(`/finance/month/${yearMonth}`),
+  });
+}
+
+export function fixedCostsQuery(yearMonth: string) {
+  return queryOptions({
+    queryKey: ["finance-fixed-costs", yearMonth],
+    queryFn: () =>
+      api<FixedCostEntry[]>(
+        `/finance/fixed-costs?year_month=${encodeURIComponent(yearMonth)}&seed=true`,
+      ),
+  });
+}
+
+export function fixedCostTemplatesQuery() {
+  return queryOptions({
+    queryKey: ["finance-fixed-cost-templates"],
+    queryFn: () => api<FixedCostTemplate[]>("/finance/fixed-cost-templates"),
+  });
+}
+
+export async function createFixedCostEntry(
+  body: Omit<FixedCostEntry, "id" | "template_id"> & { notes?: string | null },
+) {
+  return api<FixedCostEntry>("/finance/fixed-costs", { method: "POST", body });
+}
+
+export async function updateFixedCostEntry(
+  id: string,
+  body: Omit<FixedCostEntry, "id" | "template_id"> & { notes?: string | null },
+) {
+  return api<FixedCostEntry>(`/finance/fixed-costs/${id}`, { method: "PUT", body });
+}
+
+export async function deleteFixedCostEntry(id: string) {
+  return api<void>(`/finance/fixed-costs/${id}`, { method: "DELETE" });
+}
+
+export async function updateFixedCostTemplate(
+  id: string,
+  body: {
+    category: string;
+    label: string;
+    default_amount: number;
+    active: boolean;
+    sort_order: number;
+  },
+) {
+  return api<FixedCostTemplate>(`/finance/fixed-cost-templates/${id}`, {
+    method: "PUT",
+    body,
+  });
 }
