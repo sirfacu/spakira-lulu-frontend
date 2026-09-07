@@ -37,7 +37,7 @@ export function remainingCopy(remaining: number): string {
 /** Etiqueta compacta de la grilla (mockup). */
 export function slotCountLabel(remaining: number): string {
   const n = Math.max(0, remaining);
-  return n === 1 ? "1 slot" : `${n} slots`;
+  return n === 1 ? "1 turno" : `${n} turnos`;
 }
 
 export function occupiedCopy(kind: OccupiedKind | null | undefined): string {

@@ -6,6 +6,7 @@ import { BrandMark, PawIcon, LOGO_SRC } from "@/components/brand";
 import { ServiceDetailDialog } from "@/components/service-detail-dialog";
 import { ChipRail } from "@/components/home-chip-rail";
 import { SocialEmbed } from "@/components/social-embed";
+import { HomeBizStatusBar, HomeContactStrip } from "@/components/home-biz-status";
 import {
   DEFAULT_PRIVACY_PATH,
   DEFAULT_TERMS_PATH,
@@ -132,7 +133,9 @@ function Landing() {
               slogan={bizLegal?.slogan}
             />
           </Link>
-          <div className="flex flex-wrap items-center justify-end gap-2">
+          <div className="flex min-w-0 flex-1 flex-col items-end gap-2 sm:flex-row sm:items-center sm:justify-end">
+            <HomeBizStatusBar />
+            <div className="flex flex-wrap items-center justify-end gap-2">
             {me.data ? (
               <>
                 <p className="hidden text-xs text-muted-foreground sm:block">
@@ -156,6 +159,7 @@ function Landing() {
             ) : (
               authCta
             )}
+            </div>
           </div>
         </div>
       </header>
@@ -411,11 +415,13 @@ function Landing() {
         }
       />
 
+      <HomeContactStrip />
+
       <footer className="border-t border-border bg-card/60">
         <div className="mx-auto flex max-w-6xl flex-col items-center gap-3 px-5 py-10 text-center">
           <BrandMark tradeName={bizLegal?.trade_name} slogan={bizLegal?.slogan} />
           <p className="text-sm text-muted-foreground">
-            Luxury pet grooming · Canina y felina
+            {bizLegal?.slogan?.trim() || "Luxury pet grooming · Canina y felina"}
           </p>
           <div className="mt-2 flex flex-wrap items-center justify-center gap-4">
             <a
