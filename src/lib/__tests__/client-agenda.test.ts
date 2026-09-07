@@ -33,8 +33,8 @@ describe("client agenda copy", () => {
   it("formats remaining slots", () => {
     expect(remainingCopy(1)).toBe("1 disponible");
     expect(remainingCopy(3)).toBe("3 disponibles");
-    expect(slotCountLabel(1)).toBe("1 slot");
-    expect(slotCountLabel(3)).toBe("3 slots");
+    expect(slotCountLabel(1)).toBe("1 turno");
+    expect(slotCountLabel(3)).toBe("3 turnos");
   });
 
   it("sex mark and monday week", () => {

@@ -747,6 +747,29 @@ export async function getBusinessHours() {
   return api<{ days: BusinessHourDay[] }>("/settings/business-hours");
 }
 
+export type PublicBusinessHours = {
+  timezone: string;
+  open_now: boolean;
+  today: {
+    weekday: number;
+    label: string;
+    is_open: boolean;
+    open_time: string;
+    close_time: string;
+  };
+  days: {
+    weekday: number;
+    label: string;
+    is_open: boolean;
+    open_time: string;
+    close_time: string;
+  }[];
+};
+
+export async function getPublicBusinessHours() {
+  return api<PublicBusinessHours>("/settings/business-hours/public", { auth: false });
+}
+
 export async function putBusinessHours(days: Omit<BusinessHourDay, "label">[]) {
   return api<{ days: BusinessHourDay[] }>("/settings/business-hours", {
     method: "PUT",

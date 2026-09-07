@@ -448,7 +448,7 @@ export function ClientAgenda() {
           </section>
 
           <p className="px-1 text-center text-xs text-muted-foreground">
-            Cada slot representa una cita disponible
+            Cada turno representa una cita disponible
             {selected ? (
               <>
                 {" "}
