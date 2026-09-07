@@ -1460,6 +1460,23 @@ function StaffAgenda() {
                   </div>
                 ) : null}
 
+                {!perms.isCliente ? (
+                  <div className="mt-4">
+                    <CouponApplyFields
+                      browseOnly
+                      subtotal={
+                        Number(selected.price || 0) +
+                        extras.reduce((s, ex) => s + Number(ex.total || 0), 0)
+                      }
+                      customerId={selected.pets?.owners?.id ?? selected.pets?.owner_id}
+                      petId={selected.pet_id}
+                      serviceIds={selected.service_id ? [selected.service_id] : []}
+                      value={citaPromo}
+                      onChange={setCitaPromo}
+                    />
+                  </div>
+                ) : null}
+
                 {perms.canSeeServiceProgress &&
                 normalizeStatus(selected.status) === "enproceso" ? (
                   <div className="mt-4 rounded-2xl border border-border bg-secondary/30 p-3">
@@ -1718,17 +1735,39 @@ function StaffAgenda() {
                         {cop(extras.reduce((s, ex) => s + Number(ex.total || 0), 0))}
                       </span>
                     </div>
+                    {citaPromo?.valid && Number(citaPromo.discount_amount || 0) > 0 ? (
+                      <div className="flex justify-between text-muted-foreground">
+                        <span>
+                          Descuento
+                          {citaPromo.code || citaPromo.name
+                            ? ` (${citaPromo.code || citaPromo.name})`
+                            : ""}
+                        </span>
+                        <span className="text-primary">
+                          −{cop(Number(citaPromo.discount_amount || 0))}
+                        </span>
+                      </div>
+                    ) : null}
                     <div className="flex justify-between font-semibold text-accent">
                       <span>Total</span>
                       <span>
                         {appointmentShowsChargedPrice(selected, perms.isCliente)
                           ? cop(
-                              Number(selected.price || 0) +
-                                extras.reduce((s, ex) => s + Number(ex.total || 0), 0),
+                              Math.max(
+                                0,
+                                Number(selected.price || 0) +
+                                  extras.reduce((s, ex) => s + Number(ex.total || 0), 0) -
+                                  (citaPromo?.valid ? Number(citaPromo.discount_amount || 0) : 0),
+                              ),
                             )
                           : PENDING_SERVICE_PRICE_LABEL}
                       </span>
                     </div>
+                    {!citaPromo?.valid ? (
+                      <p className="pt-1 text-[11px] text-muted-foreground">
+                        Automáticas y fidelización se suman al cobrar y cerrar.
+                      </p>
+                    ) : null}
                   </div>
                       </>
                     );
@@ -1736,19 +1775,6 @@ function StaffAgenda() {
                 </div>
                 ) : null}
 
-                {!perms.isCliente ? (
-                  <div className="mt-4">
-                    <CouponApplyFields
-                      browseOnly
-                      subtotal={Number(selected.price || 0)}
-                      customerId={selected.pets?.owners?.id ?? selected.pets?.owner_id}
-                      petId={selected.pet_id}
-                      serviceIds={selected.service_id ? [selected.service_id] : []}
-                      value={citaPromo}
-                      onChange={setCitaPromo}
-                    />
-                  </div>
-                ) : null}
               </div>
 
               <div className="shrink-0 border-t border-border px-6 py-4">
