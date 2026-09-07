@@ -44,7 +44,10 @@ export function MailConfigPanel() {
   const [testTo, setTestTo] = useState("");
 
   const fromAliasAllowed = useMemo(() => allowsFromAlias(userSmtp), [userSmtp]);
-  const providerHint = useMemo(() => consumerMailHint(userSmtp), [userSmtp]);
+  const providerHint = useMemo(
+    () => consumerMailHint(userSmtp, host),
+    [userSmtp, host],
+  );
 
   useEffect(() => {
     if (!mail.data) return;
@@ -193,8 +196,13 @@ export function MailConfigPanel() {
         Datos de la cuenta que usa el spa para enviar correos.
         {mail.data?.password_set
           ? " La contraseña ya está guardada; dejá el campo vacío si no querés cambiarla."
-          : " Completá también la contraseña de la cuenta."}
+          : " Completá también la contraseña (en Gmail: contraseña de aplicación)."}
       </p>
+      {providerHint ? (
+        <div className="rounded-xl border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-950 dark:text-amber-100">
+          {providerHint}
+        </div>
+      ) : null}
       <div className="grid gap-4 sm:grid-cols-2">
         <div className="space-y-2 sm:col-span-2">
           <Label>Servidor de correo</Label>
@@ -202,7 +210,7 @@ export function MailConfigPanel() {
             className="h-11 rounded-xl"
             value={host}
             onChange={(e) => setHost(e.target.value)}
-            placeholder="ej. smtp.tudominio.com"
+            placeholder="ej. smtp.gmail.com"
           />
         </div>
         <div className="space-y-2">
@@ -258,7 +266,11 @@ export function MailConfigPanel() {
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             placeholder={
-              mail.data?.password_set ? "Dejar vacío para no cambiar" : "Contraseña de la cuenta"
+              mail.data?.password_set
+                ? "Dejar vacío para no cambiar"
+                : host.toLowerCase().includes("gmail")
+                  ? "Contraseña de aplicación (16 caracteres)"
+                  : "Contraseña SMTP"
             }
             autoComplete="new-password"
           />

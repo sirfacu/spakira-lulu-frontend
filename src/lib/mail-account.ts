@@ -72,24 +72,24 @@ export function allowsFromAlias(accountEmail: string): boolean {
 }
 
 /** Texto de ayuda según el proveedor (Hotmail vs Gmail vs otros). */
-export function consumerMailHint(accountEmail: string): string | null {
+export function consumerMailHint(accountEmail: string, smtpHost?: string): string | null {
+  const host = (smtpHost || "").trim().toLowerCase();
   const domain = emailDomain(accountEmail);
-  if (!domain) return null;
-  if (MICROSOFT_PERSONAL_DOMAINS.has(domain)) {
+  if (host.includes("gmail.com") || (domain && GMAIL_DOMAINS.has(domain))) {
+    return (
+      "Con Gmail / Google Workspace el SMTP no acepta la contraseña normal de la cuenta. " +
+      "Activá verificación en 2 pasos y generá una «contraseña de aplicación» de 16 caracteres " +
+      "(Google Cuenta → Seguridad). Servidor: smtp.gmail.com · puerto 587 · TLS activado."
+    );
+  }
+  if (domain && MICROSOFT_PERSONAL_DOMAINS.has(domain)) {
     return (
       "Hotmail/Outlook personal ya no permiten enviar con usuario y contraseña desde apps. " +
       "No es un fallo del spa: Microsoft lo bloqueó. Usá un correo de tu dominio " +
       "(por ejemplo @e-mac.co) o Gmail con contraseña de aplicación."
     );
   }
-  if (GMAIL_DOMAINS.has(domain)) {
-    return (
-      "Con Gmail funciona si activás la verificación en 2 pasos y usás una " +
-      "«contraseña de aplicación» (no la contraseña normal de Google). " +
-      "Servidor: smtp.gmail.com · puerto 587 · conexión segura activada."
-    );
-  }
-  if (CONSUMER_MAIL_DOMAINS.has(domain)) {
+  if (domain && CONSUMER_MAIL_DOMAINS.has(domain)) {
     return (
       "Con cuentas personales el remitente tiene que ser la misma cuenta. " +
       "El alias solo se puede usar con un correo de tu dominio (por ejemplo @e-mac.co)."
