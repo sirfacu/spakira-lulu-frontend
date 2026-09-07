@@ -303,16 +303,20 @@ export function ConfigHomePanel() {
               </div>
               <div className="grid gap-3">
                 <div className="space-y-2">
-                  <Label>Título</Label>
+                  <Label>Título (máx. 250)</Label>
                   <Input
                     className="h-10 rounded-xl"
                     value={item.title}
+                    maxLength={250}
                     onChange={(e) =>
                       setVideos((rows) =>
-                        rows.map((r) => (r.id === item.id ? { ...r, title: e.target.value } : r)),
+                        rows.map((r) =>
+                          r.id === item.id ? { ...r, title: e.target.value.slice(0, 250) } : r,
+                        ),
                       )
                     }
                   />
+                  <p className="text-xs text-muted-foreground">{item.title.length}/250</p>
                 </div>
                 <div className="space-y-2">
                   <Label>URL del video</Label>

@@ -75,7 +75,8 @@ export function parseSocialEmbed(url: string): ParsedSocialEmbed {
     const code = ig[2];
     return {
       kind: "instagram",
-      iframeSrc: `https://www.instagram.com/${kind}/${code}/embed/`,
+      // hidecaption evita embeds altísimos por captions largos (el marco del home es fijo).
+      iframeSrc: `https://www.instagram.com/${kind}/${code}/embed/?hidecaption=true`,
       permalink: `https://www.instagram.com/${kind}/${code}/`,
       label: "Ver en Instagram",
       tall: true,
