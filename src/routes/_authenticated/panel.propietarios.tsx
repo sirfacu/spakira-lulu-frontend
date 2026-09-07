@@ -65,6 +65,7 @@ type OwnerForm = {
   email: string;
   address: string;
   photo_url: string;
+  birth_date: string;
 };
 
 const emptyForm = (): OwnerForm => ({
@@ -83,6 +84,7 @@ const emptyForm = (): OwnerForm => ({
   email: "",
   address: "",
   photo_url: "",
+  birth_date: "",
 });
 
 function ownerToForm(o: Owner): OwnerForm {
@@ -189,6 +191,7 @@ function Propietarios() {
         email: form.email || null,
         address: form.address || null,
         photo_url: form.photo_url || null,
+        birth_date: form.birth_date || null,
       };
       if (editing === "new") {
         const created = await createOwner(payload);
@@ -649,6 +652,18 @@ function Propietarios() {
                 className="h-11 rounded-xl"
                 disabled={maskPii && editing !== "new"}
               />
+            </div>
+            <div className="space-y-2">
+              <Label>Fecha de nacimiento</Label>
+              <Input
+                type="date"
+                value={form.birth_date}
+                onChange={(e) => setForm((f) => ({ ...f, birth_date: e.target.value }))}
+                className="h-11 rounded-xl"
+              />
+              <p className="text-[11px] text-muted-foreground">
+                Cumpleaños dueño: 10% en servicios por 8 días (no acumulable).
+              </p>
             </div>
             <div className="space-y-2 sm:col-span-2">
               <Label>Mascotas asociadas</Label>

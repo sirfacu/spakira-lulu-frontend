@@ -24,6 +24,7 @@ type Tier = {
   min_months: number;
   discount_type: string | null;
   discount_value: number;
+  applies_to?: string;
 };
 
 type Rule = {
@@ -65,6 +66,7 @@ function asTier(t: Record<string, unknown>): Tier {
     min_months: Number(t.min_months || 0),
     discount_type: (t.discount_type as string) || "percent",
     discount_value: Number(t.discount_value || 0),
+    applies_to: String(t.applies_to || "services"),
   };
 }
 
@@ -95,9 +97,11 @@ export function LoyaltyTiersPanel({
   const [visits, setVisits] = useState("3");
   const [months, setMonths] = useState("0");
   const [percent, setPercent] = useState("5");
+  const [appliesTo, setAppliesTo] = useState("services");
   const [newName, setNewName] = useState("");
   const [newVisits, setNewVisits] = useState("3");
   const [newPercent, setNewPercent] = useState("5");
+  const [newAppliesTo, setNewAppliesTo] = useState("services");
 
   const startEdit = (t: Tier) => {
     setEditing(t.id);
@@ -105,6 +109,7 @@ export function LoyaltyTiersPanel({
     setVisits(String(t.min_visits));
     setMonths(String(t.min_months));
     setPercent(String(t.discount_value));
+    setAppliesTo(t.applies_to || "services");
   };
 
   const save = useMutation({
@@ -115,6 +120,7 @@ export function LoyaltyTiersPanel({
         min_months: Number(months) || 0,
         discount_type: "percent",
         discount_value: Number(percent) || 0,
+        applies_to: appliesTo,
       }),
     onSuccess: async () => {
       toast.success("Nivel actualizado");
@@ -131,6 +137,7 @@ export function LoyaltyTiersPanel({
         min_visits: Number(newVisits) || 0,
         discount_type: "percent",
         discount_value: Number(newPercent) || 0,
+        applies_to: newAppliesTo,
         sort_order: (tiers.length + 1) * 10,
       }),
     onSuccess: async () => {
@@ -145,8 +152,8 @@ export function LoyaltyTiersPanel({
   return (
     <SectionCard title="Niveles">
       <p className="mb-3 text-sm text-muted-foreground">
-        El nivel se calcula por visitas (y meses). El descuento de nivel es informativo; el premio
-        concreto se emite con las reglas o a mano en Beneficios.
+        El nivel se calcula por visitas (y meses). El % del nivel se aplica automáticamente al cobrar
+        (por defecto solo servicios; podés cambiar el alcance). No se apila con cupón/cumpleaños: gana el mayor.
       </p>
       <ul className="space-y-2 text-sm">
         {tiers.map((raw) => {
@@ -171,6 +178,18 @@ export function LoyaltyTiersPanel({
                     <Label>Meses mín.</Label>
                     <Input className="mt-1 rounded-xl" value={months} onChange={(e) => setMonths(e.target.value)} />
                   </div>
+                  <div>
+                    <Label>Aplica a</Label>
+                    <select
+                      className="mt-1 h-10 w-full rounded-xl border border-input bg-background px-2"
+                      value={appliesTo}
+                      onChange={(e) => setAppliesTo(e.target.value)}
+                    >
+                      <option value="services">Solo servicios</option>
+                      <option value="store">Solo vitrina</option>
+                      <option value="both">Servicios y vitrina</option>
+                    </select>
+                  </div>
                   <div className="flex items-end gap-2 sm:col-span-2">
                     <Button className="rounded-xl" disabled={save.isPending} onClick={() => save.mutate()}>
                       Guardar
@@ -188,6 +207,7 @@ export function LoyaltyTiersPanel({
                       Desde {t.min_visits} visitas
                       {t.min_months ? ` · ${t.min_months} meses` : ""}
                       {t.discount_type === "percent" ? ` · ${t.discount_value}%` : ""}
+                      {t.applies_to ? ` · ${APPLIES_TO_LABEL[t.applies_to] || t.applies_to}` : ""}
                     </p>
                   </div>
                   <Button variant="outline" size="sm" className="rounded-lg" onClick={() => startEdit(t)}>
@@ -201,10 +221,19 @@ export function LoyaltyTiersPanel({
       </ul>
       <div className="mt-4 rounded-2xl bg-secondary/40 p-3">
         <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Nuevo nivel</p>
-        <div className="grid gap-2 sm:grid-cols-[1fr_90px_90px_auto]">
+        <div className="grid gap-2 sm:grid-cols-[1fr_90px_90px_1fr_auto]">
           <Input className="rounded-xl" placeholder="Nombre" value={newName} onChange={(e) => setNewName(e.target.value)} />
           <Input className="rounded-xl" placeholder="Visitas" value={newVisits} onChange={(e) => setNewVisits(e.target.value)} />
           <Input className="rounded-xl" placeholder="%" value={newPercent} onChange={(e) => setNewPercent(e.target.value)} />
+          <select
+            className="h-10 rounded-xl border border-input bg-background px-2 text-sm"
+            value={newAppliesTo}
+            onChange={(e) => setNewAppliesTo(e.target.value)}
+          >
+            <option value="services">Solo servicios</option>
+            <option value="store">Solo vitrina</option>
+            <option value="both">Servicios y vitrina</option>
+          </select>
           <Button
             className="rounded-xl"
             disabled={!newName.trim() || create.isPending}

@@ -25,6 +25,7 @@ export function UserSelfProfile() {
   const [address, setAddress] = useState("");
   const [documentType, setDocumentType] = useState("CC");
   const [documentId, setDocumentId] = useState("");
+  const [birthDate, setBirthDate] = useState("");
   const [items, setItems] = useState<MailPrefItem[]>([]);
 
   useEffect(() => {
@@ -35,6 +36,7 @@ export function UserSelfProfile() {
     setAddress(me.data.address || "");
     setDocumentType((me.data.document_type || "CC").toUpperCase());
     setDocumentId(me.data.document_id || "");
+    setBirthDate((me.data.birth_date || "").toString().slice(0, 10));
   }, [me.data]);
 
   useEffect(() => {
@@ -50,6 +52,7 @@ export function UserSelfProfile() {
         address,
         document_type: documentType,
         document_id: documentId,
+        birth_date: birthDate || null,
       }),
     onSuccess: async () => {
       toast.success("Datos actualizados");
@@ -106,6 +109,18 @@ export function UserSelfProfile() {
           <div className="space-y-2 sm:col-span-2">
             <Label>Dirección</Label>
             <Input className="h-11 rounded-xl" value={address} onChange={(e) => setAddress(e.target.value)} />
+          </div>
+          <div className="space-y-2">
+            <Label>Fecha de nacimiento</Label>
+            <Input
+              type="date"
+              className="h-11 rounded-xl"
+              value={birthDate}
+              onChange={(e) => setBirthDate(e.target.value)}
+            />
+            <p className="text-[11px] text-muted-foreground">
+              Si la cargás, en tu cumpleaños y los 8 días siguientes aplica 10% en servicios (no acumulable).
+            </p>
           </div>
         </div>
         <Button className="mt-4 rounded-xl" disabled={saveProfile.isPending} onClick={() => saveProfile.mutate()}>

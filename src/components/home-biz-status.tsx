@@ -8,6 +8,7 @@ import {
 import { usePublicBusiness } from "@/components/legal-layout";
 import { buildWhatsAppLink } from "@/lib/whatsapp-link";
 import { cn } from "@/lib/utils";
+import { mapsEmbedSrc, publicLocationLabel } from "@/lib/location-display";
 
 function formatRange(open: string, close: string) {
   return `${open} – ${close}`;
@@ -85,17 +86,21 @@ export function HomeBizStatusBar() {
     retry: false,
   });
 
-  const address = (biz?.address || "").trim();
+  const addressLabel = publicLocationLabel({
+    address: biz?.address,
+    city: biz?.city,
+    region: biz?.region,
+  });
   const hours = hoursQ.data;
-  if (!address && !hours) return null;
+  if (!addressLabel && !hours) return null;
 
   return (
     <div className="flex flex-wrap items-center justify-end gap-x-3 gap-y-1">
-      {address ? (
+      {addressLabel ? (
         <span className="inline-flex max-w-[14rem] items-center gap-1.5 truncate text-xs text-muted-foreground sm:max-w-xs">
           <MapPin className="h-3.5 w-3.5 shrink-0 text-primary" aria-hidden />
-          <span className="truncate" title={address}>
-            {address}
+          <span className="truncate" title={addressLabel}>
+            {addressLabel}
           </span>
         </span>
       ) : null}
@@ -114,13 +119,19 @@ export function HomeContactStrip() {
     retry: false,
   });
 
-  const address = (biz?.address || "").trim();
+  const addressLabel = publicLocationLabel({
+    address: biz?.address,
+    city: biz?.city,
+    region: biz?.region,
+  });
+  const mapsUrl = (biz?.maps_url || "").trim();
   const whatsapp = (biz?.whatsapp || "").trim();
   const email = (biz?.contact_email || "").trim();
   const hours = hoursQ.data;
   const wa = whatsapp ? buildWhatsAppLink(whatsapp, "Hola Spa Kira, quiero agendar una cita") : null;
+  const embed = mapsEmbedSrc(mapsUrl, [biz?.address, biz?.city, biz?.region].filter(Boolean).join(", "));
 
-  if (!address && !hours && !whatsapp && !email) return null;
+  if (!addressLabel && !hours && !whatsapp && !email) return null;
 
   const openDays = hours?.days.filter((d) => d.is_open) ?? [];
   const hoursSummary =
@@ -140,8 +151,22 @@ export function HomeContactStrip() {
         <div>
           <p className="text-sm font-semibold text-primary">¿Dónde estamos?</p>
           <p className="mt-2 text-sm text-muted-foreground">
-            {address || "Dirección pendiente en Configuración"}
+            {addressLabel || "Dirección pendiente en Configuración"}
           </p>
+          {biz?.address_reference ? (
+            <p className="mt-1 text-xs text-muted-foreground">{biz.address_reference}</p>
+          ) : null}
+          {embed ? (
+            <div className="mt-3 overflow-hidden rounded-2xl border border-border">
+              <iframe
+                title="Mapa Spa Kira"
+                src={embed}
+                className="h-40 w-full border-0"
+                loading="lazy"
+                referrerPolicy="no-referrer-when-downgrade"
+              />
+            </div>
+          ) : null}
         </div>
         <div>
           <p className="text-sm font-semibold text-primary">Horario de atención</p>
