@@ -12,8 +12,10 @@ import { Switch } from "@/components/ui/switch";
 import { requirePathAccess } from "@/lib/route-access";
 import { cop, shortDate } from "@/lib/format";
 import {
+  breedsQuery,
   createPromotion,
   fetchPromoNotify,
+  getPromotion,
   loyaltyProgramQuery,
   patchPromotion,
   promotionsQuery,
@@ -66,19 +68,28 @@ function PromocionesPage() {
   const qc = useQueryClient();
   const [tab, setTab] = useState<Tab>("resumen");
   const [campaignFilter, setCampaignFilter] = useState<CampaignFilter>("all");
+  const [showPast, setShowPast] = useState(false);
+  const [editing, setEditing] = useState<Promotion | null>(null);
   const summary = useQuery(promotionsSummaryQuery);
   const promos = useQuery(promotionsQuery);
   const usage = useQuery({ ...promotionUsageQuery, enabled: tab === "historial" });
   const loyalty = useQuery({ ...loyaltyProgramQuery, enabled: tab === "fidelizacion" || tab === "beneficios" });
   const notify = useQuery({ queryKey: ["promo-notify"], queryFn: fetchPromoNotify, enabled: tab === "notificaciones" });
   const services = useQuery(panelServicesQuery);
+  const breeds = useQuery({ ...breedsQuery, enabled: tab === "promos" });
 
   const filteredPromos = useMemo(() => {
     const rows = promos.data ?? [];
-    if (campaignFilter === "coupon") return rows.filter((p) => p.requires_code);
-    if (campaignFilter === "automatic") return rows.filter((p) => !p.requires_code);
-    return rows;
-  }, [promos.data, campaignFilter]);
+    const now = Date.now();
+    const isPast = (p: Promotion) =>
+      p.status === "cancelled" ||
+      p.status === "ended" ||
+      (p.ends_at ? new Date(p.ends_at).getTime() < now : false);
+    let list = rows.filter((p) => (showPast ? true : !isPast(p)));
+    if (campaignFilter === "coupon") list = list.filter((p) => p.requires_code);
+    if (campaignFilter === "automatic") list = list.filter((p) => !p.requires_code);
+    return list;
+  }, [promos.data, campaignFilter, showPast]);
 
   const tabs: { id: Tab; label: string }[] = [
     { id: "resumen", label: "Resumen" },
@@ -94,12 +105,28 @@ function PromocionesPage() {
     setTab("promos");
   };
 
+  const refreshPromos = () => {
+    void qc.invalidateQueries({ queryKey: ["promotions"] });
+    void qc.invalidateQueries({ queryKey: ["promotions-summary"] });
+  };
+
   const toggleStatus = (id: string, active: boolean) =>
     patchPromotion(id, { status: active ? "active" : "paused" }).then(() => {
-      void qc.invalidateQueries({ queryKey: ["promotions"] });
-      void qc.invalidateQueries({ queryKey: ["promotions-summary"] });
+      refreshPromos();
       toast.success(active ? "Campaña activada" : "Campaña pausada");
     });
+
+  const cancelPromo = (id: string) =>
+    patchPromotion(id, { status: "cancelled" }).then(() => {
+      refreshPromos();
+      toast.success("Campaña cancelada (queda en historial)");
+    });
+
+  const startEdit = (p: Promotion) => {
+    void getPromotion(p.id)
+      .then((full) => setEditing(full))
+      .catch((e) => toast.error(e instanceof Error ? e.message : "No se pudo cargar la campaña"));
+  };
 
   return (
     <AppShell title="Promociones" subtitle="Campañas, fidelización y beneficios">
@@ -194,7 +221,7 @@ function PromocionesPage() {
         <div className="grid gap-6 lg:grid-cols-[1fr_320px]">
           <div className="space-y-4">
             <CampaignIntro />
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               {(
                 [
                   { id: "all", label: "Todas" },
@@ -215,14 +242,27 @@ function PromocionesPage() {
                   {f.label}
                 </button>
               ))}
+              <label className="ml-auto flex items-center gap-2 text-xs text-muted-foreground">
+                <Switch checked={showPast} onCheckedChange={setShowPast} />
+                Mostrar vencidas / canceladas
+              </label>
             </div>
-            <PromoTable rows={filteredPromos} onToggleStatus={toggleStatus} />
+            <PromoTable
+              rows={filteredPromos}
+              onToggleStatus={toggleStatus}
+              onEdit={startEdit}
+              onCancel={cancelPromo}
+            />
           </div>
           <NewPromoForm
+            key={editing?.id || "new"}
             services={services.data ?? []}
+            breeds={(breeds.data ?? []).filter((b) => b.active !== false)}
+            editing={editing}
+            onCancelEdit={() => setEditing(null)}
             onCreated={() => {
-              void qc.invalidateQueries({ queryKey: ["promotions"] });
-              void qc.invalidateQueries({ queryKey: ["promotions-summary"] });
+              setEditing(null);
+              refreshPromos();
             }}
           />
         </div>
@@ -248,7 +288,15 @@ function PromocionesPage() {
               className="rounded-xl"
               onClick={() =>
                 runPromoNotifyDue()
-                  .then(() => toast.success("Revisión de vencimientos lista"))
+                  .then((r) => {
+                    const pet = Number((r as { birthday_pet?: number })?.birthday_pet || 0)
+                    const own = Number((r as { birthday_owner?: number })?.birthday_owner || 0)
+                    toast.success(
+                      pet || own
+                        ? `Revisión lista · cumpleaños enviados: mascota ${pet}, dueño ${own}`
+                        : "Revisión de vencimientos y cumpleaños lista",
+                    )
+                  })
                   .catch((e) => toast.error(e instanceof Error ? e.message : "Error"))
               }
             >
@@ -258,7 +306,7 @@ function PromocionesPage() {
           <EmailTemplatesPanel
             module="promotions"
             allowCreate={false}
-            intro="Avisos de cupón usado, aniversario, premio por vencer y promoción por finalizar."
+            intro="Avisos de cupón, fidelización, cumpleaños (dueño/mascota) y promoción por finalizar."
           />
           <h3 className="mt-8 font-display text-lg font-bold text-primary">Envíos recientes</h3>
           <ul className="mt-2 space-y-1 text-xs text-muted-foreground">
@@ -300,8 +348,8 @@ function CampaignIntro() {
       <h2 className="font-display text-lg font-bold text-primary">¿Cupón o automática?</h2>
       <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
         Todas las campañas viven acá. Si llevan <strong>código</strong>, el cliente o el mostrador lo escriben al
-        cobrar. Si son <strong>automáticas</strong>, el sistema las aplica solas cuando se cumplen las reglas (día,
-        servicio, mascotas, etc.).
+        cobrar (el cupón no se acumula con otras). Si son <strong>automáticas</strong>, se aplican solas y se
+        acumulan entre sí (día, raza, cumpleaños, nivel de fidelización, etc.), hasta el tope del subtotal.
       </p>
       <div className="mt-4 grid gap-3 sm:grid-cols-2">
         <div className="rounded-xl border border-border/80 bg-background/80 p-3 text-sm">
@@ -325,9 +373,13 @@ function CampaignIntro() {
 function PromoTable({
   rows,
   onToggleStatus,
+  onEdit,
+  onCancel,
 }: {
   rows: Promotion[];
   onToggleStatus: (id: string, active: boolean) => Promise<void>;
+  onEdit: (p: Promotion) => void;
+  onCancel: (id: string) => Promise<void>;
 }) {
   const [busyId, setBusyId] = useState<string | null>(null);
 
@@ -338,6 +390,7 @@ function PromoTable({
         {rows.map((p) => {
           const isActive = p.status === "active";
           const canToggle = p.status === "active" || p.status === "paused";
+          const canCancel = p.status !== "cancelled" && p.status !== "ended";
           return (
             <li
               key={p.id}
@@ -378,6 +431,27 @@ function PromoTable({
                       {p.max_uses != null ? ` / ${p.max_uses}` : ""}
                     </span>
                   </div>
+                  <div className="flex flex-wrap gap-2 pt-2">
+                    <Button type="button" variant="outline" className="h-8 rounded-lg text-xs" onClick={() => onEdit(p)}>
+                      Editar
+                    </Button>
+                    {canCancel ? (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="h-8 rounded-lg border-destructive/30 text-xs text-destructive"
+                        disabled={busyId === p.id}
+                        onClick={() => {
+                          setBusyId(p.id);
+                          onCancel(p.id)
+                            .catch((e) => toast.error(e instanceof Error ? e.message : "Error"))
+                            .finally(() => setBusyId(null));
+                        }}
+                      >
+                        Cancelar
+                      </Button>
+                    ) : null}
+                  </div>
                 </div>
                 {canToggle ? (
                   <label className="flex shrink-0 items-center gap-2 rounded-xl bg-secondary/50 px-3 py-2">
@@ -408,33 +482,41 @@ function PromoTable({
 
 function NewPromoForm({
   services,
+  breeds,
   onCreated,
+  editing,
+  onCancelEdit,
 }: {
   services: { id: string; name: string }[];
+  breeds: { id: string; name: string; species?: string }[];
   onCreated: () => void;
+  editing?: Promotion | null;
+  onCancelEdit?: () => void;
 }) {
-  const [name, setName] = useState("");
-  const [code, setCode] = useState("");
-  const [asCoupon, setAsCoupon] = useState(true);
-  const [dtype, setDtype] = useState("percent");
-  const [value, setValue] = useState("15");
-  const [minPurchase, setMinPurchase] = useState("");
-  const [maxUses, setMaxUses] = useState("100");
-  const [perCustomer, setPerCustomer] = useState("1");
-  const [audience, setAudience] = useState("all");
-  const [start, setStart] = useState("");
-  const [end, setEnd] = useState("");
-  const [weekdays, setWeekdays] = useState<number[]>([]);
-  const [svc, setSvc] = useState<string[]>([]);
+  const [name, setName] = useState(editing?.name || "");
+  const [code, setCode] = useState(editing?.code || "");
+  const [asCoupon, setAsCoupon] = useState(editing ? !!editing.requires_code : true);
+  const [dtype, setDtype] = useState(editing?.discount_type || "percent");
+  const [value, setValue] = useState(String(editing?.discount_value ?? "15"));
+  const [minPurchase, setMinPurchase] = useState(
+    editing?.min_purchase != null ? String(editing.min_purchase) : "",
+  );
+  const [maxUses, setMaxUses] = useState(editing?.max_uses != null ? String(editing.max_uses) : "100");
+  const [perCustomer, setPerCustomer] = useState(
+    editing?.max_uses_per_customer != null ? String(editing.max_uses_per_customer) : "1",
+  );
+  const [audience, setAudience] = useState(editing?.audience || "all");
+  const [start, setStart] = useState(editing?.starts_at ? String(editing.starts_at).slice(0, 10) : "");
+  const [end, setEnd] = useState(editing?.ends_at ? String(editing.ends_at).slice(0, 10) : "");
+  const [weekdays, setWeekdays] = useState<number[]>(editing?.weekdays ?? []);
+  const [svc, setSvc] = useState<string[]>(editing?.service_ids ?? []);
+  const [limitBreeds, setLimitBreeds] = useState(Boolean(editing?.breed_ids?.length));
+  const [breedIds, setBreedIds] = useState<string[]>(editing?.breed_ids ?? []);
 
   const save = useMutation({
-    mutationFn: () =>
-      createPromotion({
+    mutationFn: () => {
+      const payload = {
         name: name.trim(),
-        kind: asCoupon ? "coupon" : "automatic",
-        requires_code: asCoupon,
-        code: asCoupon ? code : null,
-        status: "active",
         discount_type: dtype,
         discount_value: Number(value),
         min_purchase: minPurchase ? Number(minPurchase) : 0,
@@ -445,35 +527,54 @@ function NewPromoForm({
         ends_at: end ? `${end}T23:59:59` : null,
         weekdays,
         service_ids: svc,
-      } as never),
+        breed_ids: limitBreeds ? breedIds : [],
+      };
+      if (editing) return patchPromotion(editing.id, payload as never);
+      return createPromotion({
+        ...payload,
+        kind: asCoupon ? "coupon" : "automatic",
+        requires_code: asCoupon,
+        code: asCoupon ? code : null,
+        status: "active",
+      } as never);
+    },
     onSuccess: () => {
-      toast.success("Campaña creada");
-      setName("");
-      setCode("");
+      toast.success(editing ? "Campaña actualizada" : "Campaña creada");
+      if (!editing) {
+        setName("");
+        setCode("");
+      }
       onCreated();
     },
     onError: (e) => toast.error(e instanceof Error ? e.message : "Error"),
   });
 
   return (
-    <SectionCard title="Nueva campaña">
+    <SectionCard title={editing ? "Editar campaña" : "Nueva campaña"}>
       <p className="mb-3 text-sm text-muted-foreground">
-        Activá <strong>Requiere código</strong> para un cupón. Dejalo apagado para una promoción automática.
+        {editing
+          ? "El código no se cambia acá; si hace falta otro código, creá una campaña nueva."
+          : "Activá Requiere código para un cupón (no se acumula). Dejalo apagado para automática acumulable."}
       </p>
       <div className="space-y-3 text-sm">
         <div>
           <Label>Nombre</Label>
           <Input className="mt-1 rounded-xl" value={name} onChange={(e) => setName(e.target.value)} />
         </div>
-        <label className="flex items-center justify-between rounded-xl bg-secondary/40 px-3 py-2">
-          <span>Requiere código (cupón)</span>
-          <Switch checked={asCoupon} onCheckedChange={setAsCoupon} />
-        </label>
-        {asCoupon ? (
+        {!editing ? (
+          <label className="flex items-center justify-between rounded-xl bg-secondary/40 px-3 py-2">
+            <span>Requiere código (cupón)</span>
+            <Switch checked={asCoupon} onCheckedChange={setAsCoupon} />
+          </label>
+        ) : null}
+        {!editing && asCoupon ? (
           <div>
             <Label>Código</Label>
             <Input className="mt-1 rounded-xl uppercase" value={code} onChange={(e) => setCode(e.target.value)} />
           </div>
+        ) : null}
+        {editing?.code ? (
+          <p className="rounded-xl bg-muted/50 px-3 py-2 font-mono text-xs">{editing.code}</p>
         ) : null}
         <div className="grid grid-cols-2 gap-2">
           <div>
@@ -560,9 +661,55 @@ function NewPromoForm({
             ))}
           </select>
         </div>
-        <Button className="w-full rounded-xl" disabled={!name.trim() || save.isPending} onClick={() => save.mutate()}>
-          Guardar
-        </Button>
+        <div className="space-y-2 rounded-xl border border-border/80 p-3">
+          <label className="flex items-center justify-between gap-3">
+            <span className="font-medium">Solo ciertas razas</span>
+            <Switch
+              checked={limitBreeds}
+              onCheckedChange={(on) => {
+                setLimitBreeds(on);
+                if (!on) setBreedIds([]);
+              }}
+            />
+          </label>
+          {limitBreeds ? (
+            <>
+              <p className="text-xs text-muted-foreground">Elegí una o más razas abajo.</p>
+              <select
+                multiple
+                className="h-32 w-full rounded-xl border border-input bg-background p-2 text-xs"
+                value={breedIds}
+                onChange={(e) => setBreedIds(Array.from(e.target.selectedOptions).map((o) => o.value))}
+              >
+                {breeds.map((b) => (
+                  <option key={b.id} value={b.id}>
+                    {b.name}
+                    {b.species ? ` (${b.species})` : ""}
+                  </option>
+                ))}
+              </select>
+            </>
+          ) : null}
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Button
+            className="rounded-xl"
+            disabled={
+              !name.trim() ||
+              save.isPending ||
+              (!editing && asCoupon && !code.trim()) ||
+              (limitBreeds && breedIds.length === 0)
+            }
+            onClick={() => save.mutate()}
+          >
+            {editing ? "Guardar cambios" : "Guardar"}
+          </Button>
+          {editing && onCancelEdit ? (
+            <Button type="button" variant="outline" className="rounded-xl" onClick={onCancelEdit}>
+              Cancelar edición
+            </Button>
+          ) : null}
+        </div>
       </div>
     </SectionCard>
   );

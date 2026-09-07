@@ -67,6 +67,7 @@ import { editableAppointmentStatuses, permissionsFor } from "@/lib/roles";
 import { ClientAgenda } from "@/components/client-agenda";
 import { FinishAppointmentDialog } from "@/components/finish-appointment-dialog";
 import { MaterialEstimatePanel } from "@/components/material-estimate-panel";
+import { CouponApplyFields } from "@/components/coupon-apply-fields";
 import { ConfirmServicePriceDialog } from "@/components/confirm-service-price-dialog";
 import {
   appointmentShowsChargedPrice,
@@ -207,6 +208,8 @@ function StaffAgenda() {
     { owner_id?: string; full_name?: string; link: string }[] | null
   >(null);
   const [finishAppt, setFinishAppt] = useState<Appointment | null>(null);
+  const [citaPromo, setCitaPromo] = useState<import("@/lib/spa-queries").PromoValidate | null>(null);
+  const [finishCouponCode, setFinishCouponCode] = useState<string | null>(null);
   const [pricePrompt, setPricePrompt] = useState<{
     appointment: Appointment;
     mode: "status" | "save";
@@ -295,6 +298,7 @@ function StaffAgenda() {
 
   const openManage = (a: Appointment) => {
     setSelected(a);
+    setCitaPromo(null);
     const form = {
       pet_id: a.pet_id ?? "",
       service_id: a.service_id ?? "",
@@ -1211,11 +1215,17 @@ function StaffAgenda() {
       <FinishAppointmentDialog
         appointment={finishAppt}
         open={!!finishAppt}
+        initialCouponCode={finishCouponCode}
         onOpenChange={(o) => {
-          if (!o) setFinishAppt(null);
+          if (!o) {
+            setFinishAppt(null);
+            setFinishCouponCode(null);
+          }
         }}
         onDone={() => {
           setFinishAppt(null);
+          setFinishCouponCode(null);
+          setCitaPromo(null);
           void qc.invalidateQueries({ queryKey: ["appointments"] });
           void qc.invalidateQueries({ queryKey: ["pets"] });
           void qc.invalidateQueries({ queryKey: ["sales"] });
@@ -1725,6 +1735,20 @@ function StaffAgenda() {
                   })()}
                 </div>
                 ) : null}
+
+                {!perms.isCliente ? (
+                  <div className="mt-4">
+                    <CouponApplyFields
+                      browseOnly
+                      subtotal={Number(selected.price || 0)}
+                      customerId={selected.pets?.owners?.id ?? selected.pets?.owner_id}
+                      petId={selected.pet_id}
+                      serviceIds={selected.service_id ? [selected.service_id] : []}
+                      value={citaPromo}
+                      onChange={setCitaPromo}
+                    />
+                  </div>
+                ) : null}
               </div>
 
               <div className="shrink-0 border-t border-border px-6 py-4">
@@ -1786,6 +1810,7 @@ function StaffAgenda() {
                         variant="outline"
                         className="rounded-xl"
                         onClick={() => {
+                          setFinishCouponCode(citaPromo?.code || null);
                           setFinishAppt(selected);
                           setSelected(null);
                         }}

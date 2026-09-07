@@ -18,6 +18,7 @@ export type Owner = {
   email: string | null;
   address: string | null;
   photo_url: string | null;
+  birth_date?: string | null;
   sort_order?: number;
   pii_masked?: boolean;
   system_key?: string | null;
@@ -858,6 +859,7 @@ export async function updateMyOwner(input: {
   whatsapp?: string;
   document_type: string;
   document_id: string;
+  birth_date?: string | null;
 }) {
   return api<Owner & { profile_complete?: boolean }>("/owners/me", { method: "PATCH", body: input });
 }
@@ -968,6 +970,11 @@ export type BusinessSettings = {
   trade_name: string;
   slogan: string;
   address: string;
+  city?: string | null;
+  region?: string | null;
+  address_reference?: string | null;
+  maps_url?: string | null;
+  show_address_public?: boolean;
   whatsapp: string;
   logo_url?: string | null;
   barcode_scanner_enabled?: boolean;
@@ -1013,6 +1020,11 @@ export type PublicBusinessSettings = Pick<
   | "trade_name"
   | "slogan"
   | "address"
+  | "city"
+  | "region"
+  | "address_reference"
+  | "maps_url"
+  | "show_address_public"
   | "whatsapp"
   | "logo_url"
   | "contact_email"
@@ -1899,6 +1911,7 @@ export type Promotion = {
   min_pets?: number;
   min_purchase?: number;
   service_ids?: string[];
+  breed_ids?: string[];
   weekdays?: number[];
   customer_ids?: string[];
 };
@@ -1988,6 +2001,7 @@ export async function createLoyaltyTier(input: {
   min_months?: number;
   discount_type?: string;
   discount_value?: number;
+  applies_to?: string;
 }) {
   return api("/loyalty/tiers", { method: "POST", body: input });
 }
@@ -2041,6 +2055,10 @@ export async function createPromotion(input: Partial<Promotion> & { name: string
   return api<Promotion>("/promotions", { method: "POST", body: input });
 }
 
+export async function getPromotion(id: string) {
+  return api<Promotion>(`/promotions/${id}`);
+}
+
 export async function patchPromotion(id: string, input: Partial<Promotion>) {
   return api<Promotion>(`/promotions/${id}`, { method: "PATCH", body: input });
 }
@@ -2055,7 +2073,10 @@ export async function fetchPromoNotify() {
 }
 
 export async function runPromoNotifyDue() {
-  return api<{ ok: boolean }>("/promotions/notify-due", { method: "POST", body: {} });
+  return api<{ ok: boolean; customers_synced?: number; birthday_pet?: number; birthday_owner?: number }>(
+    "/promotions/notify-due",
+    { method: "POST", body: {} },
+  );
 }
 
 /* —— Finanzas / Reportes —— */

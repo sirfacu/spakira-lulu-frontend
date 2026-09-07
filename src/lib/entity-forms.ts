@@ -19,6 +19,7 @@ export type OwnerFormFields = {
   email: string;
   address: string;
   photo_url: string;
+  birth_date: string;
 };
 
 export type PetFormFields = {
@@ -55,6 +56,7 @@ export function ownerToFormFields(o: Owner): OwnerFormFields {
     email: o.email ?? "",
     address: o.address ?? "",
     photo_url: o.photo_url ?? "",
+    birth_date: (o.birth_date ?? "").toString().slice(0, 10),
   };
 }
 

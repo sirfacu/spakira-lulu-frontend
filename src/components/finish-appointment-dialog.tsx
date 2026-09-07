@@ -32,13 +32,20 @@ type Props = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onDone: () => void;
+  initialCouponCode?: string | null;
 };
 
 function newKey() {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
-export function FinishAppointmentDialog({ appointment, open, onOpenChange, onDone }: Props) {
+export function FinishAppointmentDialog({
+  appointment,
+  open,
+  onOpenChange,
+  onDone,
+  initialCouponCode,
+}: Props) {
   const [includeService, setIncludeService] = useState(true);
   const [servicePrice, setServicePrice] = useState("");
   const [query, setQuery] = useState("");
@@ -510,6 +517,7 @@ export function FinishAppointmentDialog({ appointment, open, onOpenChange, onDon
               value={promo}
               onChange={setPromo}
               rewards={loyalty.data?.available ?? []}
+              initialCode={initialCouponCode}
             />
 
             <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border pt-4">
