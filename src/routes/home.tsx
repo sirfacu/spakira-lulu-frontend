@@ -350,17 +350,26 @@ function Landing() {
               <div className="gold-rule mx-auto mt-4 max-w-xs" />
             </div>
             <ChipRail stepPx={286}>
-              {videos.map((v) => (
-                <figure
-                  key={v.id}
-                  className="card-soft w-[260px] shrink-0 overflow-hidden sm:w-[270px]"
-                >
-                  <figcaption className="px-4 py-3 text-sm font-medium text-primary">
-                    {v.title}
-                  </figcaption>
-                  <SocialEmbed url={v.embed_url} title={v.title} />
-                </figure>
-              ))}
+              {videos.map((v) => {
+                const caption =
+                  v.title.length > 250 ? `${v.title.slice(0, 250).trimEnd()}…` : v.title;
+                return (
+                  <figure
+                    key={v.id}
+                    className="card-soft flex h-[560px] w-[260px] shrink-0 flex-col overflow-hidden sm:w-[270px]"
+                  >
+                    <figcaption
+                      className="line-clamp-3 shrink-0 px-4 py-3 text-sm font-medium leading-snug text-primary"
+                      title={v.title}
+                    >
+                      {caption}
+                    </figcaption>
+                    <div className="min-h-0 flex-1 overflow-hidden">
+                      <SocialEmbed url={v.embed_url} title={v.title} />
+                    </div>
+                  </figure>
+                );
+              })}
             </ChipRail>
           </div>
         </section>

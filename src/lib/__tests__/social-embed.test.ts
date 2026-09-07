@@ -16,14 +16,20 @@ describe("parseSocialEmbed", () => {
   it("embeds Instagram posts and reels, not profiles", () => {
     const post = parseSocialEmbed("https://www.instagram.com/p/AbC123xyz/");
     expect(post.kind).toBe("instagram");
-    expect(post.iframeSrc).toBe("https://www.instagram.com/p/AbC123xyz/embed/");
+    expect(post.iframeSrc).toBe(
+      "https://www.instagram.com/p/AbC123xyz/embed/?hidecaption=true",
+    );
 
     const reel = parseSocialEmbed("https://www.instagram.com/reel/ReelCode99/?igsh=x");
-    expect(reel.iframeSrc).toBe("https://www.instagram.com/reel/ReelCode99/embed/");
+    expect(reel.iframeSrc).toBe(
+      "https://www.instagram.com/reel/ReelCode99/embed/?hidecaption=true",
+    );
     expect(reel.tall).toBe(true);
 
     const withHl = parseSocialEmbed("https://www.instagram.com/p/B6rIzRmp9VI/?hl=es");
-    expect(withHl.iframeSrc).toBe("https://www.instagram.com/p/B6rIzRmp9VI/embed/");
+    expect(withHl.iframeSrc).toBe(
+      "https://www.instagram.com/p/B6rIzRmp9VI/embed/?hidecaption=true",
+    );
 
     const profile = parseSocialEmbed("https://www.instagram.com/spakiralu_/");
     expect(profile.kind).toBe("instagram");

@@ -25,7 +25,7 @@ function withPlayerParams(src: string, kind: SocialKind): string {
   }
 }
 
-/** Marco vertical único (9:16) para YouTube, Instagram y TikTok. */
+/** Marco fijo: el padre define la altura; el iframe no puede estirar la tarjeta. */
 export function SocialEmbed({
   url,
   title,
@@ -37,12 +37,13 @@ export function SocialEmbed({
 
   if (parsed.iframeSrc) {
     return (
-      <div className="relative h-[480px] w-full overflow-hidden bg-neutral-950">
+      <div className="relative h-full w-full overflow-hidden bg-neutral-950">
         <iframe
           title={title}
           src={withPlayerParams(parsed.iframeSrc, parsed.kind)}
-          className="absolute inset-0 h-full w-full border-0"
+          className="pointer-events-auto absolute inset-0 h-full w-full max-h-full border-0"
           loading="lazy"
+          scrolling="no"
           referrerPolicy="strict-origin-when-cross-origin"
           allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen"
           allowFullScreen
@@ -59,7 +60,7 @@ export function SocialEmbed({
       href={parsed.permalink}
       target="_blank"
       rel="noopener noreferrer"
-      className="flex h-[480px] w-full flex-col items-center justify-center gap-3 bg-gradient-to-br from-primary/12 via-secondary to-accent/15 px-6 text-center transition-colors hover:from-primary/20 hover:to-accent/25"
+      className="flex h-full min-h-[280px] w-full flex-col items-center justify-center gap-3 bg-gradient-to-br from-primary/12 via-secondary to-accent/15 px-6 text-center transition-colors hover:from-primary/20 hover:to-accent/25"
     >
       <Icon className="h-10 w-10 text-primary" />
       <span className="text-sm font-semibold text-primary">{parsed.label}</span>
