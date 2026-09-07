@@ -20,13 +20,6 @@ import { SectionCard, StatCard } from "@/components/ui-kit";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   salesQuery,
@@ -39,7 +32,9 @@ import {
   createFixedCostEntry,
   updateFixedCostEntry,
   deleteFixedCostEntry,
+  appointmentCostDetailQuery,
   type FixedCostEntry,
+  type ServiceMarginLine,
 } from "@/lib/spa-queries";
 import { cop, dayKey, shortDate } from "@/lib/format";
 import {
@@ -52,9 +47,12 @@ import {
   PiggyBank,
   Trash2,
   Plus,
+  Scissors,
 } from "lucide-react";
 import { requirePathAccess } from "@/lib/route-access";
 import { isActiveSale, permissionsFor } from "@/lib/roles";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/_authenticated/panel/reportes")({
   beforeLoad: requirePathAccess("/panel/reportes"),
@@ -77,15 +75,6 @@ export const Route = createFileRoute("/_authenticated/panel/reportes")({
 });
 
 const COLORS = ["var(--chart-1)", "var(--chart-2)", "var(--chart-3)", "var(--chart-4)", "var(--chart-5)"];
-
-const FIXED_CATEGORIES = [
-  { id: "arriendo", label: "Arriendo" },
-  { id: "agua", label: "Agua" },
-  { id: "luz", label: "Luz" },
-  { id: "internet", label: "Internet" },
-  { id: "nomina", label: "Nómina" },
-  { id: "otro", label: "Otro" },
-] as const;
 
 function currentYearMonth() {
   const d = new Date();
@@ -250,13 +239,14 @@ function ResumenTab({ canFinance }: { canFinance: boolean }) {
 function MargenTab({ dateFrom, dateTo }: { dateFrom: string; dateTo: string }) {
   const q = useQuery(serviceMarginsQuery(dateFrom, dateTo));
   const s = q.data?.summary;
+  const [selected, setSelected] = useState<ServiceMarginLine | null>(null);
 
   return (
     <>
       <p className="text-xs text-muted-foreground">
-        Margen de contribución por cita <strong className="font-medium text-foreground">finalizada</strong>
-        : cobrado del servicio − costo de insumos (snapshot) − comisión del groomer (si el pago es % o
-        mixto). No incluye arriendo ni luz.
+        Por cada cita finalizada: lo cobrado menos insumos y menos la comisión del groomer (si su
+        pago es % o mixto en Personal). Tocá una fila del detalle para ver el desglose. Arriendo y
+        luz van en Gastos fijos, no acá.
       </p>
       {q.isLoading ? <p className="text-sm text-muted-foreground">Cargando…</p> : null}
       {q.isError ? (
@@ -267,11 +257,12 @@ function MargenTab({ dateFrom, dateTo }: { dateFrom: string; dateTo: string }) {
       {s ? (
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           <StatCard icon={DollarSign} label="Cobrado servicios" value={cop(s.revenue)} tone="accent" />
+          <StatCard icon={Wallet} label="Insumos" value={cop(s.materials_cost)} tone="gold" />
           <StatCard
-            icon={Wallet}
-            label="Costo variable"
-            value={cop(s.variable_cost)}
-            tone="gold"
+            icon={Scissors}
+            label="Costo groomer"
+            value={cop(s.labor_cost)}
+            tone="primary"
           />
           <StatCard
             icon={TrendingUp}
@@ -279,17 +270,18 @@ function MargenTab({ dateFrom, dateTo }: { dateFrom: string; dateTo: string }) {
             value={cop(s.contribution_margin)}
             tone="mint"
           />
-          <StatCard
-            icon={PiggyBank}
-            label="% margen"
-            value={s.margin_pct != null ? `${s.margin_pct}%` : "—"}
-            tone="primary"
-          />
         </div>
       ) : null}
       {s && s.missing_materials_snapshot > 0 ? (
         <p className="text-xs text-amber-700 dark:text-amber-400">
           {s.missing_materials_snapshot} cita(s) sin snapshot de insumos (costo de productos en $0).
+        </p>
+      ) : null}
+      {s && s.labor_cost === 0 && s.appointments > 0 ? (
+        <p className="text-xs text-amber-700 dark:text-amber-400">
+          Costo groomer en $0: en Personal el staff debe tener pago <strong>porcentaje</strong> o{" "}
+          <strong>mixto</strong> con % de comisión. Si es sueldo fijo, cargalo en Gastos fijos como
+          nómina.
         </p>
       ) : null}
 
@@ -302,7 +294,7 @@ function MargenTab({ dateFrom, dateTo }: { dateFrom: string; dateTo: string }) {
                 <th className="py-2 pr-3 font-medium">Citas</th>
                 <th className="py-2 pr-3 font-medium">Cobrado</th>
                 <th className="py-2 pr-3 font-medium">Insumos</th>
-                <th className="py-2 pr-3 font-medium">Labor</th>
+                <th className="py-2 pr-3 font-medium">Groomer</th>
                 <th className="py-2 font-medium">Margen</th>
               </tr>
             </thead>
@@ -330,6 +322,7 @@ function MargenTab({ dateFrom, dateTo }: { dateFrom: string; dateTo: string }) {
       </SectionCard>
 
       <SectionCard title="Detalle por cita">
+        <p className="mb-2 text-xs text-muted-foreground">Clic en una fila para ver el desglose.</p>
         <div className="overflow-x-auto">
           <table className="w-full min-w-[40rem] text-left text-sm">
             <thead className="text-xs text-muted-foreground">
@@ -340,13 +333,20 @@ function MargenTab({ dateFrom, dateTo }: { dateFrom: string; dateTo: string }) {
                 <th className="py-2 pr-3 font-medium">Groomer</th>
                 <th className="py-2 pr-3 font-medium">Cobrado</th>
                 <th className="py-2 pr-3 font-medium">Insumos</th>
-                <th className="py-2 pr-3 font-medium">Labor</th>
+                <th className="py-2 pr-3 font-medium">Costo groomer</th>
                 <th className="py-2 font-medium">Margen</th>
               </tr>
             </thead>
             <tbody>
               {(q.data?.lines ?? []).map((line) => (
-                <tr key={line.appointment_id} className="border-t border-border/60">
+                <tr
+                  key={line.appointment_id}
+                  className={cn(
+                    "cursor-pointer border-t border-border/60 transition-colors hover:bg-muted/50",
+                    selected?.appointment_id === line.appointment_id && "bg-muted/40",
+                  )}
+                  onClick={() => setSelected(line)}
+                >
                   <td className="py-2 pr-3 whitespace-nowrap text-xs text-muted-foreground">
                     {line.closed_at ? shortDate(line.closed_at) : "—"}
                   </td>
@@ -370,24 +370,131 @@ function MargenTab({ dateFrom, dateTo }: { dateFrom: string; dateTo: string }) {
           </table>
         </div>
       </SectionCard>
+
+      <AppointmentCostDialog
+        line={selected}
+        open={!!selected}
+        onOpenChange={(open) => {
+          if (!open) setSelected(null);
+        }}
+      />
     </>
+  );
+}
+
+function AppointmentCostDialog({
+  line,
+  open,
+  onOpenChange,
+}: {
+  line: ServiceMarginLine | null;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const detail = useQuery({
+    ...appointmentCostDetailQuery(line?.appointment_id ?? null),
+    retry: 1,
+  });
+  const d = detail.data;
+  const waiting = detail.isPending || (detail.isFetching && !d && !detail.isError);
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-h-[90vh] max-w-lg overflow-y-auto rounded-2xl">
+        <DialogHeader>
+          <DialogTitle>Desglose de la cita</DialogTitle>
+        </DialogHeader>
+        {!line ? null : waiting ? (
+          <p className="text-sm text-muted-foreground">Cargando…</p>
+        ) : detail.isError ? (
+          <p className="text-sm text-destructive">
+            {(detail.error as Error)?.message || "No se pudo cargar el desglose"}
+          </p>
+        ) : d ? (
+          <div className="space-y-4 text-sm">
+            <div className="space-y-1 text-muted-foreground">
+              <p>
+                <span className="font-medium text-foreground">{d.service_name}</span>
+                {d.pet_name ? ` · ${d.pet_name}` : ""}
+              </p>
+              <p>
+                Groomer: {d.staff_name ?? "—"}
+                {d.closed_at ? ` · cierre ${shortDate(d.closed_at)}` : ""}
+              </p>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2">
+              <div className="rounded-xl border border-border/70 px-3 py-2">
+                <p className="text-xs text-muted-foreground">Cobrado</p>
+                <p className="tabular-nums font-medium">{cop(d.revenue)}</p>
+              </div>
+              <div className="rounded-xl border border-border/70 px-3 py-2">
+                <p className="text-xs text-muted-foreground">Margen</p>
+                <p className="tabular-nums font-medium">{cop(d.contribution_margin)}</p>
+              </div>
+            </div>
+
+            <div>
+              <h4 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                Insumos
+              </h4>
+              {d.materials.length ? (
+                <ul className="divide-y divide-border/60 rounded-xl border border-border/70">
+                  {d.materials.map((m, idx) => (
+                    <li
+                      key={`${m.material_role}-${m.inventory_item_id ?? idx}`}
+                      className="flex items-start justify-between gap-3 px-3 py-2"
+                    >
+                      <div className="min-w-0">
+                        <p className="font-medium leading-snug">{m.label}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {m.quantity} {m.quantity_unit} · {cop(m.unit_cost)}/{m.quantity_unit}
+                        </p>
+                      </div>
+                      <p className="shrink-0 tabular-nums">{cop(m.line_cost)}</p>
+                    </li>
+                  ))}
+                  <li className="flex justify-between px-3 py-2 text-xs font-medium">
+                    <span>Total insumos</span>
+                    <span className="tabular-nums">{cop(d.materials_cost)}</span>
+                  </li>
+                </ul>
+              ) : (
+                <p className="text-xs text-muted-foreground">Sin snapshot de insumos en esta cita.</p>
+              )}
+            </div>
+
+            <div>
+              <h4 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                Costo groomer
+              </h4>
+              <div className="rounded-xl border border-border/70 px-3 py-2">
+                <div className="flex justify-between gap-3">
+                  <span>Comisión · {d.groomer.staff_name ?? "sin asignar"}</span>
+                  <span className="tabular-nums font-medium">{cop(d.groomer.labor_cost)}</span>
+                </div>
+                <p className="mt-2 text-xs text-muted-foreground">{d.groomer.note}</p>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <p className="text-sm text-muted-foreground">Sin datos para esta cita.</p>
+        )}
+      </DialogContent>
+    </Dialog>
   );
 }
 
 function FijosTab({ yearMonth }: { yearMonth: string }) {
   const qc = useQueryClient();
   const q = useQuery(fixedCostsQuery(yearMonth));
-  const [draft, setDraft] = useState({
-    category: "otro",
-    label: "",
-    amount: "",
-  });
+  const [draft, setDraft] = useState({ label: "", amount: "" });
 
   const saveMut = useMutation({
     mutationFn: async (entry: FixedCostEntry) =>
       updateFixedCostEntry(entry.id, {
         year_month: entry.year_month,
-        category: entry.category,
+        category: entry.category || "otro",
         label: entry.label,
         amount: entry.amount,
         notes: entry.notes ?? null,
@@ -404,13 +511,13 @@ function FijosTab({ yearMonth }: { yearMonth: string }) {
     mutationFn: () =>
       createFixedCostEntry({
         year_month: yearMonth,
-        category: draft.category,
+        category: "otro",
         label: draft.label.trim(),
         amount: Math.max(0, Number(draft.amount) || 0),
         notes: null,
       }),
     onSuccess: async () => {
-      setDraft({ category: "otro", label: "", amount: "" });
+      setDraft({ label: "", amount: "" });
       await qc.invalidateQueries({ queryKey: ["finance-fixed-costs", yearMonth] });
       await qc.invalidateQueries({ queryKey: ["finance-month", yearMonth] });
       toast.success("Gasto agregado");
@@ -433,13 +540,12 @@ function FijosTab({ yearMonth }: { yearMonth: string }) {
   return (
     <>
       <p className="text-xs text-muted-foreground">
-        Ledger del mes (agua, luz, arriendo…). Al abrir el mes se copian las plantillas; ajustá con
-        el valor real de la factura. Estos montos <strong className="font-medium text-foreground">no</strong>{" "}
-        se restan cita por cita: van al resultado del mes.
+        Gastos del mes que no van por cita: arriendo, agua, luz, nómina fija, etc. Solo nombre y
+        monto. No se restan del margen de cada servicio; salen en Resultado del mes.
       </p>
-      <StatCard icon={Wallet} label={`Gastos fijos ${yearMonth}`} value={cop(total)} tone="gold" />
+      <StatCard icon={Wallet} label={`Total gastos ${yearMonth}`} value={cop(total)} tone="gold" />
 
-      <SectionCard title="Entradas del mes">
+      <SectionCard title="Gastos del mes">
         <div className="space-y-3">
           {(q.data ?? []).map((entry) => (
             <FixedCostRow
@@ -451,31 +557,14 @@ function FijosTab({ yearMonth }: { yearMonth: string }) {
             />
           ))}
           {!q.data?.length && !q.isLoading ? (
-            <p className="text-sm text-muted-foreground">Sin gastos en este mes.</p>
+            <p className="text-sm text-muted-foreground">Todavía no hay gastos en este mes.</p>
           ) : null}
         </div>
-      </SectionCard>
 
-      <SectionCard title="Agregar gasto">
-        <div className="grid gap-3 sm:grid-cols-[8rem_1fr_8rem_auto]">
-          <Select
-            value={draft.category}
-            onValueChange={(v) => setDraft((d) => ({ ...d, category: v }))}
-          >
-            <SelectTrigger className="h-10 rounded-xl">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {FIXED_CATEGORIES.map((c) => (
-                <SelectItem key={c.id} value={c.id}>
-                  {c.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+        <div className="mt-4 grid gap-3 border-t border-border/60 pt-4 sm:grid-cols-[1fr_8rem_auto]">
           <Input
             className="h-10 rounded-xl"
-            placeholder="Descripción"
+            placeholder="Nombre (ej. Arriendo local)"
             value={draft.label}
             onChange={(e) => setDraft((d) => ({ ...d, label: e.target.value }))}
           />
@@ -518,7 +607,6 @@ function FixedCostRow({
 
   return (
     <div className="flex flex-wrap items-center gap-2 rounded-xl border border-border/70 px-3 py-2">
-      <span className="w-20 shrink-0 text-xs uppercase text-muted-foreground">{entry.category}</span>
       <Input
         className="h-9 min-w-[10rem] flex-1 rounded-lg"
         value={label}

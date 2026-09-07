@@ -239,7 +239,7 @@ export function FinishAppointmentDialog({ appointment, open, onOpenChange, onDon
       const targets = (res.email_notifications ?? []).filter((n) => n.email).length;
       const marginBit =
         res.contribution_margin != null
-          ? ` · margen ${cop(res.contribution_margin)} (insumos ${cop(res.materials_cost ?? 0)} + labor ${cop(res.labor_cost ?? 0)})`
+          ? ` · margen ${cop(res.contribution_margin)} (insumos ${cop(res.materials_cost ?? 0)} + groomer ${cop(res.labor_cost ?? 0)})`
           : "";
       if (res.email_queued) {
         toast.success(

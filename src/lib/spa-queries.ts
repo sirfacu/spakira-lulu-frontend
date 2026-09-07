@@ -2113,6 +2113,39 @@ export type MonthFinanceSummary = {
   };
 };
 
+export type AppointmentCostDetail = {
+  appointment_id: string;
+  status: string;
+  closed_at: string | null;
+  starts_at: string | null;
+  service_id: string | null;
+  service_name: string;
+  pet_name: string | null;
+  staff_id: string | null;
+  staff_name: string | null;
+  revenue: number;
+  materials_cost: number;
+  labor_cost: number;
+  variable_cost: number;
+  contribution_margin: number;
+  margin_pct: number | null;
+  materials: {
+    material_role: string;
+    label: string;
+    inventory_item_id: string | null;
+    inventory_item_name: string | null;
+    quantity: number;
+    quantity_unit: string;
+    unit_cost: number;
+    line_cost: number;
+  }[];
+  groomer: {
+    staff_name: string | null;
+    labor_cost: number;
+    note: string;
+  };
+};
+
 export function serviceMarginsQuery(dateFrom: string, dateTo: string) {
   return queryOptions({
     queryKey: ["finance-service-margins", dateFrom, dateTo],
@@ -2120,6 +2153,17 @@ export function serviceMarginsQuery(dateFrom: string, dateTo: string) {
       const q = new URLSearchParams({ date_from: dateFrom, date_to: dateTo });
       return api<ServiceMarginsResponse>(`/finance/service-margins?${q}`);
     },
+  });
+}
+
+export function appointmentCostDetailQuery(appointmentId: string | null) {
+  return queryOptions({
+    queryKey: ["finance-appointment-cost", appointmentId],
+    queryFn: () =>
+      api<AppointmentCostDetail>(
+        `/finance/appointments/${encodeURIComponent(appointmentId!)}/cost-detail`,
+      ),
+    enabled: !!appointmentId,
   });
 }
 
@@ -2135,7 +2179,7 @@ export function fixedCostsQuery(yearMonth: string) {
     queryKey: ["finance-fixed-costs", yearMonth],
     queryFn: () =>
       api<FixedCostEntry[]>(
-        `/finance/fixed-costs?year_month=${encodeURIComponent(yearMonth)}&seed=true`,
+        `/finance/fixed-costs?year_month=${encodeURIComponent(yearMonth)}&seed=false`,
       ),
   });
 }
