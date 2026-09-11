@@ -158,14 +158,35 @@ function Personal() {
   const saveMut = useMutation({
     mutationFn: async () => {
       if (!form.skills.length) throw new Error("Elegí al menos un cargo");
+      const shift = Number(form.shift_rate) || 0;
+      const pct = Number(form.commission_pct) || 0;
+      const mode = form.payment_mode;
+      if (shift <= 0 && pct <= 0) {
+        throw new Error(
+          "Definí al menos valor de turno o comisión (%). No pueden quedar los dos en 0.",
+        );
+      }
+      if (mode === "fijo" && shift <= 0) {
+        throw new Error(
+          pct > 0
+            ? "Tenés comisión configurada pero el modo es Fijo. Usá «Comisión %» o «Mixto» para que cuente en el margen de cada cita."
+            : "En pago fijo necesitás un valor de turno mayor a 0.",
+        );
+      }
+      if (mode === "porcentaje" && pct <= 0) {
+        throw new Error("En pago por comisión el % debe ser mayor a 0.");
+      }
+      if (mode === "mixto" && (shift <= 0 || pct <= 0)) {
+        throw new Error("En pago mixto necesitás valor de turno y comisión mayores a 0.");
+      }
       const display = form.skills.includes(form.role_title) ? form.role_title : form.skills[0]!;
       const payload = {
         full_name: form.full_name.trim(),
         role_title: display,
         specialty: form.specialty.trim() || null,
-        shift_rate: Number(form.shift_rate) || 0,
-        payment_mode: form.payment_mode,
-        commission_pct: Number(form.commission_pct) || 0,
+        shift_rate: shift,
+        payment_mode: mode,
+        commission_pct: pct,
         pay_frequency: form.pay_frequency,
         active: form.active,
         email: form.email.trim() || null,
@@ -686,6 +707,10 @@ function Personal() {
                 <option value="porcentaje">Comisión %</option>
                 <option value="mixto">Mixto</option>
               </select>
+              <p className="text-[11px] text-muted-foreground">
+                Fijo → valor turno (nómina). Comisión % → % sobre el servicio en el margen de la
+                cita. Mixto → ambos. No pueden quedar turno y comisión en 0.
+              </p>
             </div>
             <div className="space-y-1.5">
               <Label>Frecuencia</Label>
