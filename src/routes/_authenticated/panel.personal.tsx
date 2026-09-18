@@ -30,11 +30,12 @@ import {
   getStaffWorkHours,
   getStaffWorkHoursHistory,
   saveStaffWorkHours,
+  getStaffSkillCatalog,
   type Staff,
   type PayrollPreview,
 } from "@/lib/spa-queries";
 import { uploadPhoto } from "@/lib/api";
-import { canonicalizeStaffRole, staffRoleLabel, staffRolesLine, STAFF_ROLE_OPTS } from "@/lib/staff-roles";
+import { canonicalizeStaffRole, staffRoleLabel, staffRolesLine, STAFF_ROLE_OPTS, isAdminStaffJob } from "@/lib/staff-roles";
 import { cop, dayKey, initials, shortDate, time } from "@/lib/format";
 import { requirePathAccess } from "@/lib/route-access";
 import { isActiveSale, permissionsFor } from "@/lib/roles";
@@ -66,6 +67,7 @@ const emptyForm = {
   payment_mode: "fijo",
   commission_pct: "0",
   pay_frequency: "quincenal",
+  fixed_pay_basis: "por_turno",
   active: true,
   email: "",
   phone: "",
@@ -78,11 +80,20 @@ const emptyForm = {
 
 const WEEKDAYS = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"];
 
+function todayIso() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
 function Personal() {
   const { user } = useRouteContext({ from: "/_authenticated" });
   const isAdmin = permissionsFor(user?.role).isAdmin;
   const qc = useQueryClient();
   const staff = useQuery(staffQuery);
+  const catalog = useQuery({
+    queryKey: ["staff-skill-catalog"],
+    queryFn: getStaffSkillCatalog,
+  });
   const appts = useQuery(appointmentsQuery);
   const sales = useQuery({ ...salesQuery, enabled: isAdmin });
   const settings = useQuery({ queryKey: ["payroll-settings"], queryFn: getPayrollSettings });
@@ -100,6 +111,8 @@ function Personal() {
   const [form, setForm] = useState(emptyForm);
   const [frequency, setFrequency] = useState("quincenal");
   const [payStaffId, setPayStaffId] = useState("");
+  const [payFrom, setPayFrom] = useState("");
+  const [payTo, setPayTo] = useState("");
   const [preview, setPreview] = useState<PayrollPreview | null>(null);
   const [terms, setTerms] = useState<{ id: string; effective_from: string; effective_to: string | null; payment_mode: string; shift_rate: number; commission_pct: number }[]>([]);
   const [workHours, setWorkHours] = useState<
@@ -114,6 +127,7 @@ function Personal() {
   const [hoursFrom, setHoursFrom] = useState("");
   const [hoursTo, setHoursTo] = useState("");
   const [hoursMode, setHoursMode] = useState<"base" | "ranged">("base");
+  const adminJob = isAdminStaffJob(form.role_title);
 
   const servicesOf = (id: string) =>
     (appts.data ?? [])
@@ -141,6 +155,7 @@ function Personal() {
       payment_mode: s.payment_mode || "fijo",
       commission_pct: String(s.commission_pct ?? 0),
       pay_frequency: s.pay_frequency || "quincenal",
+      fixed_pay_basis: s.fixed_pay_basis === "mensual" ? "mensual" : "por_turno",
       active: s.active,
       email: s.email ?? "",
       phone: s.phone ?? "",
@@ -157,37 +172,51 @@ function Personal() {
 
   const saveMut = useMutation({
     mutationFn: async () => {
-      if (!form.skills.length) throw new Error("Elegí al menos un cargo");
+      if (!form.role_title) throw new Error("Elegí un cargo");
+      const adminJob = isAdminStaffJob(form.role_title);
       const shift = Number(form.shift_rate) || 0;
-      const pct = Number(form.commission_pct) || 0;
-      const mode = form.payment_mode;
+      const pct = adminJob ? 0 : Number(form.commission_pct) || 0;
+      const mode = adminJob ? "fijo" : form.payment_mode;
+      const basis = form.fixed_pay_basis === "mensual" ? "mensual" : "por_turno";
+      const rateLabel = basis === "mensual" ? "sueldo mensual" : "valor de turno";
       if (shift <= 0 && pct <= 0) {
         throw new Error(
-          "Definí al menos valor de turno o comisión (%). No pueden quedar los dos en 0.",
+          `Definí al menos ${rateLabel} o comisión (%). No pueden quedar los dos en 0.`,
         );
       }
       if (mode === "fijo" && shift <= 0) {
         throw new Error(
           pct > 0
             ? "Tenés comisión configurada pero el modo es Fijo. Usá «Comisión %» o «Mixto» para que cuente en el margen de cada cita."
-            : "En pago fijo necesitás un valor de turno mayor a 0.",
+            : `En pago fijo necesitás un ${rateLabel} mayor a 0.`,
         );
       }
       if (mode === "porcentaje" && pct <= 0) {
         throw new Error("En pago por comisión el % debe ser mayor a 0.");
       }
       if (mode === "mixto" && (shift <= 0 || pct <= 0)) {
-        throw new Error("En pago mixto necesitás valor de turno y comisión mayores a 0.");
+        throw new Error(`En pago mixto necesitás ${rateLabel} y comisión mayores a 0.`);
       }
-      const display = form.skills.includes(form.role_title) ? form.role_title : form.skills[0]!;
+      let confirmHigh = false;
+      if (basis === "por_turno" && (mode === "fijo" || mode === "mixto") && shift >= 1_000_000) {
+        confirmHigh = window.confirm(
+          "Ese monto parece un sueldo mensual, no un valor por turno. ¿Confirmás que es turno?",
+        );
+        if (!confirmHigh) {
+          throw new Error("Cambiá a sueldo mensual o confirmá que el número es valor de turno.");
+        }
+      }
+      const display = form.role_title;
       const payload = {
         full_name: form.full_name.trim(),
         role_title: display,
-        specialty: form.specialty.trim() || null,
+        specialty: adminJob ? null : form.specialty.trim() || null,
         shift_rate: shift,
         payment_mode: mode,
         commission_pct: pct,
         pay_frequency: form.pay_frequency,
+        fixed_pay_basis: basis,
+        confirm_high_shift_rate: confirmHigh,
         active: form.active,
         email: form.email.trim() || null,
         phone: form.phone.trim() || null,
@@ -195,7 +224,7 @@ function Personal() {
         birth_date: form.birth_date || null,
         hired_at: form.hired_at || null,
         photo_url: form.photo_url.trim() || null,
-        skills: form.skills,
+        skills: [display],
         open_new_pay_term: true,
       };
       if (editing) return updateStaff(editing.id, payload);
@@ -260,6 +289,8 @@ function Personal() {
       previewPayroll({
         staff_id: payStaffId,
         frequency: frequency || settings.data?.default_frequency,
+        period_start: payFrom,
+        period_end: payTo,
       }),
     onSuccess: (res) => setPreview(res),
     onError: (e: Error) => toast.error(e.message),
@@ -457,7 +488,9 @@ function Personal() {
                 <div className="flex items-center gap-2">
                   <Wallet className="h-4 w-4 text-primary" />
                   <div className="min-w-0">
-                    <p className="text-muted-foreground">Valor turno</p>
+                    <p className="text-muted-foreground">
+                      {s.fixed_pay_basis === "mensual" ? "Sueldo mensual" : "Valor turno"}
+                    </p>
                         <p className="truncate font-semibold">{cop(s.shift_rate)}</p>
                   </div>
                 </div>
@@ -487,35 +520,25 @@ function Personal() {
 
       {tab === "pagos" ? (
         <div className="grid gap-6 lg:grid-cols-2">
-          <SectionCard title="Frecuencia de cierre">
+          <SectionCard title="Liquidar colaborador">
             <p className="mb-3 text-sm text-muted-foreground">
-              Definí el periodo de liquidación. El cálculo respeta los cambios de fijo/comisión por
-              fechas (desglose por tramo).
+              Elegí a quién pagar y el rango de fechas. El desglose lista citas y extras; la
+              comisión se calcula solo sobre el servicio.
             </p>
-            <div className="flex flex-wrap items-end gap-3">
-              <div className="space-y-2">
-                <Label>Frecuencia</Label>
-                <select
-                  className="flex h-11 rounded-xl border border-input bg-background px-3 text-sm"
-                  value={freqValue}
-                  onChange={(e) => setFrequency(e.target.value)}
-                >
-                  <option value="diario">Diario</option>
-                  <option value="semanal">Semanal</option>
-                  <option value="quincenal">Quincenal</option>
-                  <option value="mensual">Mensual</option>
-                </select>
-              </div>
-              <Button className="rounded-xl" onClick={() => freqMut.mutate()}>
-                Guardar frecuencia
-              </Button>
-            </div>
-            <div className="mt-6 space-y-2">
-              <Label>Colaborador a liquidar</Label>
+            <div className="space-y-2">
+              <Label>Colaborador</Label>
               <select
                 className="flex h-11 w-full rounded-xl border border-input bg-background px-3 text-sm"
                 value={payStaffId}
-                onChange={(e) => setPayStaffId(e.target.value)}
+                onChange={(e) => {
+                  const id = e.target.value;
+                  setPayStaffId(id);
+                  setPreview(null);
+                  const s = (staff.data ?? []).find((x) => x.id === id);
+                  const hired = s?.hired_at ? String(s.hired_at).slice(0, 10) : "";
+                  setPayFrom(hired || `${new Date().getFullYear()}-01-01`);
+                  setPayTo(todayIso());
+                }}
               >
                 <option value="">Elegí…</option>
                 {(staff.data ?? []).map((s) => (
@@ -524,20 +547,132 @@ function Personal() {
                   </option>
                 ))}
               </select>
+            </div>
+            <div className="mt-4 grid grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <Label>Desde</Label>
+                <Input
+                  type="date"
+                  className="h-11 rounded-xl"
+                  value={payFrom}
+                  onChange={(e) => {
+                    setPayFrom(e.target.value);
+                    setPreview(null);
+                  }}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Hasta</Label>
+                <Input
+                  type="date"
+                  className="h-11 rounded-xl"
+                  value={payTo}
+                  onChange={(e) => {
+                    setPayTo(e.target.value);
+                    setPreview(null);
+                  }}
+                />
+              </div>
+            </div>
+            <p className="mt-2 text-[11px] text-muted-foreground">
+              Por defecto, desde la fecha de ingreso (o 1° de enero si no hay) hasta hoy.
+            </p>
+            <div className="mt-4 flex flex-wrap items-end gap-3">
+              <div className="space-y-2">
+                <Label>Atajo de fechas</Label>
+                <select
+                  className="flex h-11 rounded-xl border border-input bg-background px-3 text-sm"
+                  value={freqValue}
+                  onChange={(e) => setFrequency(e.target.value)}
+                >
+                  <option value="diario">Hoy</option>
+                  <option value="semanal">Esta semana</option>
+                  <option value="quincenal">Esta quincena</option>
+                  <option value="mensual">Este mes</option>
+                </select>
+              </div>
               <Button
-                className="mt-2 rounded-xl"
-                disabled={!payStaffId || previewMut.isPending}
-                onClick={() => previewMut.mutate()}
+                variant="outline"
+                className="rounded-xl"
+                disabled={!payStaffId}
+                onClick={() => {
+                  const now = new Date();
+                  let from = todayIso();
+                  let to = todayIso();
+                  if (frequency === "semanal") {
+                    const d = new Date(now);
+                    d.setDate(d.getDate() - ((d.getDay() + 6) % 7));
+                    from = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+                    const e = new Date(d);
+                    e.setDate(e.getDate() + 6);
+                    to = `${e.getFullYear()}-${String(e.getMonth() + 1).padStart(2, "0")}-${String(e.getDate()).padStart(2, "0")}`;
+                  } else if (frequency === "quincenal") {
+                    const y = now.getFullYear();
+                    const m = String(now.getMonth() + 1).padStart(2, "0");
+                    if (now.getDate() <= 15) {
+                      from = `${y}-${m}-01`;
+                      to = `${y}-${m}-15`;
+                    } else {
+                      from = `${y}-${m}-16`;
+                      const last = new Date(y, now.getMonth() + 1, 0).getDate();
+                      to = `${y}-${m}-${last}`;
+                    }
+                  } else if (frequency === "mensual") {
+                    const y = now.getFullYear();
+                    const m = String(now.getMonth() + 1).padStart(2, "0");
+                    const last = new Date(y, now.getMonth() + 1, 0).getDate();
+                    from = `${y}-${m}-01`;
+                    to = `${y}-${m}-${last}`;
+                  }
+                  setPayFrom(from);
+                  setPayTo(to);
+                  setPreview(null);
+                }}
               >
-                Calcular periodo
+                Aplicar atajo
+              </Button>
+              <Button className="rounded-xl" variant="outline" onClick={() => freqMut.mutate()}>
+                Guardar atajo default
               </Button>
             </div>
+            <Button
+              className="mt-4 rounded-xl"
+              disabled={!payStaffId || !payFrom || !payTo || previewMut.isPending}
+              onClick={() => previewMut.mutate()}
+            >
+              Ver desglose
+            </Button>
             {preview ? (
               <div className="mt-5 space-y-3 rounded-2xl border border-border p-4">
                 <p className="text-sm font-medium">
-                  {preview.staff_name} · {preview.period_start} → {preview.period_end} (
-                  {preview.frequency})
+                  {preview.staff_name} · {preview.period_start} → {preview.period_end}
                 </p>
+                {preview.already_paid ? (
+                  <p className="rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:bg-amber-950/40 dark:text-amber-200">
+                    Ya pagado ({preview.already_paid.status}): {preview.already_paid.period_start} →{" "}
+                    {preview.already_paid.period_end} · {cop(preview.already_paid.total)}
+                  </p>
+                ) : null}
+                {(preview.items ?? []).length ? (
+                  <ul className="space-y-2 text-xs">
+                    {preview.items!.map((it) => (
+                      <li key={`${it.kind}-${it.id}`} className="rounded-xl bg-secondary/50 p-3">
+                        <p className="font-medium">
+                          {it.date} · {it.label}
+                          {it.status && it.status !== "finalizada" && it.kind === "cita" ? (
+                            <span className="ml-1 text-muted-foreground">({it.status})</span>
+                          ) : null}
+                        </p>
+                        <p className="text-muted-foreground">
+                          Servicio {cop(it.service_amount)}
+                          {it.extras_amount > 0 ? ` · extras ${cop(it.extras_amount)}` : ""}
+                        </p>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="text-sm text-muted-foreground">No hay citas ni ventas en ese rango.</p>
+                )}
                 <ul className="space-y-2 text-xs">
                   {preview.segments.map((seg, i) => (
                     <li key={`${seg.from}-${i}`} className="rounded-xl bg-secondary/50 p-3">
@@ -545,8 +680,10 @@ function Personal() {
                         {seg.from} → {seg.to} · {seg.payment_mode ?? "sin término"}
                       </p>
                       <p className="text-muted-foreground">
-                        Turnos {seg.worked_days} · fijo {cop(seg.shift_pay)} · comisión{" "}
-                        {cop(seg.commission)} · subtotal {cop(seg.subtotal)}
+                        Turnos {seg.worked_days} ·{" "}
+                        {seg.fixed_pay_basis === "mensual" ? "sueldo" : "fijo"} {cop(seg.shift_pay)}{" "}
+                        · comisión {cop(seg.commission)} (base servicio {cop(seg.sales_base)}) ·
+                        subtotal {cop(seg.subtotal)}
                       </p>
                     </li>
                   ))}
@@ -556,10 +693,10 @@ function Personal() {
                 </p>
                 <Button
                   className="rounded-xl"
-                  disabled={closeMut.isPending}
+                  disabled={closeMut.isPending || !!preview.already_paid}
                   onClick={() => closeMut.mutate()}
                 >
-                  Cerrar y pagar
+                  {preview.already_paid ? "Ya pagado" : "Cerrar y pagar"}
                 </Button>
               </div>
             ) : null}
@@ -661,12 +798,9 @@ function Personal() {
             {(
               [
                 ["full_name", "Nombre"],
-                ["specialty", "Especialidad"],
                 ["email", "Email"],
                 ["phone", "Teléfono"],
                 ["address", "Dirección"],
-                ["shift_rate", "Valor turno"],
-                ["commission_pct", "% comisión"],
               ] as const
             ).map(([key, label]) => (
               <div key={key} className="space-y-1.5">
@@ -696,22 +830,103 @@ function Personal() {
                 onChange={(e) => setForm((f) => ({ ...f, hired_at: e.target.value }))}
               />
             </div>
-            <div className="space-y-1.5">
-              <Label>Modo de pago</Label>
+            <div className="space-y-1.5 sm:col-span-2">
+              <Label>Cargo</Label>
+              <p className="text-[11px] text-muted-foreground">
+                Groomer y auxiliar se asignan a citas. Recepcionista, conductor y oficios varios
+                no: se pagan fijo, sin comisión por servicio.
+              </p>
               <select
                 className="flex h-11 w-full rounded-xl border border-input bg-background px-3 text-sm"
-                value={form.payment_mode}
-                onChange={(e) => setForm((f) => ({ ...f, payment_mode: e.target.value }))}
+                value={form.role_title}
+                onChange={(e) => {
+                  const role_title = e.target.value;
+                  const admin = isAdminStaffJob(role_title);
+                  setForm((f) => ({
+                    ...f,
+                    role_title,
+                    skills: [role_title],
+                    payment_mode: admin ? "fijo" : f.payment_mode,
+                    commission_pct: admin ? "0" : f.commission_pct,
+                  }));
+                }}
               >
-                <option value="fijo">Fijo</option>
-                <option value="porcentaje">Comisión %</option>
-                <option value="mixto">Mixto</option>
+                {(catalog.data?.jobs ?? STAFF_ROLE_OPTS.map(([id, label]) => ({ id, label }))).map(
+                  (j) => (
+                    <option key={j.id} value={j.id}>
+                      {j.label}
+                    </option>
+                  ),
+                )}
               </select>
+            </div>
+            <div className="space-y-1.5 sm:col-span-2">
+              <Label>Cómo se calcula el fijo</Label>
+              <select
+                className="flex h-11 w-full rounded-xl border border-input bg-background px-3 text-sm"
+                value={form.fixed_pay_basis}
+                onChange={(e) => setForm((f) => ({ ...f, fixed_pay_basis: e.target.value }))}
+              >
+                <option value="por_turno">Por turno (× días con actividad)</option>
+                <option value="mensual">Sueldo mensual (no × días)</option>
+              </select>
+            </div>
+            <div className="space-y-1.5">
+              <Label>
+                {form.fixed_pay_basis === "mensual"
+                  ? "Sueldo mensual"
+                  : adminJob
+                    ? "Pago fijo"
+                    : "Valor turno"}
+              </Label>
+              <Input
+                className="h-11 rounded-xl"
+                value={form.shift_rate}
+                onChange={(e) => setForm((f) => ({ ...f, shift_rate: e.target.value }))}
+              />
               <p className="text-[11px] text-muted-foreground">
-                Fijo → valor turno (nómina). Comisión % → % sobre el servicio en el margen de la
-                cita. Mixto → ambos. No pueden quedar turno y comisión en 0.
+                {form.fixed_pay_basis === "mensual"
+                  ? "Se prorratea si liquidás un periodo más corto que el mes. Se paga aunque no haya citas."
+                  : adminJob
+                    ? "Monto por día con actividad. La frecuencia de abajo dice cada cuánto se liquida."
+                    : "Base de turno si el pago es fijo o mixto."}
               </p>
             </div>
+            {adminJob ? (
+              <div className="space-y-1.5">
+                <Label>Modo de pago</Label>
+                <p className="flex h-11 items-center rounded-xl border border-input bg-muted/40 px-3 text-sm">
+                  Fijo — sin comisión por cita
+                </p>
+              </div>
+            ) : (
+              <>
+                <div className="space-y-1.5">
+                  <Label>% comisión</Label>
+                  <Input
+                    className="h-11 rounded-xl"
+                    value={form.commission_pct}
+                    onChange={(e) => setForm((f) => ({ ...f, commission_pct: e.target.value }))}
+                  />
+                </div>
+                <div className="space-y-1.5 sm:col-span-2">
+                  <Label>Modo de pago</Label>
+                  <select
+                    className="flex h-11 w-full rounded-xl border border-input bg-background px-3 text-sm"
+                    value={form.payment_mode}
+                    onChange={(e) => setForm((f) => ({ ...f, payment_mode: e.target.value }))}
+                  >
+                    <option value="fijo">Fijo</option>
+                    <option value="porcentaje">Comisión %</option>
+                    <option value="mixto">Mixto</option>
+                  </select>
+                  <p className="text-[11px] text-muted-foreground">
+                    Fijo → valor turno (nómina). Comisión % → % sobre el servicio en el margen de
+                    la cita. Mixto → ambos.
+                  </p>
+                </div>
+              </>
+            )}
             <div className="space-y-1.5">
               <Label>Frecuencia</Label>
               <select
@@ -749,67 +964,10 @@ function Personal() {
                 />
               </div>
             </div>
-            <div className="space-y-1.5 sm:col-span-2">
-              <Label>Cargos (perfiles)</Label>
-              <p className="text-[11px] text-muted-foreground">
-                Podés marcar varios. El que elijas abajo es con el que se muestra en el panel.
-              </p>
-              <div className="flex flex-wrap gap-2">
-                {STAFF_ROLE_OPTS.map(([id, label]) => {
-                  const on = form.skills.includes(id);
-                  return (
-                    <label
-                      key={id}
-                      className={`cursor-pointer rounded-full border px-3 py-1 text-xs ${
-                        on ? "border-accent bg-accent/15" : "border-border text-muted-foreground"
-                      }`}
-                    >
-                      <input
-                        type="checkbox"
-                        className="mr-1.5"
-                        checked={on}
-                        onChange={() =>
-                          setForm((f) => {
-                            const skills = on ? f.skills.filter((x) => x !== id) : [...f.skills, id];
-                            const role_title = skills.includes(f.role_title)
-                              ? f.role_title
-                              : (skills[0] ?? "groomer");
-                            return { ...f, skills, role_title };
-                          })
-                        }
-                      />
-                      {label}
-                    </label>
-                  );
-                })}
-              </div>
-            </div>
-            {form.skills.length ? (
-              <div className="space-y-1.5 sm:col-span-2">
-                <Label>Mostrar como</Label>
-                <div className="flex flex-wrap gap-2">
-                  {form.skills.map((id) => (
-                    <label
-                      key={id}
-                      className={`cursor-pointer rounded-full border px-3 py-1 text-xs ${
-                        form.role_title === id
-                          ? "border-primary bg-primary/10 text-primary"
-                          : "border-border text-muted-foreground"
-                      }`}
-                    >
-                      <input
-                        type="radio"
-                        className="mr-1.5"
-                        name="display-role"
-                        checked={form.role_title === id}
-                        onChange={() => setForm((f) => ({ ...f, role_title: id }))}
-                      />
-                      {staffRoleLabel(id)}
-                    </label>
-                  ))}
-                </div>
-              </div>
-            ) : null}
+            <p className="text-[11px] text-muted-foreground sm:col-span-2">
+              El horario de trabajo arranca igual al del spa (Configuración). Después se edita en la
+              ficha, abajo.
+            </p>
             <label className="flex items-center gap-2 text-sm sm:col-span-2">
               <input
                 type="checkbox"
@@ -1149,7 +1307,8 @@ function Personal() {
                   <ul className="mt-2 space-y-2 text-sm">
                     {terms.map((t) => (
                       <li key={t.id} className="rounded-xl border border-border px-3 py-2">
-                        <span className="capitalize">{t.payment_mode}</span> · turno {cop(t.shift_rate)} ·{" "}
+                        <span className="capitalize">{t.payment_mode}</span> ·{" "}
+                        {t.fixed_pay_basis === "mensual" ? "sueldo" : "turno"} {cop(t.shift_rate)} ·{" "}
                         {t.commission_pct}% · {t.effective_from.slice(0, 10)} →{" "}
                         {t.effective_to ? t.effective_to.slice(0, 10) : "vigente"}
                       </li>

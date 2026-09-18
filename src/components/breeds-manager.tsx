@@ -18,6 +18,7 @@ import {
   upsertBreedBathProfile,
   type BreedBathProfile,
 } from "@/lib/spa-queries";
+import { MIX_ML_STEPS } from "@/lib/breed-ml";
 import { cop } from "@/lib/format";
 
 const PANOL_SIZES = ["XS", "S", "M", "L"] as const;
@@ -338,9 +339,6 @@ export function BreedsManager() {
                   [
                     ["price_min", "Precio min"],
                     ["price_max", "Precio max"],
-                    ["ml_shampoo", "Shampoo ml"],
-                    ["ml_conditioner", "Acondicionador ml"],
-                    ["ml_medicated", "Medicado ml"],
                   ] as const
                 ).map(([key, label]) => (
                   <div key={key} className="space-y-1">
@@ -357,6 +355,34 @@ export function BreedsManager() {
                         });
                       }}
                     />
+                  </div>
+                ))}
+                {(
+                  [
+                    ["ml_shampoo", "Shampoo ml mezcla"],
+                    ["ml_conditioner", "Acondicionador ml mezcla"],
+                    ["ml_medicated", "Medicado ml mezcla"],
+                  ] as const
+                ).map(([key, label]) => (
+                  <div key={key} className="space-y-1">
+                    <Label>{label}</Label>
+                    <select
+                      className="h-10 w-full rounded-xl border border-input bg-background px-3 text-sm"
+                      value={editing[key] ?? ""}
+                      onChange={(e) =>
+                        setEditing({
+                          ...editing,
+                          [key]: e.target.value === "" ? null : Number(e.target.value),
+                        })
+                      }
+                    >
+                      <option value="">—</option>
+                      {MIX_ML_STEPS.map((n) => (
+                        <option key={n} value={n}>
+                          {n}
+                        </option>
+                      ))}
+                    </select>
                   </div>
                 ))}
               </div>

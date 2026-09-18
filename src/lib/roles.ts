@@ -123,7 +123,7 @@ export function permissionsFor(role: string | undefined | null) {
     canPickOwners: isStaff,
     canFinishAppointments: isStaff,
     canChangeAppointmentStatus: isStaff,
-    canEditFinalizedAppointment: isAdmin,
+    canEditFinalizedAppointment: false,
     canSeeWhatsAppLinks: isStaff,
     canConnectGoogle: isAdmin,
     canManagePrices: isAdmin,
@@ -140,17 +140,38 @@ export function permissionsFor(role: string | undefined | null) {
 
 export const APPOINTMENT_STATUSES = ["pendiente", "enproceso", "finalizada", "cancelada"] as const;
 
+function _normApptStatus(value: string | undefined | null): string {
+  return (value || "").replace(/\s|_/g, "").toLowerCase();
+}
+
+/** Staff: solo hacia adelante. Finalizar se elige en el dropdown para abrir el cierre. */
 export function editableAppointmentStatuses(
   role: string | undefined | null,
   currentStatus: string | undefined | null,
 ): string[] {
   const p = permissionsFor(role);
-  if (!p.canChangeAppointmentStatus) return [];
-  const current = (currentStatus || "").replace(/\s|_/g, "").toLowerCase();
-  if (current === "finalizada" && !p.canEditFinalizedAppointment) {
-    return ["finalizada"];
+  const current = _normApptStatus(currentStatus);
+  if (current === "finalizada" || current === "cancelada") {
+    return current ? [current] : [];
   }
-  return [...APPOINTMENT_STATUSES];
+  if (!p.canChangeAppointmentStatus) return [];
+  if (current === "pendiente") {
+    return ["pendiente", "enproceso", "finalizada", "cancelada"];
+  }
+  if (current === "enproceso") {
+    return ["enproceso", "finalizada", "cancelada"];
+  }
+  return current ? [current] : [];
+}
+
+export function canCancelAppointment(
+  role: string | undefined | null,
+  currentStatus: string | undefined | null,
+): boolean {
+  const current = _normApptStatus(currentStatus);
+  if (current === "pendiente") return true;
+  const p = permissionsFor(role);
+  return p.isStaff && current === "enproceso";
 }
 
 export function isActiveSale(status: string | undefined | null): boolean {

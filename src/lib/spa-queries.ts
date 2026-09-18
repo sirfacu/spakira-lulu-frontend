@@ -103,6 +103,8 @@ export type Staff = {
   payment_mode: string;
   commission_pct: number;
   pay_frequency?: string;
+  fixed_pay_basis?: string;
+  confirm_high_shift_rate?: boolean;
   active: boolean;
   photo_url: string | null;
   email?: string | null;
@@ -122,6 +124,7 @@ export type StaffPayTerm = {
   payment_mode: string;
   shift_rate: number;
   commission_pct: number;
+  fixed_pay_basis?: string;
   note?: string | null;
 };
 
@@ -131,6 +134,7 @@ export type PayrollPreview = {
   frequency: string;
   period_start: string;
   period_end: string;
+  hired_at?: string | null;
   segments: {
     from: string;
     to: string;
@@ -142,7 +146,24 @@ export type PayrollPreview = {
     subtotal: number;
     commission_pct?: number;
     shift_rate?: number;
+    fixed_pay_basis?: string | null;
   }[];
+  items?: {
+    kind: string;
+    id: string;
+    date: string;
+    label: string;
+    status?: string;
+    service_amount: number;
+    extras_amount: number;
+  }[];
+  already_paid?: {
+    id: string;
+    period_start: string;
+    period_end: string;
+    status: string;
+    total: number;
+  } | null;
   total: number;
 };
 
@@ -406,6 +427,15 @@ export const staffQuery = queryOptions({
   queryFn: () => api<Staff[]>("/staff"),
 });
 
+export async function getStaffSkillCatalog() {
+  return api<{
+    skills: { id: string; label: string }[];
+    jobs?: { id: string; label: string }[];
+    specialties?: string[];
+    activities: { id: string; label: string }[];
+  }>("/staff/skill-catalog");
+}
+
 export const notificationsQuery = queryOptions({
   queryKey: ["notifications"],
   queryFn: () =>
@@ -442,6 +472,8 @@ export async function createStaffPayTerm(
     shift_rate: number;
     commission_pct: number;
     note?: string;
+    fixed_pay_basis?: string;
+    confirm_high_shift_rate?: boolean;
   },
 ) {
   return api<StaffPayTerm>(`/staff/${staffId}/pay-terms`, { method: "POST", body: input });
@@ -2097,6 +2129,9 @@ export type ServiceMarginLine = {
   contribution_margin: number;
   margin_pct: number | null;
   has_materials_snapshot: boolean;
+  extras_revenue?: number;
+  extras_cost?: number;
+  extras_margin?: number;
 };
 
 export type ServiceMarginsResponse = {
@@ -2111,6 +2146,9 @@ export type ServiceMarginsResponse = {
     contribution_margin: number;
     margin_pct: number | null;
     missing_materials_snapshot: number;
+    extras_revenue?: number;
+    extras_cost?: number;
+    extras_margin?: number;
   };
   by_service: {
     service_id: string | null;
@@ -2146,7 +2184,7 @@ export type FixedCostTemplate = {
 export type MonthFinanceSummary = {
   year_month: string;
   service_margins: ServiceMarginsResponse["summary"];
-  sales: { cita: number; mostrador: number; total: number };
+  sales: { cita: number; mostrador: number; mostrador_cost?: number; mostrador_margin?: number; total: number };
   fixed_costs: { total: number; entries: FixedCostEntry[] };
   operating_result: number;
   indicators: {
@@ -2154,6 +2192,12 @@ export type MonthFinanceSummary = {
     breakeven_appointments: number | null;
     avg_contribution_margin: number;
     note: string;
+  };
+  cost_breakdown?: {
+    insumos: number;
+    profesionales: number;
+    adicionales_cost: number;
+    fijos: number;
   };
 };
 
@@ -2188,6 +2232,17 @@ export type AppointmentCostDetail = {
     labor_cost: number;
     note: string;
   };
+  extras?: {
+    label: string;
+    quantity: number;
+    unit_price: number;
+    revenue: number;
+    cost: number;
+    margin: number;
+  }[];
+  extras_revenue?: number;
+  extras_cost?: number;
+  extras_margin?: number;
 };
 
 export function serviceMarginsQuery(dateFrom: string, dateTo: string) {

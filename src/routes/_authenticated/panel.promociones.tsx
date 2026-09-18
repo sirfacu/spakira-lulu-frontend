@@ -498,6 +498,7 @@ function NewPromoForm({
   const [asCoupon, setAsCoupon] = useState(editing ? !!editing.requires_code : true);
   const [dtype, setDtype] = useState(editing?.discount_type || "percent");
   const [value, setValue] = useState(String(editing?.discount_value ?? "15"));
+  const [description, setDescription] = useState(editing?.description || "");
   const [minPurchase, setMinPurchase] = useState(
     editing?.min_purchase != null ? String(editing.min_purchase) : "",
   );
@@ -519,6 +520,7 @@ function NewPromoForm({
         name: name.trim(),
         discount_type: dtype,
         discount_value: Number(value),
+        description: description.trim() || null,
         min_purchase: minPurchase ? Number(minPurchase) : 0,
         max_uses: maxUses ? Number(maxUses) : null,
         max_uses_per_customer: perCustomer ? Number(perCustomer) : null,
@@ -561,6 +563,19 @@ function NewPromoForm({
           <Label>Nombre</Label>
           <Input className="mt-1 rounded-xl" value={name} onChange={(e) => setName(e.target.value)} />
         </div>
+        <div>
+          <Label>Texto que se muestra</Label>
+          <Input
+            className="mt-1 rounded-xl"
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            placeholder="$10.000 de descuento en la primera compra (mínimo $40.000)"
+          />
+          <p className="mt-1 text-[11px] text-muted-foreground">
+            Es el copy de la tarjeta, no el cálculo. El descuento real sale de Tipo + Valor + compra
+            mínima.
+          </p>
+        </div>
         {!editing ? (
           <label className="flex items-center justify-between rounded-xl bg-secondary/40 px-3 py-2">
             <span>Requiere código (cupón)</span>
@@ -584,8 +599,8 @@ function NewPromoForm({
               value={dtype}
               onChange={(e) => setDtype(e.target.value)}
             >
-              <option value="percent">Porcentaje</option>
-              <option value="fixed">Valor fijo</option>
+              <option value="percent">Porcentaje (%)</option>
+              <option value="fixed">Valor fijo (pesos)</option>
             </select>
           </div>
           <div>

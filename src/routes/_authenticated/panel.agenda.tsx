@@ -34,7 +34,6 @@ import {
   panelServicesQuery,
   updateAppointmentStatus,
   updateAppointment,
-  deleteAppointment,
   createAppointment,
   listAppointmentExtras,
   addAppointmentExtra,
@@ -63,7 +62,8 @@ import {
   appointmentProgress,
 } from "@/lib/format";
 import { requirePathAccess } from "@/lib/route-access";
-import { editableAppointmentStatuses, permissionsFor } from "@/lib/roles";
+import { canCancelAppointment, editableAppointmentStatuses, permissionsFor } from "@/lib/roles";
+import { canonicalizeStaffRole } from "@/lib/staff-roles";
 import { ClientAgenda } from "@/components/client-agenda";
 import { FinishAppointmentDialog } from "@/components/finish-appointment-dialog";
 import { MaterialEstimatePanel } from "@/components/material-estimate-panel";
@@ -77,20 +77,27 @@ import { cn } from "@/lib/utils";
 import { ApiError, resolveMediaUrl } from "@/lib/api";
 
 const ACTIVITY_SKILLS: Record<string, string[]> = {
-  bano: ["bañista", "lavador", "groomer"],
-  secado: ["secador", "groomer"],
-  color: ["colorista"],
-  corte: ["groomer"],
-  unas: ["groomer"],
-  spa: ["groomer", "bañista", "lavador"],
-  cepillado: ["groomer", "secador"],
+  bano: ["groomer", "auxiliar"],
+  secado: ["groomer", "auxiliar"],
+  color: ["groomer", "auxiliar"],
+  corte: ["groomer", "auxiliar"],
+  unas: ["groomer", "auxiliar"],
+  spa: ["groomer", "auxiliar"],
+  cepillado: ["groomer", "auxiliar"],
+  accesorios: ["groomer", "auxiliar"],
+  deslanado: ["groomer", "auxiliar"],
+  pulgas: ["groomer", "auxiliar"],
+  oidos: ["groomer", "auxiliar"],
 };
 
 function staffCoversService(skills: string[] | undefined, activities: string[] | undefined) {
   const acts = activities ?? [];
   if (!acts.length) return true;
-  const have = new Set((skills ?? []).map((s) => s.toLowerCase()));
-  return acts.every((a) => (ACTIVITY_SKILLS[a] ?? ["groomer"]).some((sk) => have.has(sk)));
+  const have = new Set(
+    (skills ?? []).map((s) => canonicalizeStaffRole(s) || s.toLowerCase()),
+  );
+  if (![...have].some((s) => s === "groomer" || s === "auxiliar")) return false;
+  return acts.every((a) => (ACTIVITY_SKILLS[a] ?? ["groomer", "auxiliar"]).some((sk) => have.has(sk)));
 }
 
 export const Route = createFileRoute("/_authenticated/panel/agenda")({
@@ -505,18 +512,20 @@ function StaffAgenda() {
     onError: (e) => toast.error(e instanceof Error ? e.message : "No se pudo actualizar"),
   });
 
-  const deleteMut = useMutation({
-    mutationFn: (id: string) => deleteAppointment(id),
+  const cancelMut = useMutation({
+    mutationFn: async (id: string) => {
+      if (perms.isCliente) {
+        await updateAppointment(id, { status: "cancelada" });
+      } else {
+        await updateAppointmentStatus(id, "cancelada");
+      }
+    },
     onSuccess: () => {
-      toast.success(
-        perms.isCliente
-          ? "Turno cancelado. Avisamos por correo a los dueños."
-          : "Cita eliminada. Avisamos por correo a los dueños.",
-      );
+      toast.success("Turno cancelado. Avisamos por correo a los dueños.");
       setSelected(null);
       void qc.invalidateQueries({ queryKey: ["appointments"] });
     },
-    onError: (e) => toast.error(e instanceof Error ? e.message : "No se pudo eliminar"),
+    onError: (e) => toast.error(e instanceof Error ? e.message : "No se pudo cancelar"),
   });
 
   const readyMut = useMutation({
@@ -1778,9 +1787,9 @@ function StaffAgenda() {
               </div>
 
               <div className="shrink-0 border-t border-border px-6 py-4">
-                {normalizeStatus(selected.status) === "finalizada" && !perms.canEditFinalizedAppointment ? (
+                {normalizeStatus(selected.status) === "finalizada" ? (
                   <p className="mb-3 text-[11px] text-muted-foreground">
-                    Servicio cerrado: quedó como venta. Solo un admin puede devolverlo o editarlo.
+                    Servicio cerrado: quedó cobrado. No se puede devolver, cancelar ni borrar.
                   </p>
                 ) : null}
                 <div className="flex flex-wrap gap-2">
@@ -1791,9 +1800,8 @@ function StaffAgenda() {
                         disabled={
                           saveMut.isPending ||
                           !canSaveNotify ||
-                          (normalizeStatus(selected.status) === "finalizada" &&
-                            !perms.canEditFinalizedAppointment &&
-                            !perms.isCliente)
+                          normalizeStatus(selected.status) === "finalizada" ||
+                          normalizeStatus(selected.status) === "cancelada"
                         }
                         onClick={() => {
                           if (
@@ -1844,30 +1852,24 @@ function StaffAgenda() {
                         Cobrar y cerrar
                       </Button>
                       ) : null}
+                      {canCancelAppointment(user?.role, selected.status) ? (
                       <Button
                         variant="outline"
                         className="rounded-xl border-destructive/30 text-destructive hover:bg-destructive hover:text-destructive-foreground"
-                        disabled={
-                          deleteMut.isPending ||
-                          (normalizeStatus(selected.status) === "finalizada" &&
-                            !perms.canEditFinalizedAppointment &&
-                            !perms.isCliente)
-                        }
+                        disabled={cancelMut.isPending}
                         onClick={() => {
                           const petName = selected.pets?.name ?? (perms.isCliente ? "tu mascota" : "esta mascota");
                           setConfirmAction({
-                            title: perms.isCliente ? "Cancelar turno" : "Eliminar cita",
-                            description: perms.isCliente
-                              ? `¿Cancelar y quitar el turno de ${petName}? Avisaremos por correo.`
-                              : `¿Eliminar la cita de ${petName}? Avisaremos por correo a los dueños.`,
-                            actionLabel: perms.isCliente ? "Sí, cancelar" : "Sí, eliminar",
-                            onConfirm: () => deleteMut.mutate(selected.id),
+                            title: "Cancelar turno",
+                            description: `¿Cancelar el turno de ${petName}? Avisaremos por correo. La cita queda en la agenda como cancelada.`,
+                            actionLabel: "Sí, cancelar",
+                            onConfirm: () => cancelMut.mutate(selected.id),
                           });
                         }}
                       >
-                        <Trash2 className="mr-2 h-4 w-4" />{" "}
-                        {perms.isCliente ? "Cancelar turno" : "Eliminar"}
+                        <Trash2 className="mr-2 h-4 w-4" /> Cancelar turno
                       </Button>
+                      ) : null}
                     </>
                   ) : null}
                 </div>

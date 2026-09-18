@@ -42,20 +42,6 @@ import { resolveMediaUrl } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
 const PET_PLACEHOLDER = "/images/kira-face-grey.png";
-const FALLBACK_HOURS = [
-  "08:00",
-  "09:00",
-  "10:00",
-  "11:00",
-  "12:00",
-  "13:00",
-  "14:00",
-  "15:00",
-  "16:00",
-  "17:00",
-  "18:00",
-  "19:00",
-];
 const DAY_SHORT = ["LUN", "MAR", "MIÉ", "JUE", "VIE", "SÁB", "DOM"] as const;
 
 function petPhoto(p: Pet | null | undefined) {
@@ -194,7 +180,7 @@ export function ClientAgenda() {
     setBook({ date, hour });
   };
 
-  const hours = slotsQ.data?.hours ?? FALLBACK_HOURS;
+  const hours = slotsQ.data?.hours ?? [];
   const days =
     (slotsQ.data?.days?.length ? slotsQ.data.days : null) ??
     Array.from({ length: 7 }, (_, i) => ({
@@ -202,8 +188,8 @@ export function ClientAgenda() {
       weekday: i,
       label: DAY_SHORT[i],
       is_open: false,
-      slots: hours.map((label, hi) => ({
-        hour: 8 + hi,
+      slots: hours.map((label) => ({
+        hour: Number.parseInt(label.slice(0, 2), 10) || 0,
         label,
         status: "closed" as const,
         capacity: 0,
@@ -229,6 +215,11 @@ export function ClientAgenda() {
       title="Agenda"
       subtitle={`${weekRangeLabel(anchor)} · Encuentra el momento perfecto para su próxima aventura.`}
     >
+      {slotsQ.isError ? (
+        <p className="mb-3 rounded-2xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">
+          No se pudo cargar el horario del spa. Reintentá; no inventamos franjas 08–19.
+        </p>
+      ) : null}
       <div className="grid gap-5 lg:grid-cols-[260px_minmax(0,1fr)] lg:items-start">
         <aside className="space-y-4">
           <section className="rounded-3xl border border-border/60 bg-card p-4 shadow-soft">

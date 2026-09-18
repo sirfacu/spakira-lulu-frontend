@@ -21,6 +21,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { ConfirmDialog } from "@/components/confirm-dialog";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   createInventoryCategory,
   createInventoryItem,
@@ -186,7 +187,7 @@ function stockSummary(i: InventoryItem): { primary: string; detail?: string } {
 
   if (isVolumeUnit(kind)) {
     return {
-      primary: `${formatContentQty(content, kind)} disponibles`,
+      primary: formatContentQty(content, kind),
       detail:
         packSize > 0
           ? `${formatPackagesLabel(packs, kind)} · ${formatContentQty(packSize, kind)} c/u`
@@ -362,7 +363,7 @@ function Inventario() {
 
   const soon = new Date();
   soon.setMonth(soon.getMonth() + 3);
-  const outOfStock = (inv.data ?? []).filter((i) => Number(i.available ?? i.quantity) === 0);
+  const outOfStock = (inv.data ?? []).filter((i) => Number(i.quantity) === 0);
   const expiring = (inv.data ?? []).filter((i) => {
     const exp = nextExpiry(i);
     return exp && Number(i.quantity) > 0 && new Date(exp) <= soon;
@@ -592,15 +593,14 @@ function Inventario() {
       <div className={cn("mt-6 grid gap-6", editing && "lg:grid-cols-2")}>
         <div className="card-soft overflow-hidden">
           <div className="max-h-[min(70vh,720px)] overflow-auto">
-            <table className="w-full min-w-[980px] border-separate border-spacing-0 text-sm">
+            <TooltipProvider delayDuration={250}>
+            <table className="w-full min-w-[860px] border-separate border-spacing-0 text-sm">
               <thead className="sticky top-0 z-10">
                 <tr className="text-left text-xs uppercase tracking-wider text-muted-foreground">
                   <th className="border-b border-border bg-secondary px-5 py-3.5 font-semibold">Producto</th>
                   <th className="border-b border-border bg-secondary px-5 py-3.5 font-semibold">Categoría</th>
                   <th className="border-b border-border bg-secondary px-5 py-3.5 font-semibold">Uso</th>
                   <th className="border-b border-border bg-secondary px-5 py-3.5 font-semibold">Stock</th>
-                  <th className="border-b border-border bg-secondary px-5 py-3.5 font-semibold">Reservado</th>
-                  <th className="border-b border-border bg-secondary px-5 py-3.5 font-semibold">Disponible</th>
                   <th
                     className="border-b border-border bg-secondary px-5 py-3.5 font-semibold"
                     title="Mínimo en presentación (packs / envases / piezas)"
@@ -614,13 +614,13 @@ function Inventario() {
               </thead>
               <tbody>
                 {items.map((i) => {
-                  const units = packagesOf(i);
                   const minUnits = minStockAsUnits(i);
-                  const st = state(units, minUnits);
+                  const st = state(packagesOf(i), minUnits);
                   const exp = nextExpiry(i);
                   const showCost = !!costOpen[i.id];
                   const selected = selectedId === i.id;
                   const stock = stockSummary(i);
+                  const reserved = Number(i.reserved) || 0;
                   return (
                     <tr
                       key={i.id}
@@ -645,7 +645,23 @@ function Inventario() {
                             />
                           ) : null}
                           <div className="min-w-0">
-                            <p className="truncate font-medium text-foreground">{i.name}</p>
+                            {(() => {
+                              const desc = i.staff_description?.trim();
+                              const nameEl = (
+                                <p className={cn("truncate font-medium text-foreground", desc ? "cursor-help" : "")}>
+                                  {i.name}
+                                </p>
+                              );
+                              if (!desc) return nameEl;
+                              return (
+                                <Tooltip>
+                                  <TooltipTrigger asChild>{nameEl}</TooltipTrigger>
+                                  <TooltipContent side="top" className="max-w-xs text-left">
+                                    {desc}
+                                  </TooltipContent>
+                                </Tooltip>
+                              );
+                            })()}
                             {i.wear_alert_pending ? (
                               <p className="text-xs font-medium text-destructive">Merma / aviso pendiente</p>
                             ) : null}
@@ -669,12 +685,11 @@ function Inventario() {
                             {stock.detail}
                           </span>
                         ) : null}
-                      </td>
-                      <td className="border-b border-border/60 px-5 py-3.5 text-muted-foreground tabular-nums">
-                        {formatReservedCell(i)}
-                      </td>
-                      <td className="border-b border-border/60 px-5 py-3.5 font-semibold text-foreground">
-                        <span className="tabular-nums">{formatAvailableCell(i)}</span>
+                        {reserved > 0 ? (
+                          <span className="mt-0.5 block text-xs font-normal text-muted-foreground">
+                            {formatAvailableCell(i)} libres (pedido en citas abiertas)
+                          </span>
+                        ) : null}
                       </td>
                       <td className="border-b border-border/60 px-5 py-3.5 text-muted-foreground tabular-nums">
                         {formatMinCell(i)}
@@ -706,6 +721,7 @@ function Inventario() {
                 })}
               </tbody>
             </table>
+            </TooltipProvider>
           </div>
           {!items.length ? <Empty message="Sin productos que coincidan." /> : null}
         </div>
@@ -971,6 +987,14 @@ function Inventario() {
                   </p>
                   {(() => {
                     const stock = stockSummary(liveItem);
+                    const reserved = Number(liveItem.reserved ?? 0);
+                    const exp = nextExpiry(liveItem);
+                    const bits = [
+                      reserved > 0
+                        ? `Reservado en citas abiertas ${formatReservedCell(liveItem)} · libres ${formatAvailableCell(liveItem)}`
+                        : null,
+                      exp ? `Próximo vencimiento ${exp}` : null,
+                    ].filter(Boolean);
                     return (
                       <>
                         <p className="mt-1 text-lg font-semibold tabular-nums text-foreground">
@@ -981,13 +1005,9 @@ function Inventario() {
                             </span>
                           ) : null}
                         </p>
-                        <p className="mt-1 text-xs text-muted-foreground">
-                          Reservado {formatReservedCell(liveItem)} · Disponible{" "}
-                          {formatAvailableCell(liveItem)}
-                          {nextExpiry(liveItem)
-                            ? ` · Próximo vencimiento ${nextExpiry(liveItem)}`
-                            : ""}
-                        </p>
+                        {bits.length ? (
+                          <p className="mt-1 text-xs text-muted-foreground">{bits.join(" · ")}</p>
+                        ) : null}
                       </>
                     );
                   })()}

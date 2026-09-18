@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   PANEL_MODULES,
   canAccessPath,
+  canCancelAppointment,
   displayRole,
   homeForRole,
   maskEmail,
@@ -50,6 +51,9 @@ describe("roles", () => {
     expect(canAccessPath("admin", "/panel/permisos")).toBe(true);
     expect(canAccessPath("colaborador", "/panel/permisos")).toBe(false);
     expect(canAccessPath("colaborador", "/panel/ventas")).toBe(false);
+    expect(canAccessPath("colaborador", "/panel/personal")).toBe(false);
+    expect(canAccessPath("colaborador", "/panel/reportes")).toBe(false);
+    expect(canAccessPath("colaborador", "/panel/configuracion")).toBe(false);
     expect(canAccessPath("colaborador", "/panel/ventas", ["agenda", "ventas"])).toBe(true);
     expect(canAccessPath("admin", "/panel/completar")).toBe(false);
   });
@@ -75,7 +79,7 @@ describe("roles", () => {
     expect(permissionsFor("colaborador").canManagePrices).toBe(false);
     expect(permissionsFor("admin").canManagePrices).toBe(true);
     expect(permissionsFor("admin").canViewSalesAnalytics).toBe(true);
-    expect(permissionsFor("admin").canEditFinalizedAppointment).toBe(true);
+    expect(permissionsFor("admin").canEditFinalizedAppointment).toBe(false);
     expect(permissionsFor("admin").canConnectGoogle).toBe(true);
   });
 
@@ -98,16 +102,26 @@ describe("roles", () => {
     expect(maskEmail("maria@email.com")).toBe("m••••@email.com");
   });
 
-  it("staff cannot edit statuses after finalizada; admin can", () => {
-    expect(editableAppointmentStatuses("colaborador", "enproceso")).toEqual([
+  it("nobody reopens a finalized appointment; staff only moves forward", () => {
+    expect(editableAppointmentStatuses("colaborador", "pendiente")).toEqual([
       "pendiente",
       "enproceso",
       "finalizada",
       "cancelada",
     ]);
+    expect(editableAppointmentStatuses("colaborador", "enproceso")).toEqual([
+      "enproceso",
+      "finalizada",
+      "cancelada",
+    ]);
     expect(editableAppointmentStatuses("colaborador", "finalizada")).toEqual(["finalizada"]);
-    expect(editableAppointmentStatuses("admin", "finalizada")).toContain("pendiente");
+    expect(editableAppointmentStatuses("admin", "finalizada")).toEqual(["finalizada"]);
+    expect(editableAppointmentStatuses("admin", "enproceso")).not.toContain("pendiente");
     expect(editableAppointmentStatuses("cliente", "pendiente")).toEqual([]);
+    expect(canCancelAppointment("cliente", "pendiente")).toBe(true);
+    expect(canCancelAppointment("cliente", "enproceso")).toBe(false);
+    expect(canCancelAppointment("colaborador", "enproceso")).toBe(true);
+    expect(canCancelAppointment("admin", "finalizada")).toBe(false);
     expect(isActiveSale("activa")).toBe(true);
     expect(isActiveSale("anulada")).toBe(false);
     expect(isActiveSale(undefined)).toBe(true);
