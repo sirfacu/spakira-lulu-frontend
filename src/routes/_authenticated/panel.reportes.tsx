@@ -33,6 +33,7 @@ import {
   updateFixedCostEntry,
   deleteFixedCostEntry,
   appointmentCostDetailQuery,
+  staffQuery,
   type FixedCostEntry,
   type ServiceMarginLine,
 } from "@/lib/spa-queries";
@@ -48,6 +49,7 @@ import {
   Trash2,
   Plus,
   Scissors,
+  Package,
 } from "lucide-react";
 import { requirePathAccess } from "@/lib/route-access";
 import { isActiveSale, permissionsFor } from "@/lib/roles";
@@ -103,7 +105,7 @@ function Reportes() {
   return (
     <AppShell
       title="Reportes"
-      subtitle="Margen de servicios, gastos fijos y resultado del mes — no confundir margen con utilidad neta"
+      subtitle="Margen de servicios, gastos y resultado del mes — no confundir margen con utilidad neta"
     >
       <div className="mb-4 flex flex-wrap items-end gap-3">
         <div className="space-y-1">
@@ -124,7 +126,7 @@ function Reportes() {
             Margen servicios
           </TabsTrigger>
           <TabsTrigger value="fijos" disabled={!canFinance}>
-            Gastos fijos
+            Gastos
           </TabsTrigger>
           <TabsTrigger value="mes" disabled={!canFinance}>
             Resultado del mes
@@ -334,6 +336,8 @@ function MargenTab({ dateFrom, dateTo }: { dateFrom: string; dateTo: string }) {
                 <th className="py-2 pr-3 font-medium">Cobrado</th>
                 <th className="py-2 pr-3 font-medium">Insumos</th>
                 <th className="py-2 pr-3 font-medium">Costo groomer</th>
+                <th className="py-2 pr-3 font-medium">Adicionales</th>
+                <th className="py-2 pr-3 font-medium">Margen adic.</th>
                 <th className="py-2 font-medium">Margen</th>
               </tr>
             </thead>
@@ -358,6 +362,12 @@ function MargenTab({ dateFrom, dateTo }: { dateFrom: string; dateTo: string }) {
                     {line.has_materials_snapshot ? cop(line.materials_cost) : "—"}
                   </td>
                   <td className="py-2 pr-3 tabular-nums">{cop(line.labor_cost)}</td>
+                  <td className="py-2 pr-3 tabular-nums">
+                    {line.extras_revenue ? cop(line.extras_revenue) : "—"}
+                  </td>
+                  <td className="py-2 pr-3 tabular-nums">
+                    {line.extras_revenue ? cop(line.extras_margin ?? 0) : "—"}
+                  </td>
                   <td className="py-2 tabular-nums font-medium">
                     {cop(line.contribution_margin)}
                     {line.margin_pct != null ? (
@@ -476,6 +486,31 @@ function AppointmentCostDialog({
                 <p className="mt-2 text-xs text-muted-foreground">{d.groomer.note}</p>
               </div>
             </div>
+
+            {(d.extras ?? []).length ? (
+              <div>
+                <h4 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  Adicionales (mostrador)
+                </h4>
+                <ul className="divide-y divide-border/60 rounded-xl border border-border/70">
+                  {d.extras!.map((ex, idx) => (
+                    <li key={`${ex.label}-${idx}`} className="flex justify-between gap-3 px-3 py-2">
+                      <div className="min-w-0">
+                        <p className="font-medium leading-snug">{ex.label}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {cop(ex.revenue)} cobrado · costo {cop(ex.cost)}
+                        </p>
+                      </div>
+                      <p className="shrink-0 tabular-nums">{cop(ex.margin)}</p>
+                    </li>
+                  ))}
+                  <li className="flex justify-between px-3 py-2 text-xs font-medium">
+                    <span>Margen adicionales</span>
+                    <span className="tabular-nums">{cop(d.extras_margin ?? 0)}</span>
+                  </li>
+                </ul>
+              </div>
+            ) : null}
           </div>
         ) : (
           <p className="text-sm text-muted-foreground">Sin datos para esta cita.</p>
@@ -488,6 +523,7 @@ function AppointmentCostDialog({
 function FijosTab({ yearMonth }: { yearMonth: string }) {
   const qc = useQueryClient();
   const q = useQuery(fixedCostsQuery(yearMonth));
+  const staffQ = useQuery(staffQuery);
   const [draft, setDraft] = useState({ label: "", amount: "" });
 
   const saveMut = useMutation({
@@ -536,13 +572,25 @@ function FijosTab({ yearMonth }: { yearMonth: string }) {
   });
 
   const total = (q.data ?? []).reduce((a, e) => a + Number(e.amount || 0), 0);
+  const hasNomina = (q.data ?? []).some((e) => {
+    if (e.category === "nomina") return true;
+    return /n[oó]mina|sueldo|payroll/i.test(`${e.category} ${e.label}`);
+  });
+  const staffOnPayroll = (staffQ.data ?? []).some(
+    (s) => s.payment_mode === "fijo" || s.payment_mode === "mixto",
+  );
 
   return (
     <>
       <p className="text-xs text-muted-foreground">
-        Gastos del mes que no van por cita: arriendo, agua, luz, nómina fija, etc. Solo nombre y
-        monto. No se restan del margen de cada servicio; salen en Resultado del mes.
+        Nombre y monto de los gastos del mes. El total entra en Resultado del mes.
       </p>
+      {hasNomina && staffOnPayroll ? (
+        <p className="rounded-2xl border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm">
+          Hay una línea <strong>Nómina</strong> y también gente en Personal con pago fijo o mixto.
+          El sueldo de esa gente ya se liquida en Personal: Nómina acá es solo quien no tiene ficha.
+        </p>
+      ) : null}
       <StatCard icon={Wallet} label={`Total gastos ${yearMonth}`} value={cop(total)} tone="gold" />
 
       <SectionCard title="Gastos del mes">
@@ -643,15 +691,93 @@ function FixedCostRow({
   );
 }
 
+const FIXED_CATEGORY_LABEL: Record<string, string> = {
+  arriendo: "Arriendo",
+  agua: "Agua",
+  luz: "Luz / energía",
+  internet: "Internet",
+  nomina: "Nómina (quien no está en Staff)",
+  otro: "Otros / día a día",
+};
+
+function prettyFijoLabel(e: { category: string; label: string }) {
+  const cat = FIXED_CATEGORY_LABEL[e.category];
+  if (e.category && e.category !== "otro" && cat) {
+    const raw = e.label.trim().toLowerCase();
+    if (raw === e.category || raw === cat.toLowerCase()) return cat;
+    return `${cat} · ${e.label}`;
+  }
+  const label = e.label.trim();
+  return label ? label.charAt(0).toUpperCase() + label.slice(1) : label;
+}
+
+function PnlLine({
+  label,
+  amount,
+  kind = "plain",
+  indent = false,
+}: {
+  label: string;
+  amount: number;
+  kind?: "plain" | "cost" | "total";
+  indent?: boolean;
+}) {
+  const cost = kind === "cost";
+  return (
+    <div
+      className={cn(
+        "flex items-baseline justify-between gap-3 py-1.5 text-sm",
+        kind === "total" && "border-t border-border/70 pt-2 font-medium",
+        indent && "pl-3 text-xs text-muted-foreground",
+      )}
+    >
+      <span className={kind === "total" ? "text-foreground" : undefined}>{label}</span>
+      <span
+        className={cn(
+          "tabular-nums",
+          cost && !indent && "text-destructive",
+          kind === "total" && "font-display text-base font-bold text-foreground",
+        )}
+      >
+        {cost ? `− ${cop(Math.abs(amount))}` : cop(amount)}
+      </span>
+    </div>
+  );
+}
+
 function MesTab({ yearMonth }: { yearMonth: string }) {
   const q = useQuery(monthFinanceQuery(yearMonth));
   const d = q.data;
+  const sm = d?.service_margins;
+  const costs = d?.cost_breakdown;
+  const insumos = costs?.insumos ?? sm?.materials_cost ?? 0;
+  const profesionales = costs?.profesionales ?? sm?.labor_cost ?? 0;
+  const fijos = costs?.fijos ?? d?.fixed_costs.total ?? 0;
+  const extrasCost = costs?.adicionales_cost ?? sm?.extras_cost ?? 0;
+  const extrasRev = sm?.extras_revenue ?? 0;
+  const extrasMargin = sm?.extras_margin ?? 0;
+
+  const pie = [
+    { name: "Insumos", value: insumos, fill: "var(--chart-1)" },
+    { name: "Profesionales", value: profesionales, fill: "var(--chart-2)" },
+    { name: "Gastos fijos", value: fijos, fill: "var(--chart-3)" },
+  ].filter((s) => s.value > 0);
+  const pieTotal = pie.reduce((a, s) => a + s.value, 0);
+
+  const fijoLines = [...(d?.fixed_costs.entries ?? [])]
+    .map((e) => ({
+      id: e.id,
+      label: prettyFijoLabel(e),
+      amount: Number(e.amount || 0),
+    }))
+    .sort((a, b) => b.amount - a.amount);
 
   return (
     <>
       <p className="text-xs text-muted-foreground">
-        Resultado operativo del mes = margen de citas + ventas de mostrador − gastos fijos. El
-        prorrateo de fijos por cita es solo un indicador; no redefine el margen del servicio.
+        Cómo cierra el mes: cobrado en servicios − insumos − comisión de groomer = margen de citas.
+        Luego extras de vitrina, mostrador y gastos fijos (arriendo, día a día, servicios). El
+        prorrateo de fijos por cita es solo un indicador.
       </p>
       {q.isLoading ? <p className="text-sm text-muted-foreground">Cargando…</p> : null}
       {q.isError ? (
@@ -659,28 +785,139 @@ function MesTab({ yearMonth }: { yearMonth: string }) {
           {(q.error as Error)?.message || "No se pudo cargar el mes"}
         </p>
       ) : null}
-      {d ? (
+      {d && sm ? (
         <>
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
             <StatCard
-              icon={TrendingUp}
-              label="Margen citas"
-              value={cop(d.service_margins.contribution_margin)}
-              tone="mint"
+              icon={Package}
+              label="Insumos"
+              value={cop(insumos)}
+              hint="Shampoo, acond., accesorios de la cita"
+              tone="gold"
             />
             <StatCard
-              icon={DollarSign}
-              label="Ventas mostrador"
-              value={cop(d.sales.mostrador)}
+              icon={Scissors}
+              label="Profesionales"
+              value={cop(profesionales)}
+              hint="Comisión groomer / mixto"
+              tone="primary"
+            />
+            <StatCard
+              icon={Wallet}
+              label="Gastos fijos"
+              value={cop(fijos)}
+              hint="Arriendo, servicios, conductor, día a día"
               tone="accent"
             />
-            <StatCard icon={Wallet} label="Gastos fijos" value={cop(d.fixed_costs.total)} tone="gold" />
             <StatCard
               icon={PiggyBank}
               label="Resultado operativo"
               value={cop(d.operating_result)}
-              tone="primary"
+              tone="mint"
             />
+          </div>
+
+          <div className="grid gap-6 lg:grid-cols-[1fr_1.1fr]">
+            <SectionCard title="Composición de costos">
+              {pie.length ? (
+                <div className="h-64">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie
+                        data={pie}
+                        dataKey="value"
+                        nameKey="name"
+                        innerRadius={52}
+                        outerRadius={84}
+                        paddingAngle={2}
+                      >
+                        {pie.map((s) => (
+                          <Cell key={s.name} fill={s.fill} />
+                        ))}
+                      </Pie>
+                      <Tooltip
+                        formatter={(v, name) => {
+                          const n = Number(v);
+                          const pct = pieTotal > 0 ? Math.round((n / pieTotal) * 100) : 0;
+                          return [`${cop(n)} (${pct}%)`, String(name)];
+                        }}
+                      />
+                      <Legend />
+                    </PieChart>
+                  </ResponsiveContainer>
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground">Todavía no hay costos en este mes.</p>
+              )}
+              <ul className="mt-2 space-y-1 text-xs text-muted-foreground">
+                {pie.map((s) => (
+                  <li key={s.name} className="flex justify-between gap-2">
+                    <span>{s.name}</span>
+                    <span className="tabular-nums text-foreground">{cop(s.value)}</span>
+                  </li>
+                ))}
+              </ul>
+              {fijoLines.length ? (
+                <div className="mt-4 border-t border-border/60 pt-3">
+                  <p className="mb-2 text-xs font-medium text-foreground">Desglose de gastos fijos</p>
+                  <ul className="space-y-2">
+                    {fijoLines.map((ln) => {
+                      const pct = fijos > 0 ? Math.round((ln.amount / fijos) * 100) : 0;
+                      return (
+                        <li key={ln.id}>
+                          <div className="flex justify-between gap-2 text-xs">
+                            <span className="truncate text-muted-foreground">{ln.label}</span>
+                            <span className="shrink-0 tabular-nums text-foreground">
+                              {cop(ln.amount)}
+                            </span>
+                          </div>
+                          <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-muted">
+                            <div
+                              className="h-full rounded-full bg-[var(--chart-3)]"
+                              style={{ width: `${Math.min(100, Math.max(pct, pct > 0 ? 4 : 0))}%` }}
+                            />
+                          </div>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </div>
+              ) : null}
+            </SectionCard>
+
+            <SectionCard title="Cuenta del mes">
+              <PnlLine label="Cobrado en servicios" amount={sm.revenue} />
+              <PnlLine label="Insumos" amount={insumos} kind="cost" />
+              <PnlLine label="Profesionales (groomer)" amount={profesionales} kind="cost" />
+              <PnlLine label="Margen de citas" amount={sm.contribution_margin} kind="total" />
+              {extrasRev > 0 ? (
+                <>
+                  <PnlLine label="Adicionales cobrados" amount={extrasRev} />
+                  <PnlLine label="Costo de compra (adicionales)" amount={extrasCost} kind="cost" />
+                  <PnlLine label="Margen adicionales" amount={extrasMargin} />
+                  {extrasCost === 0 ? (
+                    <p className="pl-3 text-[11px] text-muted-foreground">
+                      Sin costo de compra: el extra no está ligado a un ítem de inventario, o el
+                      precio de compra está en 0.
+                    </p>
+                  ) : null}
+                </>
+              ) : null}
+              <PnlLine label="Ventas de mostrador" amount={d.sales.mostrador} />
+              {(d.sales.mostrador_cost ?? 0) > 0 || d.sales.mostrador > 0 ? (
+                <PnlLine
+                  label="Costo de compra (mostrador)"
+                  amount={d.sales.mostrador_cost ?? 0}
+                  kind="cost"
+                  indent
+                />
+              ) : null}
+              <PnlLine label="Gastos fijos" amount={fijos} kind="cost" />
+              {fijoLines.map((ln) => (
+                <PnlLine key={ln.id} label={ln.label} amount={ln.amount} kind="cost" indent />
+              ))}
+              <PnlLine label="Resultado operativo" amount={d.operating_result} kind="total" />
+            </SectionCard>
           </div>
 
           <SectionCard title="Indicadores (informativos)">
@@ -699,7 +936,7 @@ function MesTab({ yearMonth }: { yearMonth: string }) {
               </li>
               <li>
                 Prorrateo fijos / cita:{" "}
-                <span className="font-medium tabular-nums">
+                <span className="tabular-nums font-medium">
                   {d.indicators.proration_fixed_per_appointment != null
                     ? cop(d.indicators.proration_fixed_per_appointment)
                     : "—"}

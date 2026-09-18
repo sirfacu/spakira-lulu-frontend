@@ -10,7 +10,7 @@ import {
   upsertBreedBathProfile,
   type BreedBathProfile,
 } from "@/lib/spa-queries";
-import { cop } from "@/lib/format";
+import { MIX_ML_STEPS } from "@/lib/breed-ml";
 
 export function BreedBathProfilesAdmin() {
   const qc = useQueryClient();
@@ -146,9 +146,6 @@ export function BreedBathProfilesAdmin() {
             [
               ["price_min", "Precio mínimo"],
               ["price_max", "Precio máximo"],
-              ["ml_shampoo", "Ml mezcla shampoo (listos para usar)"],
-              ["ml_conditioner", "Ml mezcla acondicionador"],
-              ["ml_medicated", "Ml mezcla medicado"],
             ] as const
           ).map(([key, label]) => (
             <label key={key} className="block space-y-1 text-sm">
@@ -168,6 +165,38 @@ export function BreedBathProfilesAdmin() {
                   )
                 }
               />
+            </label>
+          ))}
+          {(
+            [
+              ["ml_shampoo", "Ml mezcla shampoo (listos para usar)"],
+              ["ml_conditioner", "Ml mezcla acondicionador"],
+              ["ml_medicated", "Ml mezcla medicado"],
+            ] as const
+          ).map(([key, label]) => (
+            <label key={key} className="block space-y-1 text-sm">
+              <span className="text-muted-foreground">{label}</span>
+              <select
+                className="h-10 w-full rounded-lg border border-input bg-background px-3 text-sm"
+                value={editing[key] ?? ""}
+                onChange={(e) =>
+                  setEditing((prev) =>
+                    prev
+                      ? {
+                          ...prev,
+                          [key]: e.target.value === "" ? null : Number(e.target.value),
+                        }
+                      : prev,
+                  )
+                }
+              >
+                <option value="">—</option>
+                {MIX_ML_STEPS.map((n) => (
+                  <option key={n} value={n}>
+                    {n}
+                  </option>
+                ))}
+              </select>
             </label>
           ))}
           <div className="flex gap-2">
