@@ -3,6 +3,7 @@ import {
   inferMaterialRole,
   isLiquidMaterialRole,
   isPanoletaItem,
+  isWearEstimateLine,
   panoletaFamilyKey,
   parsePanoletaSize,
 } from "../service-material-role";
@@ -35,6 +36,11 @@ describe("service-material-role", () => {
     expect(
       inferMaterialRole({ name: "Maquina Andis", category: "Herramienta de trabajo" }),
     ).toBe("tool");
+  });
+
+  it("hides tool estimate lines", () => {
+    expect(isWearEstimateLine({ material_role: "tool", quantity_unit: "uso" })).toBe(true);
+    expect(isWearEstimateLine({ material_role: "perfume", quantity_unit: "ml" })).toBe(false);
   });
 
   it("groups pañoleta sizes under same family key", () => {

@@ -9,6 +9,7 @@ import {
 } from "@/lib/spa-queries";
 import { cop } from "@/lib/format";
 import { formatMaterialQtyParts } from "@/lib/material-qty-label";
+import { isWearEstimateLine } from "@/lib/service-material-role";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
@@ -110,7 +111,10 @@ export function MaterialEstimatePanel({
   );
 
   const includedLines = useMemo(
-    () => (data?.lines ?? []).filter((l) => l.enabled && l.included_in_service),
+    () =>
+      (data?.lines ?? []).filter(
+        (l) => l.enabled && l.included_in_service && !isWearEstimateLine(l),
+      ),
     [data?.lines],
   );
 
