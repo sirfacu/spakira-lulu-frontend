@@ -1,10 +1,22 @@
 /** Roles líquidos usados para dosis / perfil de raza. */
-export const LIQUID_MATERIAL_ROLES = ["shampoo", "conditioner", "medicated"] as const;
+export const LIQUID_MATERIAL_ROLES = ["shampoo", "conditioner"] as const;
+
+export const QTY_REQUIRED_ROLES = ["medicated", "dye"] as const;
+
+export const AUTO_CONSUME_CATEGORIES = [
+  "perfume",
+  "salud",
+  "herramienta de trabajo",
+] as const;
 
 export type LiquidMaterialRole = (typeof LIQUID_MATERIAL_ROLES)[number];
 
 export function isLiquidMaterialRole(role: string): role is LiquidMaterialRole {
   return (LIQUID_MATERIAL_ROLES as readonly string[]).includes(role);
+}
+
+export function isQtyRequiredRole(role: string): boolean {
+  return (QTY_REQUIRED_ROLES as readonly string[]).includes(role);
 }
 
 export function stripAccents(s: string) {
@@ -14,12 +26,33 @@ export function stripAccents(s: string) {
     .replace(/\p{M}/gu, "");
 }
 
+export function normalizeCategory(s: string | null | undefined): string {
+  return stripAccents(s ?? "")
+    .trim()
+    .replace(/\s+/g, " ");
+}
+
+export function isAutoConsumeCategory(category: string | null | undefined): boolean {
+  return (AUTO_CONSUME_CATEGORIES as readonly string[]).includes(normalizeCategory(category));
+}
+
+export function isWearCategory(category: string | null | undefined): boolean {
+  return normalizeCategory(category) === "herramienta de trabajo";
+}
+
 type InferItem = {
   name?: string | null;
   sku?: string | null;
   category?: string | null;
   staff_description?: string | null;
 };
+
+export function isServiceAttachableItem(item: InferItem): boolean {
+  const cat = normalizeCategory(item.category);
+  if (isAutoConsumeCategory(cat)) return false;
+  if (cat === "alimentos" || cat === "barf") return false;
+  return true;
+}
 
 function isMoñaItem(item: InferItem) {
   const name = stripAccents(item.name ?? "");
@@ -76,6 +109,22 @@ export function inferMaterialRole(item: InferItem): string {
     return "accessory";
   }
 
+  if (cat === "perfume" || name.includes("forever vip")) {
+    return "perfume";
+  }
+
+  if (cat === "salud") {
+    return "health";
+  }
+
+  if (cat === "herramienta de trabajo") {
+    return "tool";
+  }
+
+  if (cat === "tinte" || name.includes("tinte")) {
+    return "dye";
+  }
+
   if (
     name.includes("acondicion") ||
     cat.includes("acondicion") ||
@@ -85,9 +134,8 @@ export function inferMaterialRole(item: InferItem): string {
   }
 
   if (
+    cat === "medicado" ||
     name.includes("medicad") ||
-    cat.includes("medicad") ||
-    cat.includes("tratamiento") ||
     name.includes("dermatolog") ||
     name.includes("antipulgas") ||
     name.includes("anti-pulgas") ||
@@ -98,12 +146,7 @@ export function inferMaterialRole(item: InferItem): string {
     return "medicated";
   }
 
-  if (
-    name.includes("shampoo") ||
-    cat.includes("shampoo") ||
-    cat.includes("banio") ||
-    cat.includes("bano")
-  ) {
+  if (name.includes("shampoo") || cat === "shampoo" || cat.includes("shampoo")) {
     return "shampoo";
   }
 

@@ -152,12 +152,11 @@ function Mascotas() {
   const breeds = useQuery(breedsQuery);
   const bathProfiles = useQuery(breedBathProfilesQuery);
   const bathByBreed = useMemo(() => {
-    const m = new Map<string, { ml_shampoo: number | null; ml_conditioner: number | null; ml_medicated: number | null }>();
+    const m = new Map<string, { ml_shampoo: number | null; ml_conditioner: number | null }>();
     for (const r of bathProfiles.data ?? []) {
       m.set(r.breed_id, {
         ml_shampoo: r.ml_shampoo,
         ml_conditioner: r.ml_conditioner,
-        ml_medicated: r.ml_medicated,
       });
     }
     return m;
@@ -581,8 +580,7 @@ function Mascotas() {
                   {bathByBreed.get(p.breed_id || "") ? (
                     <p className="mt-2 text-[11px] text-muted-foreground">
                       Mezcla baño: sh {bathByBreed.get(p.breed_id || "")!.ml_shampoo} · ac{" "}
-                      {bathByBreed.get(p.breed_id || "")!.ml_conditioner} · med{" "}
-                      {bathByBreed.get(p.breed_id || "")!.ml_medicated ?? "—"} ml
+                      {bathByBreed.get(p.breed_id || "")!.ml_conditioner} ml
                     </p>
                   ) : null}
                   <div className="mt-3 space-y-1.5 border-t border-border pt-3 text-xs">

@@ -1592,7 +1592,6 @@ export type BreedBathProfile = {
   price_max: number | null;
   ml_shampoo: number | null;
   ml_conditioner: number | null;
-  ml_medicated: number | null;
   updated_at?: string | null;
 };
 
@@ -1739,7 +1738,6 @@ export async function upsertBreedBathProfile(
       price_max: body.price_max ?? null,
       ml_shampoo: body.ml_shampoo ?? 0,
       ml_conditioner: body.ml_conditioner ?? 0,
-      ml_medicated: body.ml_medicated ?? null,
       panoleta_size: body.panoleta_size ?? null,
       active: body.active ?? undefined,
       name: body.breed_name ?? undefined,
@@ -1762,7 +1760,6 @@ export async function createBreedWithProfile(
       price_max: body.price_max ?? null,
       ml_shampoo: body.ml_shampoo ?? 0,
       ml_conditioner: body.ml_conditioner ?? 0,
-      ml_medicated: body.ml_medicated ?? null,
     },
   });
 }
