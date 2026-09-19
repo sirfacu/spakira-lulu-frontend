@@ -88,6 +88,8 @@ type ServiceForm = {
   publish_mode: "now" | "scheduled" | "draft";
   publish_at_local: string;
   activities: string[];
+  uses_medicated: boolean;
+  uses_colorimetry: boolean;
 };
 
 const emptyForm = (): ServiceForm => ({
@@ -104,6 +106,8 @@ const emptyForm = (): ServiceForm => ({
   publish_mode: "now",
   publish_at_local: "",
   activities: [],
+  uses_medicated: false,
+  uses_colorimetry: false,
 });
 
 function toLocalInput(iso: string | null | undefined): string {
@@ -119,14 +123,13 @@ function serviceToForm(s: Service): ServiceForm {
   const scheduled = !!(pub && pub.getTime() > Date.now() && s.is_public);
   const mode = servicePriceModeFromService(s);
   const min = s.price_min ?? s.price;
-  const max = s.price_max ?? min;
   return {
     name: s.name ?? "",
     description: s.description ?? "",
     price_mode: mode,
     price: s.price != null ? String(s.price) : min != null ? String(min) : "",
     price_min: min != null ? String(min) : "",
-    price_max: max != null ? String(max) : "",
+    price_max: s.price_max != null ? String(s.price_max) : "",
     price_note: s.price_note?.trim() || DEFAULT_PRICE_NOTE,
     duration_min: String(s.duration_min ?? 60),
     image_url: s.image_url ?? "",
@@ -134,6 +137,8 @@ function serviceToForm(s: Service): ServiceForm {
     publish_mode: !s.is_public ? "draft" : scheduled ? "scheduled" : "now",
     publish_at_local: toLocalInput(s.publish_at),
     activities: [...(s.activities ?? [])].filter((a) => a !== "accesorios"),
+    uses_medicated: Boolean(s.uses_medicated),
+    uses_colorimetry: Boolean(s.uses_colorimetry),
   };
 }
 
@@ -229,8 +234,9 @@ function Servicios() {
 
       const variable = form.price_mode === "variable";
       const priceMin = variable ? Number(form.price_min || 0) : Number(form.price || 0);
-      const priceMax = variable ? Number(form.price_max || priceMin) : priceMin;
-      if (variable && priceMax < priceMin) {
+      const maxRaw = form.price_max.trim();
+      const priceMax = variable ? (maxRaw === "" ? null : Number(maxRaw)) : priceMin;
+      if (variable && priceMax != null && priceMax < priceMin) {
         throw new Error("El precio máximo no puede ser menor al mínimo");
       }
       const priceNote = variable
@@ -254,6 +260,8 @@ function Servicios() {
         is_public,
         publish_at,
         activities: form.activities.filter((a) => a !== "accesorios"),
+        uses_medicated: form.uses_medicated,
+        uses_colorimetry: form.uses_colorimetry,
       }).then(async (saved) => {
         if (materialDrafts.length) {
           await putServiceMaterials(saved.id, draftsToApiPayload(materialDrafts));
@@ -443,7 +451,11 @@ function Servicios() {
                             value={form.price_max}
                             onChange={(e) => setForm((f) => ({ ...f, price_max: e.target.value }))}
                             className="h-11 rounded-xl"
+                            placeholder="Vacío = desde el mínimo"
                           />
+                          <p className="text-xs text-muted-foreground">
+                            Si lo dejás vacío, el catálogo muestra “Desde $mínimo”.
+                          </p>
                         </div>
                       </div>
                       <div className="space-y-2 sm:max-w-xs">
@@ -465,7 +477,7 @@ function Servicios() {
                         />
                         <p className="text-xs leading-relaxed text-muted-foreground">
                           Aparece en la ficha del servicio y en los correos de cita. El valor final se
-                          confirma en recepción antes de ingresar al servicio.
+                          confirma en recepción. Puede variar por medicado, tinte u otros adicionales.
                         </p>
                       </div>
                     </div>
@@ -553,6 +565,38 @@ function Servicios() {
                       );
                     })}
                   </div>
+                </section>
+
+                <section className="space-y-3">
+                  <div>
+                    <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                      Alistamiento en recepción
+                    </h3>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      No pongas ml acá. En la cita se elige el producto y se cobra a precio de
+                      venta.
+                    </p>
+                  </div>
+                  <label className="flex cursor-pointer items-center gap-3 rounded-xl border border-border px-4 py-3 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={form.uses_medicated}
+                      onChange={(e) =>
+                        setForm((f) => ({ ...f, uses_medicated: e.target.checked }))
+                      }
+                    />
+                    Usa medicado
+                  </label>
+                  <label className="flex cursor-pointer items-center gap-3 rounded-xl border border-border px-4 py-3 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={form.uses_colorimetry}
+                      onChange={(e) =>
+                        setForm((f) => ({ ...f, uses_colorimetry: e.target.checked }))
+                      }
+                    />
+                    Usa colorimetría
+                  </label>
                 </section>
 
                 <ServiceMaterialsEditor

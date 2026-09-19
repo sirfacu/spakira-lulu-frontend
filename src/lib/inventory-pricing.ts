@@ -1,5 +1,10 @@
 /** Precio publicado = costo × (1 + margen%). Alineado con backend/app/stock.py */
 
+import { isShoppable } from "@/lib/inventory-channel";
+import { isVisitOnlyCategory } from "@/lib/service-material-role";
+
+export { isShoppable } from "@/lib/inventory-channel";
+
 export function suggestedSale(cost: number, marginPct: number): number {
   return Math.round((Number(cost) || 0) * (1 + (Number(marginPct) || 0) / 100));
 }
@@ -43,4 +48,9 @@ export function inventoryLineValue(item: InventoryValueLine): number {
   return cost * qty;
 }
 
-export { isShoppable } from "@/lib/inventory-channel";
+export function needsSalePrice(
+  channel: string | null | undefined,
+  category: string | null | undefined,
+): boolean {
+  return isShoppable(channel) || isVisitOnlyCategory(category);
+}

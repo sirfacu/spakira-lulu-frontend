@@ -14,13 +14,22 @@ describe("service pricing visibility", () => {
     const s = { price: null, price_min: null, price_max: null, price_pending: true };
     expect(isPendingCatalogPrice(s)).toBe(true);
     expect(servicePriceHeadline(s)).toBe(PENDING_SERVICE_PRICE_LABEL);
-    expect(servicePriceNote(s)).toMatch(/llegar/);
+    expect(servicePriceNote(s)).toMatch(/recepción/);
   });
 
   it("still shows staff catalog ranges", () => {
     expect(servicePriceHeadline({ price: 50000, price_min: 50000, price_max: 80000 })).toMatch(
       /Desde/,
     );
+  });
+
+  it("shows Desde when only the minimum is set", () => {
+    expect(
+      servicePriceHeadline({ price: 45000, price_min: 45000, price_max: null }),
+    ).toMatch(/Desde/);
+    expect(
+      servicePriceHeadline({ price: 45000, price_min: 45000, price_max: null }),
+    ).toMatch(/45/);
   });
 
   it("shows breed-based desde headline for clients", () => {

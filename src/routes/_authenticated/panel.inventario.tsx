@@ -64,7 +64,8 @@ import {
 } from "@/lib/inventory-qty";
 import { requirePathAccess } from "@/lib/route-access";
 import { permissionsFor } from "@/lib/roles";
-import { isWearCategory } from "@/lib/service-material-role";
+import { isWearCategory, normalizeCategory } from "@/lib/service-material-role";
+import { needsSalePrice } from "@/lib/inventory-pricing";
 import { WorkingLocationBar } from "@/components/working-location-bar";
 import {
   pickWorkingLocation,
@@ -292,9 +293,9 @@ function orderCategories(names: string[]): string[] {
   return [...result, ...rest];
 }
 
-function isBanioCategory(category: string): boolean {
-  const c = category.trim().toLowerCase();
-  return c.includes("banio") || c.includes("baño");
+function isDosificacionCategory(category: string): boolean {
+  const c = normalizeCategory(category);
+  return c === "shampoo" || c === "acondicionador";
 }
 
 function Inventario() {
@@ -410,8 +411,9 @@ function Inventario() {
     return orderCategories([...names]);
   }, [cats.data, form.category]);
 
-  const showDosificacion = isBanioCategory(form.category) || form.sell_by_shoot;
+  const showDosificacion = isDosificacionCategory(form.category) || form.sell_by_shoot;
   const shoppable = isShoppable(form.channel);
+  const saleRequired = needsSalePrice(form.channel, form.category);
   const measureCopy = measureFieldCopy(form.unit_kind);
   const moveQtyLabel = isVolumeUnit(form.unit_kind)
     ? "Envases"
@@ -468,8 +470,11 @@ function Inventario() {
         wear_action: "alert",
       };
 
-      if (shoppable) {
+      if (saleRequired) {
         payload.sale_price = Number(form.sale_price) || 0;
+        if (!(Number(form.sale_price) > 0)) {
+          throw new Error("Indicá el precio de venta.");
+        }
       }
 
       if (!payload.name) throw new Error("Poné un nombre");
@@ -1017,8 +1022,8 @@ function Inventario() {
                     <span className="text-sm font-medium text-foreground">Aplica Dosificación</span>
                   </label>
                   <p className="pl-7 text-xs text-muted-foreground">
-                    Los ml de mezcla salen del perfil de la raza en agenda o mostrador; con
-                    dilución se descuenta solo el concentrado del envase.
+                    Los ml de mezcla salen del perfil de la raza; el baño incluido no cobra extra.
+                    Si lo agregás como adicional en agenda, se cobra al precio de venta por ml.
                   </p>
                 </div>
               ) : null}
@@ -1176,7 +1181,7 @@ function Inventario() {
                 />
               </div>
 
-              {shoppable ? (
+              {saleRequired ? (
                 <div className="space-y-1">
                   <Label>Precio venta</Label>
                   <Input
@@ -1185,6 +1190,9 @@ function Inventario() {
                     value={form.sale_price}
                     onChange={(e) => setForm((f) => ({ ...f, sale_price: e.target.value }))}
                   />
+                  <p className="text-xs text-muted-foreground">
+                    Obligatorio para venta y para medicado/tinte cobrados en la cita.
+                  </p>
                 </div>
               ) : null}
 

@@ -50,6 +50,7 @@ import {
   listAppointmentReschedules,
   reviewAppointmentReschedule,
   inventoryShopQuery,
+  inventoryQuery,
   fetchNextAppointmentSlot,
   getLocations,
   getBusinessHours,
@@ -84,10 +85,11 @@ import { ClientAgenda } from "@/components/client-agenda";
 import { FinishAppointmentDialog } from "@/components/finish-appointment-dialog";
 import { MaterialEstimatePanel } from "@/components/material-estimate-panel";
 import { CouponApplyFields } from "@/components/coupon-apply-fields";
-import { ConfirmServicePriceDialog } from "@/components/confirm-service-price-dialog";
+import { ConfirmServicePriceDialog, type VisitStartPayload } from "@/components/confirm-service-price-dialog";
 import {
   appointmentShowsChargedPrice,
   PENDING_SERVICE_PRICE_LABEL,
+  PENDING_SERVICE_PRICE_NOTE,
 } from "@/lib/service-pricing";
 import { ApiError, resolveMediaUrl } from "@/lib/api";
 import { cn } from "@/lib/utils";
@@ -275,6 +277,7 @@ function StaffAgenda() {
   const locationsQ = useQuery({ queryKey: ["locations"], queryFn: getLocations });
   const activeLocations = (locationsQ.data?.items ?? []).filter((x) => x.active);
   const shop = useQuery(inventoryShopQuery);
+  const inventoryAll = useQuery({ ...inventoryQuery, enabled: perms.isStaff });
   const miscCatalog = useMemo(() => {
     return (shop.data ?? []).map((i) => ({
       id: i.id,
@@ -528,7 +531,7 @@ function StaffAgenda() {
   }, [search.service, search.google, navigate]);
 
   const saveMut = useMutation({
-    mutationFn: async (opts?: { price?: number }) => {
+    mutationFn: async (opts?: { price?: number } & Partial<VisitStartPayload>) => {
       if (!selected) throw new Error("Sin cita");
       if (!formDirty && !extrasDirty && opts?.price == null) {
         throw new Error("No hay cambios para guardar");
@@ -556,6 +559,15 @@ function StaffAgenda() {
               }),
           ...(perms.canChangeAppointmentStatus ? { status: nextStatus } : {}),
           ...(opts?.price != null ? { price: opts.price } : {}),
+          ...(opts?.medicated_declared != null
+            ? { medicated_declared: opts.medicated_declared }
+            : {}),
+          ...(opts?.colorimetry_declared != null
+            ? { colorimetry_declared: opts.colorimetry_declared }
+            : {}),
+          ...(opts?.visit_care_lines?.length
+            ? { visit_care_lines: opts.visit_care_lines }
+            : {}),
         });
         return {
           ok: true,
@@ -610,8 +622,24 @@ function StaffAgenda() {
   });
 
   const statusMut = useMutation({
-    mutationFn: ({ id, status, price }: { id: string; status: string; price?: number }) =>
-      updateAppointmentStatus(id, status, price != null ? { price } : undefined),
+    mutationFn: ({
+      id,
+      status,
+      price,
+      medicated_declared,
+      colorimetry_declared,
+      visit_care_lines,
+    }: {
+      id: string;
+      status: string;
+      price?: number;
+    } & Partial<VisitStartPayload>) =>
+      updateAppointmentStatus(id, status, {
+        ...(price != null ? { price } : {}),
+        ...(medicated_declared != null ? { medicated_declared } : {}),
+        ...(colorimetry_declared != null ? { colorimetry_declared } : {}),
+        ...(visit_care_lines?.length ? { visit_care_lines } : {}),
+      }),
     onSuccess: () => {
       setPricePrompt(null);
       void qc.invalidateQueries({ queryKey: ["appointments"] });
@@ -1556,21 +1584,30 @@ function StaffAgenda() {
         petName={pricePrompt?.appointment.pets?.name}
         defaultPrice={pricePrompt?.appointment.price}
         saving={statusMut.isPending || saveMut.isPending}
+        usesMedicated={Boolean(
+          (services.data ?? []).find((s) => s.id === pricePrompt?.appointment.service_id)
+            ?.uses_medicated,
+        )}
+        usesColorimetry={Boolean(
+          (services.data ?? []).find((s) => s.id === pricePrompt?.appointment.service_id)
+            ?.uses_colorimetry,
+        )}
+        inventory={inventoryAll.data ?? []}
         onOpenChange={(o) => {
           if (!o) setPricePrompt(null);
         }}
-        onConfirm={(price) => {
+        onConfirm={(payload) => {
           if (!pricePrompt) return;
           if (pricePrompt.mode === "status") {
             statusMut.mutate({
               id: pricePrompt.appointment.id,
               status: pricePrompt.nextStatus,
-              price,
+              ...payload,
             });
             setPricePrompt(null);
             return;
           }
-          saveMut.mutate({ price });
+          saveMut.mutate(payload);
           setPricePrompt(null);
         }}
       />
@@ -2111,6 +2148,18 @@ function StaffAgenda() {
                           : PENDING_SERVICE_PRICE_LABEL}
                       </span>
                     </div>
+                    {appointmentShowsChargedPrice(selected, perms.isCliente) ? (
+                      normalizeStatus(selected.status) === "finalizada" ? null : (
+                        <p className="pt-1 text-[11px] leading-snug text-muted-foreground">
+                          Medicado, tinte y extras se confirman en recepción y pueden cambiar este
+                          total.
+                        </p>
+                      )
+                    ) : (
+                      <p className="pt-1 text-[11px] leading-snug text-muted-foreground">
+                        {PENDING_SERVICE_PRICE_NOTE}
+                      </p>
+                    )}
                     {!citaPromo?.valid ? (
                       <p className="pt-1 text-[11px] text-muted-foreground">
                         Automáticas y fidelización se suman al cobrar y cerrar.
