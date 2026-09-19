@@ -27,6 +27,8 @@ import {
   type AppUser,
 } from "@/lib/spa-queries";
 import { displayRole, normalizeRole, type AppRole } from "@/lib/roles";
+import { resolveMediaUrl } from "@/lib/api";
+import { initials } from "@/lib/format";
 
 const ROLE_OPTIONS: { value: AppRole; label: string }[] = [
   { value: "cliente", label: "Usuario" },
@@ -292,9 +294,21 @@ export function ConfigUsersPanel({
               >
                 <button
                   type="button"
-                  className="min-w-0 flex-1 text-left"
+                  className="flex min-w-0 flex-1 items-center gap-3 text-left"
                   onClick={() => onOpenUser?.(u)}
                 >
+                  {resolveMediaUrl(u.photo_url) ? (
+                    <img
+                      src={resolveMediaUrl(u.photo_url)}
+                      alt=""
+                      className="h-10 w-10 shrink-0 rounded-xl object-cover"
+                    />
+                  ) : (
+                    <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-secondary text-xs font-semibold">
+                      {initials(u.full_name || u.email || "?")}
+                    </span>
+                  )}
+                  <span className="min-w-0">
                   <p className="truncate font-medium hover:text-primary">
                     {u.full_name || "Sin nombre"}
                     {isSelf ? (
@@ -304,6 +318,7 @@ export function ConfigUsersPanel({
                     ) : null}
                   </p>
                   <p className="truncate text-xs text-muted-foreground">{u.email}</p>
+                  </span>
                 </button>
                   <div className="flex flex-wrap items-center gap-2 sm:gap-3">
                   {canManageRoles ? (

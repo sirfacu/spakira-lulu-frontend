@@ -6,7 +6,8 @@ import { BrandMark, PawIcon, LOGO_SRC } from "@/components/brand";
 import { ServiceDetailDialog } from "@/components/service-detail-dialog";
 import { ChipRail } from "@/components/home-chip-rail";
 import { SocialEmbed } from "@/components/social-embed";
-import { HomeBizStatusBar, HomeContactStrip } from "@/components/home-biz-status";
+import { HomeBizStatusBar, HomeContactStrip, HomeLocationProvider } from "@/components/home-biz-status";
+import { EmacCredit } from "@/components/emac-credit";
 import {
   DEFAULT_PRIVACY_PATH,
   DEFAULT_TERMS_PATH,
@@ -122,6 +123,7 @@ function Landing() {
   );
 
   return (
+    <HomeLocationProvider>
     <div className="spa-canvas min-h-screen bg-background">
       <header className="sticky top-0 z-30 border-b border-border/70 bg-card/80 backdrop-blur-md">
         <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-5 py-3">
@@ -475,5 +477,6 @@ function Landing() {
         </div>
       </footer>
     </div>
+    </HomeLocationProvider>
   );
 }

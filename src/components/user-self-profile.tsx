@@ -7,6 +7,8 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
 import { LoyaltyCard } from "@/components/loyalty-card";
+import { resolveMediaUrl } from "@/lib/api";
+import { initials } from "@/lib/format";
 import {
   fetchMyOwner,
   updateMyOwner,
@@ -75,6 +77,17 @@ export function UserSelfProfile() {
   return (
     <div className="grid gap-6">
       <SectionCard title="Mis datos">
+        {me.data?.photo_url ? (
+          <img
+            src={resolveMediaUrl(me.data.photo_url)}
+            alt=""
+            className="mb-4 h-16 w-16 rounded-2xl object-cover"
+          />
+        ) : me.data?.full_name ? (
+          <span className="mb-4 grid h-16 w-16 place-items-center rounded-2xl bg-primary/10 font-display text-xl text-primary">
+            {initials(me.data.full_name)}
+          </span>
+        ) : null}
         <div className="grid gap-4 sm:grid-cols-2">
           <div className="space-y-2 sm:col-span-2">
             <Label>Nombre</Label>
