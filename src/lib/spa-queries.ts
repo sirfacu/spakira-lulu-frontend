@@ -1909,7 +1909,14 @@ export async function createInventoryCategory(name: string) {
 
 export async function createInventoryMove(
   id: string,
-  body: { delta: number; kind: string; note?: string; expires_at?: string | null; location_id?: string | null },
+  body: {
+    delta: number;
+    kind: string;
+    note?: string;
+    expires_at?: string | null;
+    location_id?: string | null;
+    as_packs?: boolean;
+  },
 ) {
   return api<InventoryMovement>(`/inventory/${id}/movements`, { method: "POST", body });
 }

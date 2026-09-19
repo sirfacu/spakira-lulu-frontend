@@ -50,6 +50,18 @@ import {
   kardexActor,
   kardexBalanceLabel,
 } from "@/lib/inventory-kardex";
+import {
+  doseUnitLabel,
+  formatContentQty,
+  formatPackagesLabel,
+  isPackUnit,
+  isVolumeUnit,
+  niceQty,
+  presentationToStored,
+  storedDeltaToMatch,
+  storedToPresentation,
+  storesTotalContent,
+} from "@/lib/inventory-qty";
 import { requirePathAccess } from "@/lib/route-access";
 import { permissionsFor } from "@/lib/roles";
 import { isWearCategory } from "@/lib/service-material-role";
@@ -129,80 +141,24 @@ const emptyForm = (): ItemForm => ({
   wear_every_n_uses: "",
 });
 
-function isVolumeUnit(unitKind: string): boolean {
-  const k = unitKind.toLowerCase();
-  return k === "ml" || k === "g" || k === "l";
-}
-
-function isPackUnit(unitKind: string): boolean {
-  return unitKind.toLowerCase() === "pack";
-}
-
 /** Cantidad de presentación (envases / packs / piezas) según unit_kind. */
 function packagesOf(i: InventoryItem): number {
   if (i.packages_on_hand != null && Number.isFinite(Number(i.packages_on_hand))) {
     return Number(i.packages_on_hand);
   }
-  const qty = Number(i.quantity) || 0;
-  const kind = i.unit_kind ?? "unidad";
-  // ml/g/l y pack: quantity en BD = contenido/piezas totales
-  if (isVolumeUnit(kind) || isPackUnit(kind)) {
-    const pack = Number(i.pack_size) || 1;
-    return pack > 0 ? qty / pack : qty;
-  }
-  return qty;
+  return storedToPresentation(i.unit_kind ?? "unidad", Number(i.pack_size) || 1, Number(i.quantity) || 0);
 }
 
 function minStockAsUnits(i: InventoryItem): number {
-  const min = Number(i.min_stock) || 0;
-  const kind = i.unit_kind ?? "unidad";
-  if (isVolumeUnit(kind) || isPackUnit(kind)) {
-    const pack = Number(i.pack_size) || 1;
-    return pack > 0 ? min / pack : min;
-  }
-  return min;
-}
-
-function storesTotalContent(unitKind: string): boolean {
-  return isVolumeUnit(unitKind) || isPackUnit(unitKind);
-}
-
-function presentationWord(unitKind: string, n: number): string {
-  const k = unitKind.toLowerCase();
-  if (k === "pack") return n === 1 ? "pack" : "packs";
-  if (isVolumeUnit(k)) return n === 1 ? "envase" : "envases";
-  return n === 1 ? "pieza" : "piezas";
-}
-
-/** Evita basura float (0.99975) y deja 0–1 decimal útil. */
-function niceQty(n: number, maxDecimals = 1): number {
-  if (!Number.isFinite(n)) return 0;
-  const f = 10 ** maxDecimals;
-  const rounded = Math.round(n * f) / f;
-  if (Math.abs(rounded - Math.round(rounded)) < 0.05 / f) return Math.round(rounded);
-  return rounded;
-}
-
-function formatContentQty(qty: number, unitKind: string): string {
-  const k = unitKind.toLowerCase();
-  const n = niceQty(qty, k === "l" ? 3 : 1);
-  if (k === "ml") return `${n} ml`;
-  if (k === "g") return `${n} g`;
-  if (k === "l") return `${n} L`;
-  return String(n);
-}
-
-function formatPackagesLabel(packs: number, unitKind: string): string {
-  const n = niceQty(packs, 2);
-  return `${n} ${presentationWord(unitKind, n)}`;
+  return storedToPresentation(i.unit_kind ?? "unidad", Number(i.pack_size) || 1, Number(i.min_stock) || 0);
 }
 
 /** Texto claro de stock para listado / editor (cubre unidad, pack y líquidos). */
 function stockSummary(i: InventoryItem): { primary: string; detail?: string } {
   const kind = (i.unit_kind ?? "unidad").toLowerCase();
-  const packs = packagesOf(i);
   const packSize = Number(i.pack_size) || 1;
   const content = Number(i.quantity) || 0;
+  const packs = storedToPresentation(kind, packSize, content);
 
   if (isVolumeUnit(kind)) {
     return {
@@ -229,13 +185,7 @@ function formatAvailableCell(i: InventoryItem): string {
   if (isVolumeUnit(kind)) {
     return formatContentQty(availContent, kind);
   }
-  const availPacks = storesTotalContent(kind)
-    ? packagesOf({
-        ...i,
-        quantity: availContent,
-        packages_on_hand: undefined,
-      })
-    : availContent;
+  const availPacks = storedToPresentation(kind, Number(i.pack_size) || 1, availContent);
   return formatPackagesLabel(availPacks, kind);
 }
 
@@ -286,15 +236,6 @@ function measureFieldCopy(unitKind: string): {
     qtyLabel: "Cantidad (piezas)",
     qtyHelp: "Cuántas piezas sueltas tenés",
   };
-}
-
-function doseUnitLabel(unitKind: string): string {
-  const k = unitKind.toLowerCase();
-  if (k === "ml") return "ml";
-  if (k === "g") return "g";
-  if (k === "l") return "l";
-  if (k === "pack") return "piezas";
-  return "unidades";
 }
 
 function toForm(i: InventoryItem): ItemForm {
@@ -538,14 +479,12 @@ function Inventario() {
       }
 
       if (editing === "new") {
-        const initialQty = storesTotalContent(form.unit_kind)
-          ? Math.round(unitsWanted * packSize)
-          : unitsWanted;
         return createInventoryItem({
           ...payload,
           sku: null,
           shoot_markup: 1,
-          quantity: initialQty,
+          // API: quantity = envases/packs/piezas; el back pasa a ml/g/piezas.
+          quantity: unitsWanted,
           location_id: locationId || null,
         } as Parameters<typeof createInventoryItem>[0]);
       }
@@ -554,22 +493,26 @@ function Inventario() {
         if (editing.sku) patch.sku = editing.sku;
         patch.shoot_markup = 1;
         const saved = await patchInventoryItem(editing.id, patch);
-        const currentUnits = packagesOf(editing);
-        const deltaUnits = Math.round(unitsWanted - currentUnits);
-        if (deltaUnits !== 0) {
+        const kind = saved.unit_kind ?? form.unit_kind;
+        const pack = Number(saved.pack_size) || packSize;
+        const storedDelta = storedDeltaToMatch({
+          unitKind: kind,
+          packSize: pack,
+          currentStored: Number(editing.quantity) || 0,
+          wantedPresentation: unitsWanted,
+        });
+        if (storedDelta !== 0) {
           await createInventoryMove(editing.id, {
-            delta: deltaUnits,
+            delta: storedDelta,
             kind: "ajuste",
-            note: storesTotalContent(saved.unit_kind ?? form.unit_kind)
-              ? "Ajuste de envases / packs"
+            as_packs: false,
+            note: storesTotalContent(kind)
+              ? "Ajuste de contenido"
               : "Ajuste de piezas",
             location_id: locationId || null,
           });
         }
-        const pack = Number(saved.pack_size) || packSize;
-        const qty = storesTotalContent(saved.unit_kind ?? form.unit_kind)
-          ? unitsWanted * pack
-          : unitsWanted;
+        const qty = presentationToStored(kind, pack, unitsWanted);
         return {
           ...saved,
           quantity: qty,
