@@ -52,6 +52,7 @@ import {
 } from "@/lib/inventory-kardex";
 import { requirePathAccess } from "@/lib/route-access";
 import { permissionsFor } from "@/lib/roles";
+import { isWearCategory } from "@/lib/service-material-role";
 import { WorkingLocationBar } from "@/components/working-location-bar";
 import {
   pickWorkingLocation,
@@ -75,7 +76,17 @@ export const Route = createFileRoute("/_authenticated/panel/inventario")({
   component: Inventario,
 });
 
-const PREFERRED_CATEGORY_ORDER = ["Baño", "Alimentos", "Equipamientos", "Salud", "Accesorios"];
+const PREFERRED_CATEGORY_ORDER = [
+  "Shampoo",
+  "Acondicionador",
+  "Medicado",
+  "Perfume",
+  "Tinte",
+  "Herramienta de trabajo",
+  "Salud",
+  "Alimentos",
+  "Accesorios",
+];
 
 const CHANNEL_OPTIONS = ["interno", "interno_externo", "externo"] as const;
 
@@ -522,6 +533,9 @@ function Inventario() {
 
       if (!payload.name) throw new Error("Poné un nombre");
       if (!payload.category) throw new Error("Elegí una categoría");
+      if (isWearCategory(form.category) && !(Number(form.wear_every_n_uses) > 0)) {
+        throw new Error("Herramienta de trabajo: indicá la cantidad de usos.");
+      }
 
       if (editing === "new") {
         const initialQty = storesTotalContent(form.unit_kind)
@@ -1111,14 +1125,24 @@ function Inventario() {
 
               <div className="space-y-2 rounded-xl border border-border/80 bg-secondary/20 p-4">
                 <div className="space-y-1">
-                  <Label>Vida útil (usos)</Label>
+                  <Label>
+                    Cantidad de usos
+                    {isWearCategory(form.category) ? " (obligatorio)" : ""}
+                  </Label>
                   <Input
                     type="number"
                     min={0}
                     className="h-11 rounded-xl"
+                    required={isWearCategory(form.category)}
                     value={form.wear_every_n_uses}
                     onChange={(e) => setForm((f) => ({ ...f, wear_every_n_uses: e.target.value }))}
                   />
+                  {isWearCategory(form.category) ? (
+                    <p className="text-xs text-muted-foreground">
+                      Cada cierre de agenda suma 1 uso. Al llegar a este número se avisa o se da de
+                      baja 1 unidad.
+                    </p>
+                  ) : null}
                 </div>
                 {liveItem && Number(liveItem.wear_every_n_uses) > 0 ? (
                   <p className="text-xs text-muted-foreground">
@@ -1245,11 +1269,7 @@ function Inventario() {
                 <Button
                   variant="outline"
                   className="rounded-xl border-destructive/40 text-destructive hover:bg-destructive/10"
-                  disabled={
-                    deleteMut.isPending ||
-                    Number(liveItem.quantity) !== 0 ||
-                    Number(liveItem.reserved ?? 0) > 0
-                  }
+                  disabled={deleteMut.isPending || Number(liveItem.reserved ?? 0) > 0}
                   onClick={() => setPendingDelete(liveItem)}
                 >
                   <Trash2 className="mr-2 h-4 w-4" />
@@ -1263,11 +1283,6 @@ function Inventario() {
                 Guardar
               </Button>
             </div>
-            {selectedId && liveItem && Number(liveItem.quantity) !== 0 ? (
-              <p className="mt-2 text-right text-xs text-muted-foreground">
-                Para eliminar, dejá las existencias en 0 desde el historial (merma o ajuste).
-              </p>
-            ) : null}
             {selectedId && liveItem && Number(liveItem.reserved ?? 0) > 0 ? (
               <p className="mt-1 text-right text-xs text-destructive">
                 Hay unidades reservadas en ventas; liberá reservas antes de eliminar.
@@ -1393,8 +1408,8 @@ function Inventario() {
         description={
           pendingDelete
             ? pendingDelete.sku
-              ? `¿Eliminar «${pendingDelete.name}» (${pendingDelete.sku})? Se borra del inventario y queda registrado en auditoría. Esta acción no se puede deshacer.`
-              : `¿Eliminar «${pendingDelete.name}»? Se borra del inventario y queda registrado en auditoría. Esta acción no se puede deshacer.`
+              ? `¿Eliminar «${pendingDelete.name}» (${pendingDelete.sku})? El stock que quede se da de baja y queda en auditoría. Esta acción no se puede deshacer.`
+              : `¿Eliminar «${pendingDelete.name}»? El stock que quede se da de baja y queda en auditoría. Esta acción no se puede deshacer.`
             : ""
         }
         confirmLabel="Eliminar"

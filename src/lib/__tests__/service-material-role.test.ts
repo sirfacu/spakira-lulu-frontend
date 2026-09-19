@@ -18,9 +18,23 @@ describe("service-material-role", () => {
   });
 
   it("maps antipulgas / dermatológico to medicated", () => {
-    expect(inferMaterialRole({ name: "Shampoo Antipulgas", category: "Baño" })).toBe(
+    expect(inferMaterialRole({ name: "Shampoo Antipulgas", category: "Medicado" })).toBe(
       "medicated",
     );
+    expect(inferMaterialRole({ name: "ASUNTOL antipulgas", category: "Medicado" })).toBe(
+      "medicated",
+    );
+  });
+
+  it("maps perfume, salud, tinte and tools", () => {
+    expect(inferMaterialRole({ name: "Hydra Forever Vip 450ml", category: "Perfume" })).toBe(
+      "perfume",
+    );
+    expect(inferMaterialRole({ name: "Orenda Otico 100 ml", category: "Salud" })).toBe("health");
+    expect(inferMaterialRole({ name: "tinte colorimetria", category: "Tinte" })).toBe("dye");
+    expect(
+      inferMaterialRole({ name: "Maquina Andis", category: "Herramienta de trabajo" }),
+    ).toBe("tool");
   });
 
   it("groups pañoleta sizes under same family key", () => {
@@ -40,6 +54,7 @@ describe("service-material-role", () => {
 
   it("detects liquid roles", () => {
     expect(isLiquidMaterialRole("shampoo")).toBe(true);
+    expect(isLiquidMaterialRole("medicated")).toBe(false);
     expect(isLiquidMaterialRole("accessory")).toBe(false);
   });
 });

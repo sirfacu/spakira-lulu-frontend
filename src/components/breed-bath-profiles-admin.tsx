@@ -65,7 +65,7 @@ export function BreedBathProfilesAdmin() {
           <p className="mt-1 text-sm text-muted-foreground">
             Consumo en ml de mezcla lista (producto + agua). Con dilución 1/10, de 100 ml
             de mezcla se descuentan 10 ml del envase. Excel: RAZA, ESPECIE, PRECIO MIN,
-            PRECIO MAXIMO, ml SHAMPOO, ml ACONDICIONADOR, ml MEDICADO.
+            PRECIO MAXIMO, ml SHAMPOO, ml ACONDICIONADOR. El medicado se carga por servicio.
           </p>
         </div>
         <label className="cursor-pointer">
@@ -104,7 +104,6 @@ export function BreedBathProfilesAdmin() {
               <th className="px-3 py-2">Precio min–max</th>
               <th className="px-3 py-2">Shampoo ml mezcla</th>
               <th className="px-3 py-2">Acond. ml mezcla</th>
-              <th className="px-3 py-2">Medicado ml mezcla</th>
               <th className="px-3 py-2" />
             </tr>
           </thead>
@@ -121,7 +120,6 @@ export function BreedBathProfilesAdmin() {
                 </td>
                 <td className="px-3 py-2 tabular-nums">{r.ml_shampoo ?? "—"}</td>
                 <td className="px-3 py-2 tabular-nums">{r.ml_conditioner ?? "—"}</td>
-                <td className="px-3 py-2 tabular-nums">{r.ml_medicated ?? "—"}</td>
                 <td className="px-3 py-2">
                   <Button
                     type="button"
@@ -171,7 +169,6 @@ export function BreedBathProfilesAdmin() {
             [
               ["ml_shampoo", "Ml mezcla shampoo (listos para usar)"],
               ["ml_conditioner", "Ml mezcla acondicionador"],
-              ["ml_medicated", "Ml mezcla medicado"],
             ] as const
           ).map(([key, label]) => (
             <label key={key} className="block space-y-1 text-sm">

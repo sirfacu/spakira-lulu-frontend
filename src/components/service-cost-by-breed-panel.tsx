@@ -156,7 +156,7 @@ export function ServiceCostByBreedPanel({ serviceId, materialDrafts = [] }: Prop
               ) : data.lines.some((l) => !l.is_accessory && Number(l.quantity) === 0) ? (
                 <p className="text-xs text-amber-700 dark:text-amber-400">
                   El perfil de esta raza tiene 0 ml en algún líquido: esos renglones salen en
-                  $0. Completá shampoo / acondicionador / medicado en Mascotas → Razas.
+                  $0. Completá shampoo / acondicionador en Mascotas → Razas.
                 </p>
               ) : null}
               {data.lines.length === 0 ? (

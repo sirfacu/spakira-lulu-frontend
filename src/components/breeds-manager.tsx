@@ -34,7 +34,6 @@ function emptyDraft(): BreedBathProfile {
     price_max: null,
     ml_shampoo: null,
     ml_conditioner: null,
-    ml_medicated: null,
   };
 }
 
@@ -130,9 +129,9 @@ export function BreedsManager() {
           <p className="mt-1 text-xs text-muted-foreground">
             Columnas: <code>RAZA</code>, <code>ESPECIE</code>, <code>PRECIO MIN</code>,{" "}
             <code>PRECIO MAX</code>, <code>Shampoo en Ml</code>,{" "}
-            <code>Acondicionador en Ml</code>, <code>Medicado en Ml</code>,{" "}
-            <code>Talla Panoleta</code> (XS/S/M/L). CSV o Excel. Si la raza ya existe se
-            actualiza; si no, se crea.
+            <code>Acondicionador en Ml</code>, <code>Talla Panoleta</code> (XS/S/M/L).
+            CSV o Excel. El medicado no va por raza: se carga en el servicio. Si la raza ya
+            existe se actualiza; si no, se crea.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -196,7 +195,6 @@ export function BreedsManager() {
               <th className="px-3 py-2">Precio max</th>
               <th className="px-3 py-2">Shampoo ml</th>
               <th className="px-3 py-2">Acond. ml</th>
-              <th className="px-3 py-2">Medicado ml</th>
               <th className="px-3 py-2">Pañoleta</th>
               <th className="px-3 py-2">Activa</th>
               <th className="px-3 py-2" />
@@ -215,7 +213,6 @@ export function BreedsManager() {
                 </td>
                 <td className="px-3 py-2 tabular-nums">{r.ml_shampoo ?? "—"}</td>
                 <td className="px-3 py-2 tabular-nums">{r.ml_conditioner ?? "—"}</td>
-                <td className="px-3 py-2 tabular-nums">{r.ml_medicated ?? "—"}</td>
                 <td className="px-3 py-2 font-medium">{r.panoleta_size ?? "—"}</td>
                 <td className="px-3 py-2">
                   <Switch
@@ -361,7 +358,6 @@ export function BreedsManager() {
                   [
                     ["ml_shampoo", "Shampoo ml mezcla"],
                     ["ml_conditioner", "Acondicionador ml mezcla"],
-                    ["ml_medicated", "Medicado ml mezcla"],
                   ] as const
                 ).map(([key, label]) => (
                   <div key={key} className="space-y-1">

@@ -13,6 +13,8 @@ import {
 import {
   inferMaterialRole,
   isPanoletaItem,
+  isQtyRequiredRole,
+  isServiceAttachableItem,
   panoletaFamilyKey,
   stripAccents,
 } from "@/lib/service-material-role";
@@ -85,11 +87,13 @@ function QtyStepper({
   onChange,
   min = 1,
   max = 99,
+  unitLabel = "piezas / cita",
 }: {
   value: number;
   onChange: (n: number) => void;
   min?: number;
   max?: number;
+  unitLabel?: string;
 }) {
   const set = (n: number) => onChange(Math.min(max, Math.max(min, n)));
   return (
@@ -127,7 +131,7 @@ function QtyStepper({
       >
         <Plus className="h-3.5 w-3.5" />
       </Button>
-      <span className="ml-1 text-xs text-muted-foreground">piezas / cita</span>
+      <span className="ml-1 text-xs text-muted-foreground">{unitLabel}</span>
     </div>
   );
 }
@@ -241,7 +245,10 @@ export function ServiceMaterialsEditor({ serviceId, onChange }: Props) {
   const [adding, setAdding] = useState(false);
 
   // Catálogo completo del inventario (sin tope ni filtro de canal).
-  const catalogItems = useMemo(() => inventory.data ?? [], [inventory.data]);
+  const catalogItems = useMemo(
+    () => (inventory.data ?? []).filter((i) => isServiceAttachableItem(i)),
+    [inventory.data],
+  );
 
   const itemsById = useMemo(
     () => new Map(catalogItems.map((i) => [i.id, i])),
@@ -289,7 +296,9 @@ export function ServiceMaterialsEditor({ serviceId, onChange }: Props) {
             Insumos de trabajo
           </h3>
           <p className="mt-1 text-xs text-muted-foreground">
-            Incluye aqui los productos que requieres para generar una experiencia
+            Shampoo, acondicionador, medicado y tinte. Perfume, salud y herramientas
+            se descuentan solos al cerrar la cita; no los agregues acá. Medicado y
+            tinte necesitan la cantidad (ml/g).
           </p>
         </div>
         <Button
@@ -339,6 +348,12 @@ export function ServiceMaterialsEditor({ serviceId, onChange }: Props) {
                       onPick={(picked) => {
                         setAdding(false);
                         const role = inferMaterialRole(picked);
+                        if (!isServiceAttachableItem(picked)) {
+                          toast.error(
+                            "Perfume, salud y herramientas se descuentan al cerrar la cita; no van en el servicio.",
+                          );
+                          return;
+                        }
                         if (isPanoletaItem(picked)) {
                           const fam = panoletaFamilyKey(picked) || "panoleta";
                           const withoutFamily = rows.filter((r) => {
@@ -369,9 +384,10 @@ export function ServiceMaterialsEditor({ serviceId, onChange }: Props) {
                                   ...r,
                                   inventory_item_id: picked.id,
                                   material_role: role,
-                                  reference_qty: isPieceAccessory(role)
-                                    ? r.reference_qty || "1"
-                                    : "",
+                                  reference_qty:
+                                    isPieceAccessory(role) || isQtyRequiredRole(role)
+                                      ? r.reference_qty || "1"
+                                      : "",
                                 }
                               : r,
                           ),
@@ -400,10 +416,15 @@ export function ServiceMaterialsEditor({ serviceId, onChange }: Props) {
                           Dilución {item.dilution_product ?? 1}/{item.dilution_water ?? 1}
                         </p>
                       ) : null}
-                      {isPieceAccessory(row.material_role) ? (
+                      {isPieceAccessory(row.material_role) ||
+                      isQtyRequiredRole(row.material_role) ? (
                         <div className="pt-1">
                           <QtyStepper
                             value={Math.max(1, Number(row.reference_qty) || 1)}
+                            max={isQtyRequiredRole(row.material_role) ? 500 : 99}
+                            unitLabel={
+                              isQtyRequiredRole(row.material_role) ? "ml o g / cita" : "piezas / cita"
+                            }
                             onChange={(n) =>
                               pushRows(
                                 rows.map((r) =>
@@ -446,14 +467,14 @@ export function draftsToApiPayload(drafts: ServiceMaterialDraft[]): Partial<Serv
     .filter((d) => d.inventory_item_id && d.material_role)
     .map((d, idx) => {
       const isAccessory = d.material_role === "accessory";
+      const needsQty = isAccessory || isQtyRequiredRole(d.material_role);
       const qty = Math.max(1, Number(d.reference_qty) || 1);
       return {
         material_role: isAccessory ? "accessory" : d.material_role,
         inventory_item_id: d.inventory_item_id,
         is_required: true,
         is_optional: false,
-        // Accesorios: piezas fijas por cita. Líquidos: null → perfil de raza / dilución.
-        reference_qty: isAccessory ? qty : null,
+        reference_qty: needsQty ? qty : null,
         sort_order: (idx + 1) * 10,
       };
     });
