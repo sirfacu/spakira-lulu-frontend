@@ -3,6 +3,7 @@ import {
   inferMaterialRole,
   isLiquidMaterialRole,
   isPanoletaItem,
+  isServiceAttachableItem,
   isWearEstimateLine,
   panoletaFamilyKey,
   parsePanoletaSize,
@@ -62,5 +63,11 @@ describe("service-material-role", () => {
     expect(isLiquidMaterialRole("shampoo")).toBe(true);
     expect(isLiquidMaterialRole("medicated")).toBe(false);
     expect(isLiquidMaterialRole("accessory")).toBe(false);
+  });
+
+  it("keeps medicado and tinte off the service recipe", () => {
+    expect(isServiceAttachableItem({ name: "Asuntol", category: "Medicado" })).toBe(false);
+    expect(isServiceAttachableItem({ name: "Tinte rojo", category: "Tinte" })).toBe(false);
+    expect(isServiceAttachableItem({ name: "Hydra", category: "Shampoo" })).toBe(true);
   });
 });

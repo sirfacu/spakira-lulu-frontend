@@ -2,7 +2,8 @@ import { cop, copRange, normalizeStatus } from "@/lib/format";
 import type { Service } from "@/lib/spa-queries";
 
 export const PENDING_SERVICE_PRICE_LABEL = "A confirmar en la cita";
-export const PENDING_SERVICE_PRICE_NOTE = "Se valida al llegar, según la mascota.";
+export const PENDING_SERVICE_PRICE_NOTE =
+  "Valor estimado. Puede variar en recepción según la mascota, medicado, tinte u otros adicionales.";
 export const COUNTER_VALIDATION_LABEL = "Validar en mostrador";
 export const COUNTER_VALIDATION_NOTE =
   "Esta raza no está en la lista tarifada; confirmamos el valor en recepción.";
@@ -16,7 +17,7 @@ export type BreedPriceHint = {
 };
 
 export const DEFAULT_PRICE_NOTE =
-  "El rango es referencial; el valor final se confirma en recepción antes de ingresar al servicio.";
+  "Valor estimado. Puede variar en recepción según la mascota, medicado, tinte u otros adicionales.";
 
 export function servicePriceBounds(s: Pick<Service, "price" | "price_min" | "price_max">) {
   const min = s.price_min != null ? Number(s.price_min) : s.price != null ? Number(s.price) : null;
@@ -27,6 +28,7 @@ export function servicePriceBounds(s: Pick<Service, "price" | "price_min" | "pri
 export function isVariableServicePrice(
   s: Pick<Service, "price" | "price_min" | "price_max">,
 ): boolean {
+  if (s.price_min != null && s.price_max == null) return true;
   const { min, max } = servicePriceBounds(s);
   if (min == null || max == null) return false;
   return min !== max;
@@ -51,6 +53,9 @@ export function servicePriceHeadline(
   s: Pick<Service, "price" | "price_min" | "price_max" | "price_pending">,
 ): string {
   if (isPendingCatalogPrice(s)) return PENDING_SERVICE_PRICE_LABEL;
+  if (s.price_min != null && s.price_max == null) {
+    return `Desde ${cop(Number(s.price_min))}`;
+  }
   if (isVariableServicePrice(s)) {
     return `Desde ${servicePriceLabel(s)}`;
   }
@@ -63,7 +68,7 @@ export function servicePriceNote(
   if (isPendingCatalogPrice(s)) return PENDING_SERVICE_PRICE_NOTE;
   if (s.price_note?.trim()) return s.price_note.trim();
   if (isVariableServicePrice(s)) return DEFAULT_PRICE_NOTE;
-  return PENDING_SERVICE_PRICE_NOTE;
+  return DEFAULT_PRICE_NOTE;
 }
 
 export function breedPriceHeadline(hint: BreedPriceHint | null | undefined): string | null {
@@ -81,7 +86,7 @@ export function breedPriceDetailLabel(hint: BreedPriceHint | null | undefined): 
 export function breedPriceNote(hint: BreedPriceHint | null | undefined): string {
   const breed = hint?.breed_name?.trim();
   if (breed) {
-    return `Referencial para ${breed}; se confirma al llegar según la mascota.`;
+    return `Referencial para ${breed}. Valor estimado; puede variar en recepción.`;
   }
   return DEFAULT_PRICE_NOTE;
 }

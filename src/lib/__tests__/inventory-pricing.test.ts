@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isShoppable, marginFromPrices, suggestedSale, unitPriceFromPack, inventoryLineValue } from "../inventory-pricing";
+import { isShoppable, marginFromPrices, suggestedSale, unitPriceFromPack, inventoryLineValue, needsSalePrice } from "../inventory-pricing";
 
 describe("inventory pricing", () => {
   it("suggests pack sale from cost and margin", () => {
@@ -18,6 +18,12 @@ describe("inventory pricing", () => {
     expect(isShoppable("interno")).toBe(false);
     expect(isShoppable("externo")).toBe(true);
     expect(isShoppable("interno_externo")).toBe(true);
+  });
+
+  it("requires sale price for shoppable and visit-care items", () => {
+    expect(needsSalePrice("externo", "Accesorios")).toBe(true);
+    expect(needsSalePrice("interno", "Shampoo")).toBe(false);
+    expect(needsSalePrice("interno", "Medicado")).toBe(true);
   });
 
   it("values loose units vs pack price (gemas, kit bandas)", () => {

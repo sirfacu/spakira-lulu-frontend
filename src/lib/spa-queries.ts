@@ -208,6 +208,8 @@ export type Service = {
   /** true si el servicio incluye accesorios configurados (texto genérico al cliente). */
   has_included_accessories?: boolean;
   client_inclusion_note?: string | null;
+  uses_medicated?: boolean;
+  uses_colorimetry?: boolean;
 };
 
 export type ServiceActivityCatalogItem = {
@@ -1324,11 +1326,30 @@ export async function createSale(input: {
 export async function updateAppointmentStatus(
   id: string,
   status: string,
-  extra?: { price?: number },
+  extra?: {
+    price?: number;
+    medicated_declared?: boolean;
+    colorimetry_declared?: boolean;
+    visit_care_lines?: {
+      inventory_item_id: string;
+      quantity: number;
+      material_role: string;
+    }[];
+  },
 ) {
   await api(`/appointments/${id}/status`, {
     method: "PATCH",
-    body: { status, ...(extra?.price != null ? { price: extra.price } : {}) },
+    body: {
+      status,
+      ...(extra?.price != null ? { price: extra.price } : {}),
+      ...(extra?.medicated_declared != null
+        ? { medicated_declared: extra.medicated_declared }
+        : {}),
+      ...(extra?.colorimetry_declared != null
+        ? { colorimetry_declared: extra.colorimetry_declared }
+        : {}),
+      ...(extra?.visit_care_lines?.length ? { visit_care_lines: extra.visit_care_lines } : {}),
+    },
   });
 }
 
@@ -1344,6 +1365,13 @@ export async function updateAppointment(
     notes?: string | null;
     status?: string;
     price?: number;
+    medicated_declared?: boolean;
+    colorimetry_declared?: boolean;
+    visit_care_lines?: {
+      inventory_item_id: string;
+      quantity: number;
+      material_role: string;
+    }[];
   },
 ) {
   return api<Appointment & { email_notifications?: { sent: boolean; email?: string }[] }>(
@@ -1535,6 +1563,8 @@ export async function upsertService(
       sort_order: input.sort_order ?? 0,
       publish_at: input.publish_at ?? null,
       activities: input.activities ?? [],
+      uses_medicated: Boolean(input.uses_medicated),
+      uses_colorimetry: Boolean(input.uses_colorimetry),
     },
   });
 }

@@ -1,7 +1,9 @@
 /** Roles líquidos usados para dosis / perfil de raza. */
 export const LIQUID_MATERIAL_ROLES = ["shampoo", "conditioner"] as const;
 
-export const QTY_REQUIRED_ROLES = ["medicated", "dye"] as const;
+export const QTY_REQUIRED_ROLES = [] as const;
+export const VISIT_ONLY_ROLES = ["medicated", "dye"] as const;
+export const VISIT_ONLY_CATEGORIES = ["medicado", "tinte"] as const;
 
 export const AUTO_CONSUME_CATEGORIES = [
   "perfume",
@@ -17,6 +19,14 @@ export function isLiquidMaterialRole(role: string): role is LiquidMaterialRole {
 
 export function isQtyRequiredRole(role: string): boolean {
   return (QTY_REQUIRED_ROLES as readonly string[]).includes(role);
+}
+
+export function isVisitOnlyRole(role: string): boolean {
+  return (VISIT_ONLY_ROLES as readonly string[]).includes(role);
+}
+
+export function isVisitOnlyCategory(category: string | null | undefined): boolean {
+  return (VISIT_ONLY_CATEGORIES as readonly string[]).includes(normalizeCategory(category));
 }
 
 export function stripAccents(s: string) {
@@ -58,6 +68,7 @@ type InferItem = {
 export function isServiceAttachableItem(item: InferItem): boolean {
   const cat = normalizeCategory(item.category);
   if (isAutoConsumeCategory(cat)) return false;
+  if (isVisitOnlyCategory(cat)) return false;
   if (cat === "alimentos" || cat === "barf") return false;
   return true;
 }
