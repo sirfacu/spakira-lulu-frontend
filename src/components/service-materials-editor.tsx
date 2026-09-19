@@ -296,9 +296,9 @@ export function ServiceMaterialsEditor({ serviceId, onChange }: Props) {
             Insumos de trabajo
           </h3>
           <p className="mt-1 text-xs text-muted-foreground">
-            Shampoo, acondicionador, medicado y tinte. Perfume, salud y herramientas
-            se descuentan solos al cerrar la cita; no los agregues acá. Medicado y
-            tinte necesitan la cantidad (ml/g).
+            Shampoo, acondicionador, medicado y tinte. Perfume y salud se descuentan
+            solos al cerrar; las herramientas suman 1 uso sin listarse. No los
+            agregues acá. Medicado y tinte necesitan la cantidad (ml/g).
           </p>
         </div>
         <Button
@@ -350,7 +350,7 @@ export function ServiceMaterialsEditor({ serviceId, onChange }: Props) {
                         const role = inferMaterialRole(picked);
                         if (!isServiceAttachableItem(picked)) {
                           toast.error(
-                            "Perfume, salud y herramientas se descuentan al cerrar la cita; no van en el servicio.",
+                            "Perfume, salud y herramientas no van en el servicio; se aplican al cerrar.",
                           );
                           return;
                         }

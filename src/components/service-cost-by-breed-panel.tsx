@@ -21,6 +21,7 @@ import {
 } from "@/lib/spa-queries";
 import { cop } from "@/lib/format";
 import { formatMaterialQtyParts } from "@/lib/material-qty-label";
+import { isWearEstimateLine } from "@/lib/service-material-role";
 
 function estimateErrorMessage(err: unknown): string {
   if (err instanceof ApiError) {
@@ -83,6 +84,10 @@ export function ServiceCostByBreedPanel({ serviceId, materialDrafts = [] }: Prop
   });
 
   const data: ServiceCostEstimate | undefined = estimate.data;
+  const visibleLines = useMemo(
+    () => (data?.lines ?? []).filter((l) => !isWearEstimateLine(l)),
+    [data?.lines],
+  );
 
   return (
     <section className="space-y-4 border-t border-border/70 pt-6">
@@ -153,19 +158,19 @@ export function ServiceCostByBreedPanel({ serviceId, materialDrafts = [] }: Prop
                   0. Cargá ml y precios en Mascotas → Razas, o elegí una raza de la parte de
                   arriba del listado.
                 </p>
-              ) : data.lines.some((l) => !l.is_accessory && Number(l.quantity) === 0) ? (
+              ) : visibleLines.some((l) => !l.is_accessory && Number(l.quantity) === 0) ? (
                 <p className="text-xs text-amber-700 dark:text-amber-400">
                   El perfil de esta raza tiene 0 ml en algún líquido: esos renglones salen en
                   $0. Completá shampoo / acondicionador en Mascotas → Razas.
                 </p>
               ) : null}
-              {data.lines.length === 0 ? (
+              {visibleLines.length === 0 ? (
                 <p className="text-xs text-muted-foreground">
                   No hay insumos habilitados para este perfil (o el borrador está vacío).
                 </p>
               ) : (
                 <ul className="space-y-3">
-                  {data.lines.map((line) => {
+                  {visibleLines.map((line) => {
                     const qty = formatMaterialQtyParts({
                       quantity: line.quantity,
                       quantity_unit: line.quantity_unit,

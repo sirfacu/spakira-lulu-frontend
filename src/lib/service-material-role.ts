@@ -40,6 +40,14 @@ export function isWearCategory(category: string | null | undefined): boolean {
   return normalizeCategory(category) === "herramienta de trabajo";
 }
 
+/** Líneas de herramienta: no se muestran en estimado ni en el cierre. */
+export function isWearEstimateLine(line: {
+  material_role?: string | null;
+  quantity_unit?: string | null;
+}): boolean {
+  return line.material_role === "tool" || line.quantity_unit === "uso";
+}
+
 type InferItem = {
   name?: string | null;
   sku?: string | null;
