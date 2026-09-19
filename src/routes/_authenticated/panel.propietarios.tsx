@@ -25,7 +25,7 @@ import {
 import { cop, initials, shortDate, statusMeta, time } from "@/lib/format";
 import { requirePathAccess } from "@/lib/route-access";
 import { displayRole, isActiveSale, normalizeRole, permissionsFor } from "@/lib/roles";
-import { ApiError } from "@/lib/api";
+import { ApiError, resolveMediaUrl } from "@/lib/api";
 import { ownerToFormFields } from "@/lib/entity-forms";
 import { ConfigUsersPanel } from "@/components/config-users-panel";
 import { ConfigAuditPanel } from "@/components/config-audit-panel";
@@ -331,7 +331,7 @@ function Propietarios() {
               <div className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-4 pr-10">
                 {selected.photo_url ? (
                   <img
-                    src={selected.photo_url}
+                    src={resolveMediaUrl(selected.photo_url)}
                     alt={selected.full_name}
                     className="h-16 w-16 shrink-0 rounded-2xl object-cover"
                   />
@@ -449,7 +449,7 @@ function Propietarios() {
                   >
                     {p.photo_url ? (
                       <img
-                        src={p.photo_url}
+                        src={resolveMediaUrl(p.photo_url)}
                         alt={p.name}
                         className="h-12 w-12 rounded-xl object-cover"
                       />

@@ -34,5 +34,9 @@ Vive en el backend: `../spakira-lulu-backend/scripts/tunnel-backup.sh` (también
 
 ```bash
 npm install
-npm test
+./scripts/run-unit-tests.sh
+# o: npm test
 ```
+
+Índice: `docs/tests.md`. Mapa / convención (fuera de este Git):  
+`/facu/learning-n8n/kirajiro/pruebas-unitarias/`.

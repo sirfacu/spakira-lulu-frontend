@@ -75,6 +75,7 @@ export const Route = createFileRoute("/_authenticated/panel/mascotas")({
   validateSearch: (search: Record<string, unknown>) => ({
     tab: search.tab === "razas" ? ("razas" as const) : ("fichas" as const),
     alta: search.alta === true || search.alta === "1" || search.alta === "true" ? true : undefined,
+    from: search.from === "agenda" ? ("agenda" as const) : undefined,
   }),
   head: () => ({
     meta: [
@@ -135,7 +136,7 @@ function Mascotas() {
   const { user } = useRouteContext({ from: "/_authenticated" });
   const navigate = useNavigate();
   const perms = permissionsFor(user?.role);
-  const { tab, alta } = useSearch({ from: "/_authenticated/panel/mascotas" });
+  const { tab, alta, from } = useSearch({ from: "/_authenticated/panel/mascotas" });
   const showRazas = perms.isAdmin;
   const activeTab = showRazas && tab === "razas" ? "razas" : "fichas";
   const setTab = (next: "fichas" | "razas") => {
@@ -340,12 +341,19 @@ function Mascotas() {
         qc.invalidateQueries({ queryKey: ["appointments"] }),
       ]);
       if (wasNew && saved) {
-        setWelcomePet(saved);
         toast.success(
           perms.isCliente && user?.needs_pet
             ? "Peludito registrado. Ya podés pedir un turno."
             : "Peludito registrado",
         );
+        if (from === "agenda") {
+          await navigate({
+            to: "/panel/agenda",
+            search: { pet: saved.id },
+          });
+          return;
+        }
+        setWelcomePet(saved);
         if (perms.isCliente) {
           clearMeCache();
           if (user?.needs_pet) {

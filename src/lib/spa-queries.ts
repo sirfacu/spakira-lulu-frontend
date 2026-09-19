@@ -240,6 +240,8 @@ export type Appointment = {
   pets?: (Pet & { owners?: Owner | null }) | null;
   services?: Service | null;
   staff?: Staff | null;
+  location?: { id: string; name: string; is_primary?: boolean } | null;
+  location_id?: string | null;
   reschedule_count?: number;
   reschedule_locked?: boolean;
 };
@@ -288,6 +290,10 @@ export type InventoryItem = {
   expires_at: string | null;
   next_expires_at?: string | null;
   cost_value?: number;
+  quantity_all?: number;
+  stocked_here?: boolean;
+  location_id?: string | null;
+  reused?: boolean;
 };
 
 export type InventorySummary = {
@@ -353,6 +359,7 @@ export type AppUser = {
   activated_at: string | null;
   created_at: string;
   auth_provider?: "password" | "google" | "both" | string;
+  photo_url?: string | null;
   modules?: string[];
   modules_custom?: boolean;
   modules_inherited?: string[];
@@ -658,14 +665,32 @@ export const appointmentsQuery = queryOptions({
 });
 
 export const inventoryQuery = queryOptions({
-  queryKey: ["inventory"],
+  queryKey: ["inventory", "all"] as const,
   queryFn: () => api<InventoryItem[]>("/inventory"),
 });
 
+export function inventoryAtLocationQuery(locationId: string) {
+  return queryOptions({
+    queryKey: ["inventory", locationId] as const,
+    queryFn: () =>
+      api<InventoryItem[]>(`/inventory?location_id=${encodeURIComponent(locationId)}`),
+    enabled: !!locationId,
+  });
+}
+
 export const inventorySummaryQuery = queryOptions({
-  queryKey: ["inventory", "summary"],
+  queryKey: ["inventory", "summary", "all"] as const,
   queryFn: () => api<InventorySummary>("/inventory/summary"),
 });
+
+export function inventorySummaryAtLocationQuery(locationId: string) {
+  return queryOptions({
+    queryKey: ["inventory", "summary", locationId] as const,
+    queryFn: () =>
+      api<InventorySummary>(`/inventory/summary?location_id=${encodeURIComponent(locationId)}`),
+    enabled: !!locationId,
+  });
+}
 
 export const inventoryCategoriesQuery = queryOptions({
   queryKey: ["inventory", "categories"] as const,
@@ -776,12 +801,9 @@ export type BusinessHourDay = {
   slots_per_hour: number;
 };
 
-export async function getBusinessHours() {
-  return api<{ days: BusinessHourDay[] }>("/settings/business-hours");
-}
-
 export type PublicBusinessHours = {
   timezone: string;
+  location_id?: string | null;
   open_now: boolean;
   today: {
     weekday: number;
@@ -799,12 +821,24 @@ export type PublicBusinessHours = {
   }[];
 };
 
-export async function getPublicBusinessHours() {
-  return api<PublicBusinessHours>("/settings/business-hours/public", { auth: false });
+export async function getPublicBusinessHours(locationId?: string) {
+  const q = locationId ? `?location_id=${encodeURIComponent(locationId)}` : "";
+  return api<PublicBusinessHours>(`/settings/business-hours/public${q}`, { auth: false });
 }
 
-export async function putBusinessHours(days: Omit<BusinessHourDay, "label">[]) {
-  return api<{ days: BusinessHourDay[] }>("/settings/business-hours", {
+export async function getBusinessHours(locationId?: string) {
+  const q = locationId ? `?location_id=${encodeURIComponent(locationId)}` : "";
+  return api<{ days: BusinessHourDay[]; location_id?: string | null }>(
+    `/settings/business-hours${q}`,
+  );
+}
+
+export async function putBusinessHours(
+  days: Omit<BusinessHourDay, "label">[],
+  locationId?: string,
+) {
+  const q = locationId ? `?location_id=${encodeURIComponent(locationId)}` : "";
+  return api<{ days: BusinessHourDay[] }>(`/settings/business-hours${q}`, {
     method: "PUT",
     body: { days },
   });
@@ -823,10 +857,12 @@ export type NextSlot = {
 export async function fetchNextAppointmentSlot(opts?: {
   service_id?: string;
   duration_min?: number;
+  location_id?: string;
 }) {
   const q = new URLSearchParams();
   if (opts?.service_id) q.set("service_id", opts.service_id);
   if (opts?.duration_min != null) q.set("duration_min", String(opts.duration_min));
+  if (opts?.location_id) q.set("location_id", opts.location_id);
   const qs = q.toString();
   return api<NextSlot>(`/appointments/next-slot${qs ? `?${qs}` : ""}`);
 }
@@ -856,11 +892,14 @@ export type WeekSlotsResponse = {
   days: WeekDaySlots[];
 };
 
-export function weekSlotsQuery(weekStart: string) {
+export function weekSlotsQuery(weekStart: string, locationId?: string) {
   return queryOptions({
-    queryKey: ["appointments", "week-slots", weekStart] as const,
-    queryFn: () =>
-      api<WeekSlotsResponse>(`/appointments/week-slots?week_start=${encodeURIComponent(weekStart)}`),
+    queryKey: ["appointments", "week-slots", weekStart, locationId ?? ""] as const,
+    queryFn: () => {
+      const q = new URLSearchParams({ week_start: weekStart });
+      if (locationId) q.set("location_id", locationId);
+      return api<WeekSlotsResponse>(`/appointments/week-slots?${q.toString()}`);
+    },
   });
 }
 
@@ -1008,6 +1047,11 @@ export type BusinessSettings = {
   maps_url?: string | null;
   show_address_public?: boolean;
   whatsapp: string;
+  phone?: string | null;
+  location_name?: string | null;
+  location_id?: string | null;
+  location_code?: string | null;
+  locations_count?: number;
   logo_url?: string | null;
   barcode_scanner_enabled?: boolean;
   barcode_scanner_mode?: string;
@@ -1047,6 +1091,21 @@ export type HomeContent = {
   updated_at?: string | null;
 };
 
+export type PublicLocation = {
+  id: string;
+  name: string;
+  is_primary: boolean;
+  phone: string;
+  whatsapp: string;
+  show_address_public: boolean;
+  address: string;
+  city: string;
+  region: string;
+  address_reference: string;
+  maps_url: string;
+  hours?: PublicBusinessHours;
+};
+
 export type PublicBusinessSettings = Pick<
   BusinessSettings,
   | "trade_name"
@@ -1058,6 +1117,8 @@ export type PublicBusinessSettings = Pick<
   | "maps_url"
   | "show_address_public"
   | "whatsapp"
+  | "phone"
+  | "location_name"
   | "logo_url"
   | "contact_email"
   | "site_url"
@@ -1066,7 +1127,9 @@ export type PublicBusinessSettings = Pick<
   | "terms_url"
   | "privacy_pdf_url"
   | "terms_pdf_url"
->;
+> & {
+  locations?: PublicLocation[];
+};
 
 export async function getBusinessSettings() {
   return api<BusinessSettings>("/settings/business");
@@ -1078,6 +1141,57 @@ export async function getPublicBusinessSettings() {
 
 export async function patchBusinessSettings(input: Partial<BusinessSettings>) {
   return api<BusinessSettings>("/settings/business", { method: "PATCH", body: input });
+}
+
+export type SpaLocation = {
+  id: string;
+  code: string;
+  name: string;
+  address: string;
+  city: string;
+  region: string;
+  address_reference: string;
+  maps_url: string;
+  show_address_public: boolean;
+  phone: string;
+  whatsapp: string;
+  active: boolean;
+  is_primary: boolean;
+};
+
+export async function getLocations() {
+  return api<{
+    items: SpaLocation[];
+    active_count: number;
+    show_selector: boolean;
+    max_locations: number;
+    can_create: boolean;
+  }>("/locations");
+}
+
+export async function getPublicLocations() {
+  return api<{ items: SpaLocation[]; active_count: number; show_selector: boolean }>(
+    "/locations/public",
+    { auth: false },
+  );
+}
+
+export async function createLocation(input: {
+  name: string;
+  address?: string;
+  city?: string;
+  region?: string;
+  address_reference?: string;
+  maps_url?: string;
+  phone?: string;
+  whatsapp?: string;
+  show_address_public?: boolean;
+}) {
+  return api<SpaLocation>("/locations", { method: "POST", body: input });
+}
+
+export async function patchLocation(id: string, input: Partial<SpaLocation>) {
+  return api<SpaLocation>(`/locations/${id}`, { method: "PATCH", body: input });
 }
 
 export async function getPublicHomeContent() {
@@ -1224,6 +1338,7 @@ export async function updateAppointment(
     pet_id?: string;
     service_id?: string;
     staff_id?: string | null;
+    location_id?: string | null;
     starts_at?: string;
     duration_min?: number;
     notes?: string | null;
@@ -1749,6 +1864,7 @@ export async function createInventoryItem(body: {
   accessory_type?: string | null;
   wear_every_n_uses?: number | null;
   wear_action?: string;
+  location_id?: string | null;
 }) {
   return api<InventoryItem>("/inventory", { method: "POST", body });
 }
@@ -1796,7 +1912,7 @@ export async function createInventoryCategory(name: string) {
 
 export async function createInventoryMove(
   id: string,
-  body: { delta: number; kind: string; note?: string; expires_at?: string | null },
+  body: { delta: number; kind: string; note?: string; expires_at?: string | null; location_id?: string | null },
 ) {
   return api<InventoryMovement>(`/inventory/${id}/movements`, { method: "POST", body });
 }
@@ -1808,12 +1924,17 @@ export type InventoryMovementsPage = {
   offset: number;
 };
 
-export function inventoryMovementsQuery(id: string | null, page = 0) {
+export function inventoryMovementsQuery(id: string | null, page = 0, locationId?: string) {
   return queryOptions({
-    queryKey: ["inventory", id, "movements", page] as const,
+    queryKey: ["inventory", id, "movements", page, locationId ?? ""] as const,
     queryFn: async (): Promise<InventoryMovementsPage> => {
+      const q = new URLSearchParams({
+        limit: "20",
+        offset: String(page * 20),
+      });
+      if (locationId) q.set("location_id", locationId);
       const data = await api<InventoryMovementsPage | InventoryMovement[]>(
-        `/inventory/${id}/movements?limit=20&offset=${page * 20}`,
+        `/inventory/${id}/movements?${q.toString()}`,
       );
       // Compat: API vieja devolvía array; la nueva pagina { items, total, ... }.
       // Sin esto el panel hace .map sobre un objeto y cae el error boundary.
@@ -1840,6 +1961,7 @@ export async function createAppointment(input: {
   pet_id: string;
   service_id: string;
   staff_id?: string | null;
+  location_id?: string | null;
   starts_at: string;
   duration_min?: number;
   notes?: string;
@@ -1869,6 +1991,30 @@ export async function createAppointment(input: {
       }[];
     }
   >("/appointments", { method: "POST", body: input });
+}
+
+export type PetBookedConflict = {
+  code: "pet_already_booked";
+  message: string;
+  appointment: {
+    id: string;
+    starts_at: string;
+    duration_min: number;
+    status: string;
+    location_id?: string | null;
+    location_name?: string | null;
+    service_name?: string | null;
+    pet_name?: string | null;
+  };
+};
+
+export function petAlreadyBooked(err: unknown): PetBookedConflict | null {
+  if (!(err instanceof ApiError) || err.status !== 409) return null;
+  const d = err.detail;
+  if (!d || typeof d !== "object") return null;
+  const rec = d as { code?: string };
+  if (rec.code !== "pet_already_booked") return null;
+  return d as PetBookedConflict;
 }
 
 export async function requestAppointmentReschedule(id: string, starts_at: string) {

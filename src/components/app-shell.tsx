@@ -22,10 +22,11 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { BrandMark, PawIcon } from "@/components/brand";
-import { logout as apiLogout } from "@/lib/api";
+import { logout as apiLogout, resolveMediaUrl } from "@/lib/api";
 import { canAccessPath, normalizeRole } from "@/lib/roles";
 import { markNotificationsRead, notificationsQuery, getBusinessSettings } from "@/lib/spa-queries";
-import { shortDate, time } from "@/lib/format";
+import { initials, shortDate, time } from "@/lib/format";
+import { EmacCredit } from "@/components/emac-credit";
 
 const NAV = [
   { to: "/panel", label: "Dashboard", icon: LayoutDashboard },
@@ -171,6 +172,27 @@ export function AppShell({
           </div>
         </div>
 
+        <div className="mx-3 mb-2 flex items-center gap-3 rounded-xl bg-sidebar-accent/40 px-3.5 py-2.5">
+          {resolveMediaUrl(user?.photo_url) ? (
+            <img
+              src={resolveMediaUrl(user?.photo_url)}
+              alt=""
+              className="h-10 w-10 shrink-0 rounded-xl object-cover"
+            />
+          ) : (
+            <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-accent text-xs font-semibold text-accent-foreground">
+              {initials(user?.full_name || user?.email || "?")}
+            </span>
+          )}
+          <div className="min-w-0">
+            <p className="truncate text-sm font-medium text-sidebar-foreground">
+              {user?.full_name || user?.email}
+            </p>
+            {user?.full_name ? (
+              <p className="truncate text-xs text-muted-foreground">{user?.email}</p>
+            ) : null}
+          </div>
+        </div>
         <button
           onClick={signOut}
           className="mx-3 mb-4 flex items-center gap-3 rounded-xl px-3.5 py-2.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
@@ -178,6 +200,7 @@ export function AppShell({
           <LogOut className="h-[18px] w-[18px]" />
           Cerrar sesión
         </button>
+        <EmacCredit className="mx-3 mb-4 px-1" />
       </aside>
 
       <div className="lg:pl-[268px]">

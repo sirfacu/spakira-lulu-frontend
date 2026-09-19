@@ -8,10 +8,8 @@ export function publicLocationLabel(input: {
   const city = (input.city || "").trim();
   const region = (input.region || "").trim();
   const address = (input.address || "").trim();
-  if (city && region) return `${city}, ${region}`;
-  if (city) return city;
-  if (region) return region;
-  return address;
+  const cityRegion = [city, region].filter(Boolean).join(", ");
+  return [address, cityRegion].filter(Boolean).join(" · ");
 }
 
 /** Embed de Google Maps a partir de URL o texto de búsqueda. */

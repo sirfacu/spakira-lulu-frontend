@@ -6,6 +6,8 @@ export type AppUser = {
   id: string;
   email: string;
   role: AppRole | string;
+  full_name?: string;
+  photo_url?: string;
   modules?: string[];
   modules_custom?: boolean;
   profile_complete?: boolean;

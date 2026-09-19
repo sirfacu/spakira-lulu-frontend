@@ -11,6 +11,7 @@ import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
 import {
   getBusinessHours,
+  getLocations,
   putBusinessHours,
   type BusinessHourDay,
 } from "@/lib/spa-queries";
@@ -48,9 +49,21 @@ function inferMode(days: DayDraft[]): ScheduleMode {
 
 export function ConfigBusinessHoursPanel() {
   const qc = useQueryClient();
+  const locs = useQuery({ queryKey: ["locations"], queryFn: getLocations });
+  const locItems = (locs.data?.items ?? []).filter((x) => x.active);
+  const [locationId, setLocationId] = useState("");
+
+  useEffect(() => {
+    const items = (locs.data?.items ?? []).filter((x) => x.active);
+    if (!items.length) return;
+    const primary = items.find((x) => x.is_primary) ?? items[0];
+    setLocationId((prev) => (items.some((x) => x.id === prev) ? prev : primary.id));
+  }, [locs.data?.items]);
+
   const hours = useQuery({
-    queryKey: ["business-hours"],
-    queryFn: getBusinessHours,
+    queryKey: ["business-hours", locationId],
+    queryFn: () => getBusinessHours(locationId || undefined),
+    enabled: locItems.length === 0 || !!locationId,
   });
   const [days, setDays] = useState<DayDraft[]>([]);
   const [mode, setMode] = useState<ScheduleMode>("general");
@@ -100,11 +113,14 @@ export function ConfigBusinessHoursPanel() {
           close_time: d.close_time,
           slots_per_hour: Math.max(1, Math.min(50, Number(d.slots_per_hour) || 4)),
         })),
+        locationId || undefined,
       ),
     onSuccess: async () => {
       toast.success("Horarios de atención guardados");
       await qc.invalidateQueries({ queryKey: ["business-hours"] });
       await qc.invalidateQueries({ queryKey: ["business-hours-public"] });
+      await qc.invalidateQueries({ queryKey: ["business-settings-public"] });
+      await qc.invalidateQueries({ queryKey: ["appointments", "week-slots"] });
     },
     onError: (err: Error) => toast.error(err.message),
   });
@@ -118,7 +134,28 @@ export function ConfigBusinessHoursPanel() {
       <p className="mb-4 text-sm text-muted-foreground">
         Definí apertura y cierre. <strong>Turnos/h</strong> es cuántas mascotas pueden
         agendar en la misma franja de 1 hora (ej. 8–9 AM → 4 turnos).
+        {locItems.length > 1
+          ? " Cada sede tiene su propio calendario. El inventario sigue global."
+          : ""}
       </p>
+      {locItems.length > 1 ? (
+        <div className="mb-4 flex flex-wrap gap-2">
+          {locItems.map((loc) => (
+            <button
+              key={loc.id}
+              type="button"
+              onClick={() => setLocationId(loc.id)}
+              className={`rounded-full px-3 py-1 text-xs font-medium ${
+                locationId === loc.id
+                  ? "bg-primary text-primary-foreground"
+                  : "bg-secondary text-muted-foreground"
+              }`}
+            >
+              {loc.name}
+            </button>
+          ))}
+        </div>
+      ) : null}
 
       <div className="mb-5 flex flex-col gap-3 rounded-2xl border border-border/80 bg-secondary/25 p-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="min-w-0">

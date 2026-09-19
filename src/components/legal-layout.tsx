@@ -2,6 +2,7 @@ import { Link } from "@tanstack/react-router";
 import type { ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { BrandMark, LOGO_SRC, PawIcon } from "@/components/brand";
+import { EmacCredit } from "@/components/emac-credit";
 import {
   getPublicBusinessSettings,
   type PublicBusinessSettings,

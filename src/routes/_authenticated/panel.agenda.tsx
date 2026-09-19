@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createFileRoute, useNavigate, useRouteContext, useSearch } from "@tanstack/react-router";
 import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -12,6 +12,9 @@ import {
   Pencil,
   Trash2,
   Search,
+  CalendarDays,
+  Clock,
+  MapPin,
 } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
 import { StatusPill, Empty } from "@/components/ui-kit";
@@ -27,6 +30,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Calendar } from "@/components/ui/calendar";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
   appointmentsQuery,
   staffQuery,
@@ -46,9 +51,15 @@ import {
   reviewAppointmentReschedule,
   inventoryShopQuery,
   fetchNextAppointmentSlot,
+  getLocations,
+  getBusinessHours,
+  weekSlotsQuery,
+  petAlreadyBooked,
   type Pet,
   type Appointment,
   type AppointmentExtra,
+  type WeekSlot,
+  type PetBookedConflict,
   appointmentChargeTotal,
 } from "@/lib/spa-queries";
 import {
@@ -62,8 +73,13 @@ import {
   appointmentProgress,
 } from "@/lib/format";
 import { requirePathAccess } from "@/lib/route-access";
-import { canCancelAppointment, editableAppointmentStatuses, permissionsFor } from "@/lib/roles";
-import { canonicalizeStaffRole } from "@/lib/staff-roles";
+import {
+  APPOINTMENT_STATUSES,
+  canCancelAppointment,
+  editableAppointmentStatuses,
+  permissionsFor,
+} from "@/lib/roles";
+import { canonicalizeStaffRole, isAdminStaffJob } from "@/lib/staff-roles";
 import { ClientAgenda } from "@/components/client-agenda";
 import { FinishAppointmentDialog } from "@/components/finish-appointment-dialog";
 import { MaterialEstimatePanel } from "@/components/material-estimate-panel";
@@ -73,8 +89,18 @@ import {
   appointmentShowsChargedPrice,
   PENDING_SERVICE_PRICE_LABEL,
 } from "@/lib/service-pricing";
-import { cn } from "@/lib/utils";
 import { ApiError, resolveMediaUrl } from "@/lib/api";
+import { cn } from "@/lib/utils";
+import { ymd } from "@/lib/client-agenda";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { WorkingLocationBar } from "@/components/working-location-bar";
+import {
+  locationChrome,
+  pickWorkingLocation,
+  readWorkingLocationId,
+  writeWorkingLocationId,
+} from "@/lib/working-location";
+import { es } from "react-day-picker/locale";
 
 const ACTIVITY_SKILLS: Record<string, string[]> = {
   bano: ["groomer", "auxiliar"],
@@ -90,13 +116,18 @@ const ACTIVITY_SKILLS: Record<string, string[]> = {
   oidos: ["groomer", "auxiliar"],
 };
 
-function staffCoversService(skills: string[] | undefined, activities: string[] | undefined) {
+function staffCoversService(
+  staff: { skills?: string[]; role_title?: string | null },
+  activities: string[] | undefined,
+) {
+  if (isAdminStaffJob(staff.role_title)) return false;
+  const have = new Set(
+    (staff.skills ?? []).map((s) => canonicalizeStaffRole(s) || s.toLowerCase()),
+  );
+  const floor = [...have].some((s) => s === "groomer" || s === "auxiliar");
+  if (!floor) return false;
   const acts = activities ?? [];
   if (!acts.length) return true;
-  const have = new Set(
-    (skills ?? []).map((s) => canonicalizeStaffRole(s) || s.toLowerCase()),
-  );
-  if (![...have].some((s) => s === "groomer" || s === "auxiliar")) return false;
   return acts.every((a) => (ACTIVITY_SKILLS[a] ?? ["groomer", "auxiliar"]).some((sk) => have.has(sk)));
 }
 
@@ -105,6 +136,7 @@ export const Route = createFileRoute("/_authenticated/panel/agenda")({
   validateSearch: (s: Record<string, unknown>) => ({
     google: typeof s.google === "string" ? s.google : undefined,
     service: typeof s.service === "string" ? s.service : undefined,
+    pet: typeof s.pet === "string" ? s.pet : undefined,
   }),
   head: () => ({
     meta: [
@@ -120,7 +152,7 @@ export const Route = createFileRoute("/_authenticated/panel/agenda")({
   component: Agenda,
 });
 
-const STATUSES = ["pendiente", "enproceso", "finalizada", "cancelada"];
+const NEW_PET = "__new_pet__";
 
 function startOfWeek(d: Date) {
   const copy = new Date(d);
@@ -153,12 +185,74 @@ function addDays(base: Date, n: number) {
   return d;
 }
 
+function whenAgendaLabel(iso: string) {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  return d.toLocaleString("es-CO", {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function parseClock(raw: string | undefined, fallbackHour: number) {
+  const [h, m] = (raw || "").split(":").map((x) => Number.parseInt(x, 10));
+  return { hour: Number.isFinite(h) ? h : fallbackHour, minute: Number.isFinite(m) ? m : 0 };
+}
+
+/** Horas de inicio de franja según apertura/cierre de ese día. */
+function hourOptionsFromDay(day?: {
+  is_open?: boolean;
+  open_time?: string;
+  close_time?: string;
+} | null) {
+  const fallback = [9, 10, 11, 12, 13, 14, 15, 16, 17, 18];
+  if (!day?.is_open) return fallback;
+  const open = parseClock(day.open_time, 9);
+  const close = parseClock(day.close_time, 18);
+  const start = open.hour;
+  const end = close.minute > 0 ? close.hour + 1 : close.hour;
+  if (end <= start) return fallback;
+  return Array.from({ length: Math.min(end, 24) - start }, (_, i) => start + i);
+}
+
+function hourRemainingLabel(slot?: WeekSlot | null) {
+  if (!slot) return "Cupos de esta hora";
+  if (slot.status === "closed") return "Fuera de horario";
+  const n = Math.max(0, slot.remaining);
+  if (n <= 0 || slot.status === "full") return "Sin turnos disponibles";
+  return n === 1 ? "1 turno disponible" : `${n} turnos disponibles`;
+}
+
 function petOwnerLabel(p: Pet) {
   const names = (p.owners_list ?? [])
     .filter((o): o is NonNullable<typeof o> => !!o?.full_name)
     .map((o) => o.full_name);
   if (names.length) return names.join(" · ");
   return p.owners?.full_name ?? "";
+}
+
+function appointmentLocation(
+  a: Appointment,
+  locations: { id: string; name: string }[] = [],
+): { id: string; name: string } | null {
+  const raw: unknown = a.location;
+  let loc: { id?: string; name?: string } | null = null;
+  if (typeof raw === "string") {
+    try {
+      loc = JSON.parse(raw) as { id?: string; name?: string };
+    } catch {
+      loc = null;
+    }
+  } else if (raw && typeof raw === "object") {
+    loc = raw as { id?: string; name?: string };
+  }
+  const id = String(loc?.id || a.location_id || "").trim();
+  const name = (loc?.name || locations.find((x) => x.id === id)?.name || "").trim();
+  if (!name) return null;
+  return { id, name };
 }
 
 function Agenda() {
@@ -178,6 +272,8 @@ function StaffAgenda() {
   const staff = useQuery({ ...staffQuery, enabled: perms.isStaff });
   const pets = useQuery(petsQuery);
   const services = useQuery(panelServicesQuery);
+  const locationsQ = useQuery({ queryKey: ["locations"], queryFn: getLocations });
+  const activeLocations = (locationsQ.data?.items ?? []).filter((x) => x.active);
   const shop = useQuery(inventoryShopQuery);
   const miscCatalog = useMemo(() => {
     return (shop.data ?? []).map((i) => ({
@@ -198,12 +294,34 @@ function StaffAgenda() {
   const [breed, setBreed] = useState("todas");
   const [staffId, setStaffId] = useState("todos");
   const [status, setStatus] = useState("todos");
+  const [locFilter, setLocFilter] = useState(() => readWorkingLocationId() || "todas");
   const [openForm, setOpenForm] = useState(false);
+  const altaRef = useRef<HTMLDivElement>(null);
   const [petId, setPetId] = useState("");
   const [serviceId, setServiceId] = useState("");
   const [formStaffId, setFormStaffId] = useState("");
+  const [formLocationId, setFormLocationId] = useState("");
   const [startsAt, setStartsAt] = useState(() => defaultStartsAtForDay(new Date()));
   const staffForForm = perms.isCliente ? [] : (staff.data ?? []);
+  useEffect(() => {
+    if (!activeLocations.length) return;
+    const primary = activeLocations.find((x) => x.is_primary) ?? activeLocations[0];
+    setFormLocationId((prev) =>
+      activeLocations.some((x) => x.id === prev) ? prev : primary.id,
+    );
+  }, [activeLocations]);
+  useEffect(() => {
+    if (!activeLocations.length) return;
+    setLocFilter((prev) => {
+      if (prev === "todas") return prev;
+      if (activeLocations.some((x) => x.id === prev)) return prev;
+      return pickWorkingLocation(activeLocations, readWorkingLocationId())?.id || "todas";
+    });
+  }, [activeLocations]);
+  useEffect(() => {
+    if (!openForm) return;
+    altaRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }, [openForm]);
   const pendingReschedules = useQuery({
     queryKey: ["appointment-reschedules", "pending"],
     queryFn: () => listAppointmentReschedules("pending"),
@@ -229,6 +347,12 @@ function StaffAgenda() {
     actionLabel: string;
     onConfirm: () => void;
   } | null>(null);
+  const [petConflict, setPetConflict] = useState<{
+    conflict: PetBookedConflict;
+    wantedStarts: string;
+    wantedLocationId: string;
+    wantedServiceId: string;
+  } | null>(null);
   const [extras, setExtras] = useState<AppointmentExtra[]>([]);
   const [extrasBaseline, setExtrasBaseline] = useState("");
   const [extraQuery, setExtraQuery] = useState("");
@@ -237,6 +361,7 @@ function StaffAgenda() {
     pet_id: "",
     service_id: "",
     staff_id: "",
+    location_id: "",
     starts_at: "",
     notes: "",
     status: "pendiente",
@@ -245,6 +370,7 @@ function StaffAgenda() {
     pet_id: "",
     service_id: "",
     staff_id: "",
+    location_id: "",
     starts_at: "",
     notes: "",
     status: "pendiente",
@@ -275,6 +401,7 @@ function StaffAgenda() {
     editForm.pet_id !== editBaseline.pet_id ||
     editForm.service_id !== editBaseline.service_id ||
     editForm.staff_id !== editBaseline.staff_id ||
+    editForm.location_id !== editBaseline.location_id ||
     editForm.starts_at !== editBaseline.starts_at ||
     editForm.status !== editBaseline.status ||
     editForm.notes !== editBaseline.notes;
@@ -304,12 +431,14 @@ function StaffAgenda() {
   };
 
   const openManage = (a: Appointment) => {
+    setOpenForm(false);
     setSelected(a);
     setCitaPromo(null);
     const form = {
       pet_id: a.pet_id ?? "",
       service_id: a.service_id ?? "",
       staff_id: a.staff_id ?? "",
+      location_id: appointmentLocation(a, activeLocations)?.id || a.location_id || "",
       starts_at: toLocalInputValue(new Date(a.starts_at)),
       notes: a.notes ?? "",
       status: normalizeStatus(a.status),
@@ -329,7 +458,9 @@ function StaffAgenda() {
 
   const openNewAppointment = (day?: Date) => {
     const target = day ?? new Date();
+    setSelected(null);
     setStartsAt(defaultStartsAtForDay(target));
+    if (locFilter && locFilter !== "todas") setFormLocationId(locFilter);
     setOpenForm(true);
     // Siempre traer listados frescos al abrir el alta
     refreshList(["pets"], ["staff"], ["services"]);
@@ -342,6 +473,18 @@ function StaffAgenda() {
   }, [search.google, qc]);
 
   useEffect(() => {
+    const pid = search.pet;
+    if (!pid) return;
+    setPetId(pid);
+    setOpenForm(true);
+    void navigate({
+      to: "/panel/agenda",
+      search: { google: search.google, service: search.service, pet: undefined },
+      replace: true,
+    });
+  }, [search.pet, search.google, search.service, navigate]);
+
+  useEffect(() => {
     const sid = search.service;
     if (!sid) return;
     let cancelled = false;
@@ -349,7 +492,10 @@ function StaffAgenda() {
     setOpenForm(true);
     void (async () => {
       try {
-        const slot = await fetchNextAppointmentSlot({ service_id: sid });
+        const slot = await fetchNextAppointmentSlot({
+          service_id: sid,
+          location_id: formLocationId || undefined,
+        });
         if (cancelled) return;
         setStartsAt(toLocalInputValue(new Date(slot.starts_at)));
         toast.message(`Primer turno libre: ${slot.label}`, {
@@ -405,6 +551,7 @@ function StaffAgenda() {
               }
             : {
                 staff_id: editForm.staff_id || null,
+                location_id: editForm.location_id || null,
                 starts_at: new Date(editForm.starts_at).toISOString(),
               }),
           ...(perms.canChangeAppointmentStatus ? { status: nextStatus } : {}),
@@ -445,6 +592,11 @@ function StaffAgenda() {
       void qc.invalidateQueries({ queryKey: ["appointment-reschedules"] });
     },
     onError: (e) => {
+      const booked = petAlreadyBooked(e);
+      if (booked) {
+        toast.error(booked.message);
+        return;
+      }
       if (e instanceof ApiError && e.status === 409 && e.detail && typeof e.detail === "object") {
         const d = e.detail as { message?: string; suggestions?: { full_name: string }[] };
         const names = (d.suggestions ?? []).map((s) => s.full_name).join(", ");
@@ -543,6 +695,7 @@ function StaffAgenda() {
         pet_id: petId,
         service_id: serviceId,
         staff_id: perms.isCliente ? null : lockedStaffId || formStaffId || null,
+        location_id: formLocationId || null,
         starts_at: new Date(startsAt).toISOString(),
         notes: notes || undefined,
         sync_google: perms.canConnectGoogle,
@@ -597,6 +750,16 @@ function StaffAgenda() {
       }
     },
     onError: (e) => {
+      const booked = petAlreadyBooked(e);
+      if (booked) {
+        setPetConflict({
+          conflict: booked,
+          wantedStarts: new Date(startsAt).toISOString(),
+          wantedLocationId: formLocationId,
+          wantedServiceId: serviceId,
+        });
+        return;
+      }
       if (e instanceof ApiError && e.status === 409 && e.detail && typeof e.detail === "object") {
         const d = e.detail as { message?: string; suggestions?: { full_name: string }[] };
         const names = (d.suggestions ?? []).map((s) => s.full_name).join(", ");
@@ -641,12 +804,43 @@ function StaffAgenda() {
     const effectiveStaff = lockedStaffId || staffId;
     if (effectiveStaff !== "todos" && a.staff_id !== effectiveStaff) return false;
     if (status !== "todos" && a.status !== status) return false;
+    if (locFilter && locFilter !== "todas") {
+      const lid = appointmentLocation(a, activeLocations)?.id || a.location_id || "";
+      if (lid !== locFilter) return false;
+    }
     return true;
   });
 
   const rangeLabel = `${days[0]!.toLocaleDateString("es-CO", { day: "numeric", month: "short" })} — ${days[6]!.toLocaleDateString("es-CO", { day: "numeric", month: "short", year: "numeric" })}`;
+  const filterLocation =
+    locFilter === "todas"
+      ? null
+      : activeLocations.find((x) => x.id === locFilter) ?? null;
 
-  const startsAtDayKey = startsAt ? dayKey(new Date(startsAt)) : "";
+  const hoursQ = useQuery({
+    queryKey: ["business-hours", formLocationId || "primary"],
+    queryFn: () => getBusinessHours(formLocationId || undefined),
+    enabled: openForm,
+    staleTime: 60_000,
+  });
+  const when = startsAt ? new Date(startsAt) : new Date();
+  const selectedDate = Number.isNaN(when.getTime()) ? new Date() : when;
+  const formWeekStart = ymd(startOfWeek(selectedDate));
+  const weekSlotsQ = useQuery({
+    ...weekSlotsQuery(formWeekStart, formLocationId || undefined),
+    enabled: openForm,
+    staleTime: 15_000,
+  });
+  const selectedDaySlots = weekSlotsQ.data?.days?.find((d) => d.date === ymd(selectedDate));
+  const slotByHour = new Map((selectedDaySlots?.slots ?? []).map((s) => [s.hour, s]));
+  const selectedHour = selectedDate.getHours();
+  const pyWeekday = (selectedDate.getDay() + 6) % 7;
+  const hoursDay = hoursQ.data?.days?.find((d) => d.weekday === pyWeekday);
+  const hourChoices = hourOptionsFromDay(hoursDay);
+  const hoursShown = hourChoices.includes(selectedHour)
+    ? hourChoices
+    : [...hourChoices, selectedHour].sort((a, b) => a - b);
+  const startsAtDayKey = dayKey(selectedDate);
   const isStartsToday = startsAtDayKey === dayKey(new Date());
   const isStartsTomorrow = startsAtDayKey === dayKey(addDays(new Date(), 1));
 
@@ -657,8 +851,12 @@ function StaffAgenda() {
         perms.isCliente
           ? `${rangeLabel} · pedí, cambiá o cancelá tus turnos`
           : perms.isColaborador && myStaff.data
-          ? `${rangeLabel} · ${myStaff.data.full_name}`
-          : `${rangeLabel} · tocá una ficha para gestionar`
+            ? `${rangeLabel} · ${myStaff.data.full_name}`
+            : `${rangeLabel} · ${
+                locFilter === "todas" || !filterLocation
+                  ? "todas las sedes"
+                  : filterLocation.name
+              } · tocá una ficha para gestionar`
       }
       actions={
         <Button className="h-10 rounded-xl" onClick={() => openNewAppointment()}>
@@ -666,6 +864,26 @@ function StaffAgenda() {
         </Button>
       }
     >
+      {activeLocations.length ? (
+        <WorkingLocationBar
+          noun="Agenda"
+          location={filterLocation ?? activeLocations[0] ?? null}
+          locations={activeLocations}
+          selectedId={locFilter}
+          allOption={
+            activeLocations.length > 1
+              ? { id: "todas", label: "Todas las sedes" }
+              : undefined
+          }
+          onChange={(id) => {
+            setLocFilter(id);
+            if (id !== "todas") {
+              writeWorkingLocationId(id);
+              setFormLocationId(id);
+            }
+          }}
+        />
+      ) : null}
       {perms.isAdmin && (pendingReschedules.data?.length ?? 0) > 0 ? (
         <div className="card-soft mb-6 p-5">
           <h3 className="font-display text-lg font-bold text-primary">
@@ -719,195 +937,6 @@ function StaffAgenda() {
           </ul>
         </div>
       ) : null}
-      {openForm ? (
-        <div className="card-soft mb-6 p-5">
-          <h3 className="font-display text-lg font-bold text-primary">Nueva cita</h3>
-          <p className="mt-1 text-sm text-muted-foreground">
-            {perms.isCliente
-              ? "Elegí mascota, servicio y horario. El spa asigna quién te atiende."
-              : "Se guarda en Spa Kira, se envía correo a cada dueño con email y, si Google está conectado, se invita a todos los dueños."}
-          </p>
-          <div className="mt-4 grid gap-4 sm:grid-cols-2">
-            <div className="space-y-2">
-              <Label>Mascota</Label>
-              <Select
-                value={petId}
-                onValueChange={setPetId}
-                onOpenChange={(open) => {
-                  if (open) refreshList(["pets"]);
-                }}
-              >
-                <SelectTrigger className="h-11 rounded-xl">
-                  <SelectValue placeholder="Elegir mascota" />
-                </SelectTrigger>
-                <SelectContent>
-                  {(pets.data ?? [])
-                    .filter((p) => !!p?.id)
-                    .map((p) => {
-                      const owners = petOwnerLabel(p);
-                      return (
-                        <SelectItem key={p.id} value={p.id}>
-                          {p.name}
-                          {owners ? ` · ${owners}` : ""}
-                        </SelectItem>
-                      );
-                    })}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label>Servicio</Label>
-              <Select
-                value={serviceId}
-                onValueChange={setServiceId}
-                onOpenChange={(open) => {
-                  if (open) refreshList(["services"]);
-                }}
-              >
-                <SelectTrigger className="h-11 rounded-xl">
-                  <SelectValue placeholder="Elegir servicio" />
-                </SelectTrigger>
-                <SelectContent>
-                  {(services.data ?? []).map((s) => (
-                    <SelectItem key={s.id} value={s.id}>
-                      {perms.isCliente
-                        ? `${s.name} · ${s.duration_min} min`
-                        : `${s.name} · ${copRange(s.price_min, s.price_max, s.price)}`}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            {!perms.isCliente ? (
-            <div className="space-y-2">
-              <Label>Encargado</Label>
-              <Select
-                value={formStaffId || "none"}
-                onValueChange={(v) => setFormStaffId(v === "none" ? "" : v)}
-                onOpenChange={(open) => {
-                  if (open) refreshList(["staff"]);
-                }}
-              >
-                <SelectTrigger className="h-11 rounded-xl">
-                  <SelectValue placeholder="Opcional" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">Sin asignar</SelectItem>
-                  {staffForForm
-                    .filter((s) => s.active !== false)
-                    .filter((s) => {
-                      if (perms.isCliente) return true;
-                      const svc = (services.data ?? []).find((x) => x.id === serviceId);
-                      return staffCoversService(s.skills, svc?.activities);
-                    })
-                    .map((s) => (
-                      <SelectItem key={s.id} value={s.id}>
-                        {s.full_name}
-                        {s.skills?.length ? ` · ${s.skills.join(", ")}` : ""}
-                      </SelectItem>
-                    ))}
-                </SelectContent>
-              </Select>
-              {serviceId ? (
-                <p className="text-[11px] text-muted-foreground">
-                  Solo se listan colaboradores que cubren las actividades del servicio. El admin
-                  puede forzar otro desde Gestión si hace falta.
-                </p>
-              ) : null}
-            </div>
-            ) : (
-              <p className="sm:col-span-2 text-xs text-muted-foreground">
-                El encargado lo asigna el spa según horarios y disponibilidad. No se elige ni se
-                modifica desde acá.
-              </p>
-            )}
-            <div className="space-y-2">
-              <Label>Fecha y hora</Label>
-              <div className="mb-2 flex flex-wrap gap-2">
-                <Button
-                  type="button"
-                  size="sm"
-                  variant={isStartsToday ? "default" : "outline"}
-                  className="h-8 rounded-lg"
-                  onClick={() => setStartsAt(defaultStartsAtForDay(new Date()))}
-                >
-                  Hoy
-                </Button>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant={isStartsTomorrow ? "default" : "outline"}
-                  className="h-8 rounded-lg"
-                  onClick={() => setStartsAt(defaultStartsAtForDay(addDays(new Date(), 1)))}
-                >
-                  Mañana
-                </Button>
-              </div>
-              <Input
-                type="datetime-local"
-                className="h-11 rounded-xl"
-                value={startsAt}
-                onChange={(e) => setStartsAt(e.target.value)}
-              />
-            </div>
-            <div className="space-y-2 sm:col-span-2">
-              <Label>Notas</Label>
-              <Input
-                className="h-11 rounded-xl"
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-                placeholder="Indicaciones para el groomer…"
-              />
-            </div>
-            {petId && serviceId ? (
-              <div className="sm:col-span-2">
-                <MaterialEstimatePanel
-                  serviceId={serviceId}
-                  petId={petId}
-                  compact
-                  draftSelections={shootSelections}
-                  onDraftSelectionsChange={setShootSelections}
-                />
-              </div>
-            ) : null}
-          </div>
-          <div className="mt-4 flex flex-wrap gap-2">
-            <Button
-              className="h-11 rounded-xl"
-              disabled={!petId || !serviceId || !startsAt || create.isPending}
-              onClick={() => create.mutate()}
-            >
-              {create.isPending ? "Guardando…" : "Crear cita"}
-            </Button>
-            <Button variant="outline" className="h-11 rounded-xl" onClick={() => setOpenForm(false)}>
-              Cancelar
-            </Button>
-          </div>
-        </div>
-      ) : null}
-
-      {perms.canSeeWhatsAppLinks && lastWa?.length ? (
-        <div className="mb-6 rounded-2xl border border-border bg-card p-4">
-          <div className="flex items-start gap-3">
-            <MessageCircle className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
-            <div className="min-w-0 flex-1">
-              <p className="text-sm text-muted-foreground">
-                Cita lista. Avisá por WhatsApp a cada dueño (abre el chat con el mensaje).
-              </p>
-              <div className="mt-3 flex flex-wrap gap-2">
-                {lastWa.map((wa) => (
-                  <Button key={wa.link} asChild className="h-10 rounded-xl">
-                    <a href={wa.link} target="_blank" rel="noopener noreferrer">
-                      WhatsApp{wa.full_name ? ` · ${wa.full_name}` : ""}
-                    </a>
-                  </Button>
-                ))}
-              </div>
-            </div>
-          </div>
-        </div>
-      ) : null}
-
       <div className="card-soft p-4 sm:p-5">
         <div className="flex flex-wrap items-center gap-3">
           <div className="flex items-center gap-1 rounded-xl border border-border bg-card p-1">
@@ -991,7 +1020,9 @@ function StaffAgenda() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="todos">Todo el personal</SelectItem>
-                {(staff.data ?? []).map((s) => (
+                {(staff.data ?? [])
+                  .filter((s) => !isAdminStaffJob(s.role_title))
+                  .map((s) => (
                   <SelectItem key={s.id} value={s.id}>
                     {s.full_name}
                   </SelectItem>
@@ -1012,7 +1043,7 @@ function StaffAgenda() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="todos">Todos los estados</SelectItem>
-              {STATUSES.map((s) => (
+              {APPOINTMENT_STATUSES.map((s) => (
                 <SelectItem key={s} value={s} className="capitalize">
                   {statusMeta(s).label}
                 </SelectItem>
@@ -1022,7 +1053,7 @@ function StaffAgenda() {
         </div>
       </div>
 
-      <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-7">
+      <div className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7">
         {days.map((d) => {
           const key = dayKey(d);
           const list = filtered.filter((a) => dayKey(new Date(a.starts_at)) === key);
@@ -1063,6 +1094,8 @@ function StaffAgenda() {
                 {list.map((a) => {
                   const meta = statusMeta(a.status);
                   const st = normalizeStatus(a.status);
+                  const loc = appointmentLocation(a, activeLocations);
+                  const locTone = loc?.id ? locationChrome(loc.id) : null;
                   const prog =
                     perms.canSeeServiceProgress && st === "enproceso"
                       ? appointmentProgress(a.starts_at, a.duration_min, new Date(nowTick))
@@ -1070,62 +1103,56 @@ function StaffAgenda() {
                   return (
                     <article
                       key={a.id}
-                      className="rounded-xl border border-border/70 bg-background/70 p-2.5 shadow-soft transition-all duration-200 hover:-translate-y-0.5 hover:border-primary/30 hover:shadow-lift"
+                      className="overflow-hidden rounded-xl border border-border/70 bg-background/70 p-2 shadow-soft transition-all duration-200 hover:-translate-y-0.5 hover:border-primary/30 hover:shadow-lift"
+                      style={
+                        locTone
+                          ? { borderLeftColor: locTone.accent, borderLeftWidth: 3 }
+                          : undefined
+                      }
                     >
                       <button
                         type="button"
                         onClick={() => openManage(a)}
                         className="w-full text-left"
                       >
-                        <div className="flex items-start gap-2.5">
-                          <div className="flex w-11 shrink-0 flex-col items-center gap-1">
-                            {a.pets?.photo_url ? (
-                              <img
-                                src={resolveMediaUrl(a.pets.photo_url)}
-                                alt={a.pets.name}
-                                className="h-10 w-10 rounded-xl object-cover"
-                              />
-                            ) : (
-                              <span className="grid h-10 w-10 place-items-center rounded-xl bg-primary/10 text-xs font-semibold text-primary">
-                                {initials(a.pets?.name ?? "?")}
-                              </span>
-                            )}
-                            {a.staff?.photo_url ? (
-                              <img
-                                src={resolveMediaUrl(a.staff.photo_url)}
-                                alt={a.staff.full_name}
-                                title={a.staff.full_name}
-                                className="h-6 w-6 rounded-full object-cover ring-2 ring-background"
-                              />
-                            ) : (
-                              <span
-                                title={a.staff?.full_name ?? "Sin asignar"}
-                                className="grid h-6 w-6 place-items-center rounded-full bg-secondary text-[9px] font-semibold text-secondary-foreground ring-2 ring-background"
-                              >
-                                {a.staff ? initials(a.staff.full_name) : "—"}
-                              </span>
-                            )}
-                          </div>
+                        <div className="flex items-start gap-2">
+                          {a.pets?.photo_url ? (
+                            <img
+                              src={resolveMediaUrl(a.pets.photo_url)}
+                              alt={a.pets.name}
+                              className="h-9 w-9 shrink-0 rounded-lg object-cover"
+                            />
+                          ) : (
+                            <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-primary/10 text-[11px] font-semibold text-primary">
+                              {initials(a.pets?.name ?? "?")}
+                            </span>
+                          )}
                           <div className="min-w-0 flex-1">
-                            <p className="truncate text-sm font-semibold text-foreground">
-                              {a.pets?.name}
-                            </p>
-                            <p className="truncate text-[11px] text-muted-foreground">
-                              {time(a.starts_at)} · {a.services?.name}
-                            </p>
-                            <p className="mt-1.5 text-[10px] leading-snug text-muted-foreground">
-                              <span className="font-medium text-foreground/80">Tu colaborador es:</span>
-                              <br />
-                              <span className="text-primary">{a.staff?.full_name ?? "Sin asignar"}</span>
-                            </p>
-                            <p className="mt-1 text-[10px] leading-snug text-muted-foreground">
-                              <span className="font-medium text-foreground/80">Humano de compañía:</span>
-                              <br />
-                              <span>{a.pets?.owners?.full_name ?? "—"}</span>
-                            </p>
+                            <div className="flex items-baseline justify-between gap-1">
+                              <p className="truncate text-sm font-semibold text-foreground">
+                                {a.pets?.name}
+                              </p>
+                              <p className="shrink-0 text-[11px] tabular-nums text-muted-foreground">
+                                {time(a.starts_at)}
+                              </p>
+                            </div>
+                            {loc ? (
+                              <p
+                                className="truncate text-[11px] font-semibold"
+                                style={{ color: locTone?.accent }}
+                                title={loc.name}
+                              >
+                                {loc.name}
+                              </p>
+                            ) : null}
+                            {a.services?.name ? (
+                              <p className="truncate text-[11px] text-muted-foreground">
+                                {a.services.name}
+                              </p>
+                            ) : null}
                           </div>
                         </div>
-                        <div className="mt-2 flex items-center justify-between gap-2">
+                        <div className="mt-1.5 flex items-center justify-between gap-2">
                           <StatusPill label={meta.label} className={meta.className} hint={meta.hint} />
                           <span className="text-right text-[11px] font-medium text-accent">
                             {appointmentShowsChargedPrice(a, perms.isCliente)
@@ -1215,6 +1242,289 @@ function StaffAgenda() {
         })}
       </div>
 
+      {openForm ? (
+        <div ref={altaRef} id="agenda-alta" className="card-soft mt-6 p-5">
+          <h3 className="font-display text-lg font-bold text-primary">Nueva cita</h3>
+          <p className="mt-1 text-sm text-muted-foreground">
+            {perms.isCliente
+              ? "Elegí mascota, servicio y horario. El spa asigna quién te atiende."
+              : "Se guarda en Spa Kira, se envía correo a cada dueño con email y, si Google está conectado, se invita a todos los dueños."}
+          </p>
+          <div className="mt-4 grid gap-4 sm:grid-cols-2">
+            <div className="space-y-2">
+              <Label>Mascota</Label>
+              <Select
+                value={petId}
+                onValueChange={(v) => {
+                  if (v === NEW_PET) {
+                    void navigate({
+                      to: "/panel/mascotas",
+                      search: { alta: true, from: "agenda" },
+                    });
+                    return;
+                  }
+                  setPetId(v);
+                }}
+                onOpenChange={(open) => {
+                  if (open) refreshList(["pets"]);
+                }}
+              >
+                <SelectTrigger className="h-11 rounded-xl">
+                  <SelectValue placeholder="Elegir mascota" />
+                </SelectTrigger>
+                <SelectContent>
+                  {(pets.data ?? [])
+                    .filter((p) => !!p?.id)
+                    .map((p) => {
+                      const owners = petOwnerLabel(p);
+                      return (
+                        <SelectItem key={p.id} value={p.id}>
+                          {p.name}
+                          {owners ? ` · ${owners}` : ""}
+                        </SelectItem>
+                      );
+                    })}
+                  <SelectItem value={NEW_PET}>+ Crear mascota y dueño</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Servicio</Label>
+              <Select
+                value={serviceId}
+                onValueChange={setServiceId}
+                onOpenChange={(open) => {
+                  if (open) refreshList(["services"]);
+                }}
+              >
+                <SelectTrigger className="h-11 rounded-xl">
+                  <SelectValue placeholder="Elegir servicio" />
+                </SelectTrigger>
+                <SelectContent>
+                  {(services.data ?? []).map((s) => (
+                    <SelectItem key={s.id} value={s.id}>
+                      {perms.isCliente
+                        ? `${s.name} · ${s.duration_min} min`
+                        : `${s.name} · ${copRange(s.price_min, s.price_max, s.price)}`}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            {activeLocations.length ? (
+              <div className="space-y-2">
+                <Label>Sede</Label>
+                <Select
+                  value={formLocationId || activeLocations[0]?.id}
+                  onValueChange={setFormLocationId}
+                >
+                  <SelectTrigger className="h-11 rounded-xl">
+                    <SelectValue placeholder="Elegir sede" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {activeLocations.map((loc) => (
+                      <SelectItem key={loc.id} value={loc.id}>
+                        {loc.name}
+                        {loc.city && loc.city !== loc.name ? ` · ${loc.city}` : ""}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            ) : null}
+            {!perms.isCliente ? (
+            <div className="space-y-2">
+              <Label>Encargado</Label>
+              <Select
+                value={formStaffId || "none"}
+                onValueChange={(v) => setFormStaffId(v === "none" ? "" : v)}
+                onOpenChange={(open) => {
+                  if (open) refreshList(["staff"]);
+                }}
+              >
+                <SelectTrigger className="h-11 rounded-xl">
+                  <SelectValue placeholder="Opcional" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Sin asignar</SelectItem>
+                  {staffForForm
+                    .filter((s) => s.active !== false)
+                    .filter((s) => {
+                      if (perms.isCliente) return true;
+                      const svc = (services.data ?? []).find((x) => x.id === serviceId);
+                      return staffCoversService(s, svc?.activities);
+                    })
+                    .map((s) => (
+                      <SelectItem key={s.id} value={s.id}>
+                        {s.full_name}
+                        {s.skills?.length ? ` · ${s.skills.join(", ")}` : ""}
+                      </SelectItem>
+                    ))}
+                </SelectContent>
+              </Select>
+              {serviceId ? (
+                <p className="text-[11px] text-muted-foreground">
+                  Solo se listan colaboradores que cubren las actividades del servicio. El admin
+                  puede forzar otro desde Gestión si hace falta.
+                </p>
+              ) : null}
+            </div>
+            ) : (
+              <p className="sm:col-span-2 text-xs text-muted-foreground">
+                El encargado lo asigna el spa según horarios y disponibilidad. No se elige ni se
+                modifica desde acá.
+              </p>
+            )}
+            <div className="space-y-2 sm:col-span-2">
+              <Label>Fecha y hora</Label>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={isStartsToday ? "default" : "outline"}
+                  className="h-8 rounded-lg"
+                  onClick={() => setStartsAt(defaultStartsAtForDay(new Date()))}
+                >
+                  Hoy
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={isStartsTomorrow ? "default" : "outline"}
+                  className="h-8 rounded-lg"
+                  onClick={() => setStartsAt(defaultStartsAtForDay(addDays(new Date(), 1)))}
+                >
+                  Mañana
+                </Button>
+              </div>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="h-11 w-full justify-start rounded-xl font-medium"
+                  >
+                    <CalendarDays className="mr-2 h-4 w-4 shrink-0 text-primary" />
+                    <span className="truncate first-letter:uppercase">
+                      {selectedDate.toLocaleDateString("es-CO", {
+                        weekday: "long",
+                        day: "numeric",
+                        month: "long",
+                      })}
+                    </span>
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start">
+                  <Calendar
+                    mode="single"
+                    locale={es}
+                    selected={selectedDate}
+                    onSelect={(d) => {
+                      if (!d) return;
+                      const next = new Date(d);
+                      next.setHours(selectedHour, 0, 0, 0);
+                      setStartsAt(toLocalInputValue(next));
+                    }}
+                  />
+                </PopoverContent>
+              </Popover>
+              <TooltipProvider delayDuration={200}>
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <Clock className="mr-1 h-3.5 w-3.5 text-muted-foreground" />
+                  {hoursShown.map((h) => {
+                    const slot = slotByHour.get(h);
+                    const remainingHint = hourRemainingLabel(slot);
+                    return (
+                      <Tooltip key={h}>
+                        <TooltipTrigger asChild>
+                          <button
+                            type="button"
+                            title={remainingHint}
+                            onClick={() => {
+                              const next = new Date(selectedDate);
+                              next.setHours(h, 0, 0, 0);
+                              setStartsAt(toLocalInputValue(next));
+                            }}
+                            className={cn(
+                              "h-9 min-w-[4.25rem] rounded-full border px-3 text-sm font-medium transition",
+                              selectedHour === h
+                                ? "border-primary bg-primary text-primary-foreground"
+                                : "border-border bg-card text-foreground hover:border-primary/40",
+                            )}
+                          >
+                            {String(h).padStart(2, "0")}:00
+                          </button>
+                        </TooltipTrigger>
+                        <TooltipContent side="top">{remainingHint}</TooltipContent>
+                      </Tooltip>
+                    );
+                  })}
+                </div>
+              </TooltipProvider>
+              {hoursDay && !hoursDay.is_open ? (
+                <p className="text-[11px] text-muted-foreground">
+                  Ese día la sede figura cerrada; igual podés dejar la cita.
+                </p>
+              ) : null}
+            </div>
+            <div className="space-y-2 sm:col-span-2">
+              <Label>Notas</Label>
+              <Input
+                className="h-11 rounded-xl"
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                placeholder="Indicaciones para el groomer…"
+              />
+            </div>
+            {petId && serviceId ? (
+              <div className="sm:col-span-2">
+                <MaterialEstimatePanel
+                  serviceId={serviceId}
+                  petId={petId}
+                  compact
+                  draftSelections={shootSelections}
+                  onDraftSelectionsChange={setShootSelections}
+                />
+              </div>
+            ) : null}
+          </div>
+          <div className="mt-4 flex flex-wrap gap-2">
+            <Button
+              className="h-11 rounded-xl"
+              disabled={!petId || !serviceId || !startsAt || create.isPending}
+              onClick={() => create.mutate()}
+            >
+              {create.isPending ? "Guardando…" : "Crear cita"}
+            </Button>
+            <Button variant="outline" className="h-11 rounded-xl" onClick={() => setOpenForm(false)}>
+              Cancelar
+            </Button>
+          </div>
+        </div>
+      ) : null}
+
+      {perms.canSeeWhatsAppLinks && lastWa?.length ? (
+        <div className="mb-6 rounded-2xl border border-border bg-card p-4">
+          <div className="flex items-start gap-3">
+            <MessageCircle className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
+            <div className="min-w-0 flex-1">
+              <p className="text-sm text-muted-foreground">
+                Cita lista. Avisá por WhatsApp a cada dueño (abre el chat con el mensaje).
+              </p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {lastWa.map((wa) => (
+                  <Button key={wa.link} asChild className="h-10 rounded-xl">
+                    <a href={wa.link} target="_blank" rel="noopener noreferrer">
+                      WhatsApp{wa.full_name ? ` · ${wa.full_name}` : ""}
+                    </a>
+                  </Button>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       {!filtered.length ? (
         <div className="mt-6">
           <Empty message="Ningún resultado con los filtros seleccionados." />
@@ -1289,6 +1599,12 @@ function StaffAgenda() {
                     <h2 className="font-display text-xl font-bold text-primary">
                       {selected.pets?.name ?? "Cita"}
                     </h2>
+                    {appointmentLocation(selected, activeLocations) ? (
+                      <p className="mt-1 inline-flex items-center gap-1 text-sm font-medium text-primary">
+                        <MapPin className="h-3.5 w-3.5 shrink-0" />
+                        {appointmentLocation(selected, activeLocations)?.name}
+                      </p>
+                    ) : null}
                     <p className="mt-2 text-sm leading-snug text-muted-foreground">
                       <span className="font-medium text-foreground">Tu colaborador es:</span>
                       <br />
@@ -1346,6 +1662,28 @@ function StaffAgenda() {
                       </SelectContent>
                     </Select>
                   </div>
+                  {activeLocations.length ? (
+                  <div className="space-y-2">
+                    <Label>Sede</Label>
+                    <Select
+                      value={editForm.location_id || activeLocations[0]?.id}
+                      onValueChange={(v) => setEditForm((f) => ({ ...f, location_id: v }))}
+                      disabled={perms.isCliente}
+                    >
+                      <SelectTrigger className="h-11 rounded-xl">
+                        <SelectValue placeholder="Sede" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {activeLocations.map((loc) => (
+                          <SelectItem key={loc.id} value={loc.id}>
+                            {loc.name}
+                            {loc.city && loc.city !== loc.name ? ` · ${loc.city}` : ""}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  ) : null}
                   {!perms.isCliente ? (
                   <div className="space-y-2">
                     <Label>Colaborador asignado</Label>
@@ -1362,11 +1700,12 @@ function StaffAgenda() {
                         <SelectItem value="none">Sin asignar</SelectItem>
                         {(staff.data ?? [])
                           .filter((s) => s.active)
+                          .filter((s) => !isAdminStaffJob(s.role_title))
                           .map((s) => {
                             const svc = (services.data ?? []).find(
                               (x) => x.id === editForm.service_id,
                             );
-                            const ok = staffCoversService(s.skills, svc?.activities);
+                            const ok = staffCoversService(s, svc?.activities);
                             return (
                               <SelectItem key={s.id} value={s.id}>
                                 {s.full_name}
@@ -1873,6 +2212,65 @@ function StaffAgenda() {
                     </>
                   ) : null}
                 </div>
+              </div>
+            </div>
+          ) : null}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={!!petConflict}
+        onOpenChange={(o) => {
+          if (!o) setPetConflict(null);
+        }}
+      >
+        <DialogContent className="max-w-md rounded-3xl p-6">
+          <h2 className="font-display text-xl font-bold text-primary">Ya hay una cita</h2>
+          {petConflict ? (
+            <div className="mt-3 space-y-3 text-sm">
+              <p className="text-muted-foreground">{petConflict.conflict.message}</p>
+              <div className="rounded-2xl bg-secondary/60 p-3 text-sm">
+                <p className="font-medium">
+                  {petConflict.conflict.appointment.pet_name || "Mascota"} ·{" "}
+                  {petConflict.conflict.appointment.service_name || "Servicio"}
+                </p>
+                <p className="mt-1 text-muted-foreground first-letter:uppercase">
+                  {whenAgendaLabel(petConflict.conflict.appointment.starts_at)}
+                  {petConflict.conflict.appointment.location_name
+                    ? ` · ${petConflict.conflict.appointment.location_name}`
+                    : ""}
+                </p>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Nueva hora pedida:{" "}
+                <span className="font-medium text-foreground first-letter:uppercase">
+                  {whenAgendaLabel(petConflict.wantedStarts)}
+                </span>
+              </p>
+              <div className="flex flex-col gap-2 pt-1 sm:flex-row">
+                <Button
+                  className="rounded-xl"
+                  onClick={() => {
+                    const payload = petConflict;
+                    setPetConflict(null);
+                    void updateAppointment(payload.conflict.appointment.id, {
+                      starts_at: payload.wantedStarts,
+                      location_id: payload.wantedLocationId || undefined,
+                      service_id: payload.wantedServiceId || undefined,
+                    })
+                      .then(() => {
+                        toast.success("Actualizamos la cita que ya estaba agendada.");
+                        setOpenForm(false);
+                        void qc.invalidateQueries({ queryKey: ["appointments"] });
+                      })
+                      .catch((err: Error) => toast.error(err.message || "No se pudo actualizar"));
+                  }}
+                >
+                  Sí, actualizarla
+                </Button>
+                <Button variant="outline" className="rounded-xl" onClick={() => setPetConflict(null)}>
+                  Dejarla como está
+                </Button>
               </div>
             </div>
           ) : null}

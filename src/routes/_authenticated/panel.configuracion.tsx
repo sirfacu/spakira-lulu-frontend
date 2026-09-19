@@ -16,7 +16,11 @@ import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
 import {
   getBusinessSettings,
+  getLocations,
+  createLocation,
+  patchLocation,
   patchBusinessSettings,
+  type SpaLocation,
 } from "@/lib/spa-queries";
 import { requirePathAccess } from "@/lib/route-access";
 import { permissionsFor } from "@/lib/roles";
@@ -48,6 +52,7 @@ function Configuracion() {
   const [tab, setTab] = useState<ConfigTab>("general");
   const [correosSub, setCorreosSub] = useState<CorreosSub>("plantillas");
   const business = useQuery({ queryKey: ["business-settings"], queryFn: getBusinessSettings });
+  const locations = useQuery({ queryKey: ["locations"], queryFn: getLocations });
   const [tradeName, setTradeName] = useState("Spa Kira");
   const [slogan, setSlogan] = useState("Luxury pet grooming · Canina y felina");
   const [address, setAddress] = useState("Bogotá, Colombia");
@@ -67,6 +72,11 @@ function Configuracion() {
   const [addressReference, setAddressReference] = useState("");
   const [mapsUrl, setMapsUrl] = useState("");
   const [showAddressPublic, setShowAddressPublic] = useState(true);
+  const [locationName, setLocationName] = useState("Sede principal");
+  const [phone, setPhone] = useState("");
+  const [newLocName, setNewLocName] = useState("");
+  const [newLocCity, setNewLocCity] = useState("");
+  const [newLocAddress, setNewLocAddress] = useState("");
 
   useEffect(() => {
     if (!business.data) return;
@@ -89,11 +99,19 @@ function Configuracion() {
     setAddressReference(business.data.address_reference || "");
     setMapsUrl(business.data.maps_url || "");
     setShowAddressPublic(business.data.show_address_public !== false);
+    setLocationName(business.data.location_name || "Sede principal");
+    setPhone(business.data.phone || "");
   }, [business.data]);
 
   const businessMut = useMutation({
-    mutationFn: () =>
-      patchBusinessSettings({
+    mutationFn: () => {
+      if (!locationName.trim()) {
+        throw new Error("El nombre de la sede no puede quedar vacío.");
+      }
+      if (!address.trim() && !city.trim()) {
+        throw new Error("La sede necesita al menos dirección o ciudad.");
+      }
+      return patchBusinessSettings({
         trade_name: tradeName.trim(),
         slogan: slogan.trim(),
         address: address.trim(),
@@ -103,10 +121,72 @@ function Configuracion() {
         address_reference: addressReference.trim(),
         maps_url: mapsUrl.trim(),
         show_address_public: showAddressPublic,
-      }),
+        location_name: locationName.trim(),
+        phone: phone.trim(),
+      });
+    },
     onSuccess: async () => {
       toast.success("Identidad del negocio guardada");
       await qc.invalidateQueries({ queryKey: ["business-settings"] });
+      await qc.invalidateQueries({ queryKey: ["business-settings-public"] });
+      await qc.invalidateQueries({ queryKey: ["locations"] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const extraLocations = (locations.data?.items ?? []).filter((x) => !x.is_primary && x.active);
+  const canCreateLocation = isAdmin && !!locations.data?.can_create;
+
+  const addLocationMut = useMutation({
+    mutationFn: () => {
+      if (!newLocName.trim()) throw new Error("El nombre de la sede no puede quedar vacío.");
+      if (!newLocAddress.trim() && !newLocCity.trim()) {
+        throw new Error("La sede necesita al menos dirección o ciudad.");
+      }
+      return createLocation({
+        name: newLocName.trim(),
+        city: newLocCity.trim(),
+        address: newLocAddress.trim(),
+      });
+    },
+    onSuccess: async (loc) => {
+      toast.success(`${loc.name} creada. Completá mapa abajo y horarios en esta misma pestaña.`);
+      setNewLocName("");
+      setNewLocCity("");
+      setNewLocAddress("");
+      await qc.invalidateQueries({ queryKey: ["locations"] });
+      await qc.invalidateQueries({ queryKey: ["business-settings"] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const extraLocMut = useMutation({
+    mutationFn: (input: {
+      id: string;
+      name: string;
+      city: string;
+      address: string;
+      phone: string;
+      region: string;
+      address_reference: string;
+      maps_url: string;
+      whatsapp: string;
+      show_address_public: boolean;
+    }) =>
+      patchLocation(input.id, {
+        name: input.name,
+        city: input.city,
+        address: input.address,
+        phone: input.phone,
+        region: input.region,
+        address_reference: input.address_reference,
+        maps_url: input.maps_url,
+        whatsapp: input.whatsapp,
+        show_address_public: input.show_address_public,
+      }),
+    onSuccess: async () => {
+      toast.success("Sede actualizada");
+      await qc.invalidateQueries({ queryKey: ["locations"] });
       await qc.invalidateQueries({ queryKey: ["business-settings-public"] });
     },
     onError: (e: Error) => toast.error(e.message),
@@ -186,10 +266,16 @@ function Configuracion() {
             </SectionCard>
 
             <SectionCard title="Ubicación">
-              <p className="mb-4 text-sm text-muted-foreground">
-                Sede actual. Multi-sede vendrá después; estos campos quedan listos para migrar.
-              </p>
               <div className="grid gap-4">
+                <div className="space-y-2">
+                  <Label>Nombre de la sede</Label>
+                  <Input
+                    value={locationName}
+                    onChange={(e) => setLocationName(e.target.value)}
+                    className="h-11 rounded-xl"
+                    placeholder="Sede principal"
+                  />
+                </div>
                 <div className="space-y-2">
                   <Label>Dirección</Label>
                   <Input
@@ -232,6 +318,18 @@ function Configuracion() {
                     placeholder="https://maps.google.com/…"
                   />
                 </div>
+                <div className="space-y-2">
+                  <Label>Teléfono de la sede</Label>
+                  <Input
+                    value={phone}
+                    onChange={(e) => setPhone(e.target.value)}
+                    className="h-11 rounded-xl"
+                    placeholder="+57 601 000 0000"
+                  />
+                  <p className="text-[11px] text-muted-foreground">
+                    Distinto del WhatsApp de contacto. Visible en el home si lo cargás.
+                  </p>
+                </div>
                 <div className="flex items-center justify-between gap-4 rounded-2xl bg-secondary/50 px-4 py-3">
                   <div>
                     <p className="text-sm font-medium">Mostrar dirección públicamente</p>
@@ -250,6 +348,79 @@ function Configuracion() {
                 ) : null}
               </div>
             </SectionCard>
+
+            {isAdmin ? (
+              <SectionCard title="Otras sedes">
+                <p className="text-sm text-muted-foreground">
+                  Dirección, mapa y teléfono de cada sucursal. El horario se edita más abajo,
+                  por sede. Inventario y caja siguen globales.
+                </p>
+                {extraLocations.length ? (
+                  <ul className="mt-4 grid gap-4">
+                    {extraLocations.map((loc) => (
+                      <li key={loc.id}>
+                        <ExtraLocationEditor
+                          location={loc}
+                          pending={extraLocMut.isPending}
+                          onSave={(next) => extraLocMut.mutate({ id: loc.id, ...next })}
+                        />
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="mt-3 text-sm text-muted-foreground">Todavía no hay otra sede.</p>
+                )}
+                {canCreateLocation ? (
+                  <div className="mt-4 grid gap-3 rounded-2xl border border-border p-4">
+                    <p className="text-sm font-medium">Agregar sede</p>
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <div className="space-y-2 sm:col-span-2">
+                        <Label>Nombre</Label>
+                        <Input
+                          value={newLocName}
+                          onChange={(e) => setNewLocName(e.target.value)}
+                          className="h-11 rounded-xl"
+                          placeholder="Chía"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Ciudad</Label>
+                        <Input
+                          value={newLocCity}
+                          onChange={(e) => setNewLocCity(e.target.value)}
+                          className="h-11 rounded-xl"
+                          placeholder="Chía"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Dirección (opcional si hay ciudad)</Label>
+                        <Input
+                          value={newLocAddress}
+                          onChange={(e) => setNewLocAddress(e.target.value)}
+                          className="h-11 rounded-xl"
+                        />
+                      </div>
+                    </div>
+                    <Button
+                      className="rounded-xl"
+                      disabled={addLocationMut.isPending}
+                      onClick={() => addLocationMut.mutate()}
+                    >
+                      Agregar sede
+                    </Button>
+                    <p className="text-[11px] text-muted-foreground">
+                      Tope de esta instalación: {locations.data?.max_locations ?? 1} sede
+                      {(locations.data?.max_locations ?? 1) === 1 ? "" : "s"}.
+                    </p>
+                  </div>
+                ) : (
+                  <p className="mt-3 text-[11px] text-muted-foreground">
+                    Tope alcanzado ({locations.data?.max_locations ?? 1} sede
+                    {(locations.data?.max_locations ?? 1) === 1 ? "" : "s"}).
+                  </p>
+                )}
+              </SectionCard>
+            ) : null}
 
             <SectionCard title="Vista previa en el sitio">
               <LocationPublicPreview
@@ -490,6 +661,135 @@ function LocationPublicPreview({
       ) : (
         <p className="text-xs text-muted-foreground">Agregá dirección o un link de Maps para ver el mapa.</p>
       )}
+    </div>
+  );
+}
+
+function ExtraLocationEditor({
+  location,
+  pending,
+  onSave,
+}: {
+  location: SpaLocation;
+  pending: boolean;
+  onSave: (next: {
+    name: string;
+    city: string;
+    address: string;
+    phone: string;
+    region: string;
+    address_reference: string;
+    maps_url: string;
+    whatsapp: string;
+    show_address_public: boolean;
+  }) => void;
+}) {
+  const [name, setName] = useState(location.name);
+  const [city, setCity] = useState(location.city || "");
+  const [region, setRegion] = useState(location.region || "");
+  const [address, setAddress] = useState(location.address || "");
+  const [addressReference, setAddressReference] = useState(location.address_reference || "");
+  const [mapsUrl, setMapsUrl] = useState(location.maps_url || "");
+  const [phone, setPhone] = useState(location.phone || "");
+  const [whatsapp, setWhatsapp] = useState(location.whatsapp || "");
+  const [showAddressPublic, setShowAddressPublic] = useState(location.show_address_public !== false);
+
+  useEffect(() => {
+    setName(location.name);
+    setCity(location.city || "");
+    setRegion(location.region || "");
+    setAddress(location.address || "");
+    setAddressReference(location.address_reference || "");
+    setMapsUrl(location.maps_url || "");
+    setPhone(location.phone || "");
+    setWhatsapp(location.whatsapp || "");
+    setShowAddressPublic(location.show_address_public !== false);
+  }, [location]);
+
+  return (
+    <div className="grid gap-3 rounded-2xl border border-border p-4">
+      <div className="space-y-2">
+        <Label>Nombre</Label>
+        <Input value={name} onChange={(e) => setName(e.target.value)} className="h-11 rounded-xl" />
+      </div>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <div className="space-y-2">
+          <Label>Ciudad</Label>
+          <Input value={city} onChange={(e) => setCity(e.target.value)} className="h-11 rounded-xl" />
+        </div>
+        <div className="space-y-2">
+          <Label>Departamento / región</Label>
+          <Input value={region} onChange={(e) => setRegion(e.target.value)} className="h-11 rounded-xl" />
+        </div>
+      </div>
+      <div className="space-y-2">
+        <Label>Dirección</Label>
+        <Input value={address} onChange={(e) => setAddress(e.target.value)} className="h-11 rounded-xl" />
+      </div>
+      <div className="space-y-2">
+        <Label>Referencia (opcional)</Label>
+        <Input
+          value={addressReference}
+          onChange={(e) => setAddressReference(e.target.value)}
+          className="h-11 rounded-xl"
+        />
+      </div>
+      <div className="space-y-2">
+        <Label>Enlace de Google Maps</Label>
+        <Input
+          value={mapsUrl}
+          onChange={(e) => setMapsUrl(e.target.value)}
+          className="h-11 rounded-xl"
+          placeholder="https://maps.google.com/…"
+        />
+      </div>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <div className="space-y-2">
+          <Label>Teléfono</Label>
+          <Input value={phone} onChange={(e) => setPhone(e.target.value)} className="h-11 rounded-xl" />
+        </div>
+        <div className="space-y-2">
+          <Label>WhatsApp de la sede</Label>
+          <Input value={whatsapp} onChange={(e) => setWhatsapp(e.target.value)} className="h-11 rounded-xl" />
+        </div>
+      </div>
+      <div className="flex items-center justify-between gap-4 rounded-2xl bg-secondary/50 px-4 py-3">
+        <div>
+          <p className="text-sm font-medium">Mostrar dirección públicamente</p>
+          <p className="text-xs text-muted-foreground">Home, mapa y franja de contacto.</p>
+        </div>
+        <Switch checked={showAddressPublic} onCheckedChange={setShowAddressPublic} />
+      </div>
+      <LocationPublicPreview
+        address={address}
+        city={city}
+        region={region}
+        mapsUrl={mapsUrl}
+        showPublic={showAddressPublic}
+      />
+      <p className="text-xs text-muted-foreground">
+        Horarios de {location.name}: sección Horarios de atención, más abajo en esta pestaña.
+      </p>
+      <Button
+        variant="outline"
+        className="rounded-xl"
+        disabled={pending || !name.trim() || (!city.trim() && !address.trim())}
+        onClick={() =>
+          onSave({
+            name: name.trim(),
+            city: city.trim(),
+            address: address.trim(),
+            phone: phone.trim(),
+            region: region.trim(),
+            address_reference: addressReference.trim(),
+            maps_url: mapsUrl.trim(),
+            whatsapp: whatsapp.trim(),
+            show_address_public: showAddressPublic,
+          })
+        }
+      >
+        Guardar {location.name}
+      </Button>
     </div>
   );
 }

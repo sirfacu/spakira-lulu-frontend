@@ -10,6 +10,8 @@ let meCache: {
     id: string;
     email: string;
     role: string;
+    full_name?: string;
+    photo_url?: string;
     profile_complete?: boolean;
     needs_pet?: boolean;
     modules?: string[];
@@ -357,6 +359,8 @@ export function fetchMe() {
     id: string;
     email: string;
     role: string;
+    full_name?: string;
+    photo_url?: string;
     profile_complete?: boolean;
     needs_pet?: boolean;
     modules?: string[];

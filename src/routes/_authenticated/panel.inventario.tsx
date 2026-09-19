@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
-import { createFileRoute } from "@tanstack/react-router";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { createFileRoute, useRouteContext } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
@@ -27,10 +27,11 @@ import {
   createInventoryItem,
   createInventoryMove,
   deleteInventoryItem,
+  getLocations,
+  inventoryAtLocationQuery,
   inventoryCategoriesQuery,
   inventoryMovementsQuery,
-  inventoryQuery,
-  inventorySummaryQuery,
+  inventorySummaryAtLocationQuery,
   patchInventoryItem,
   type InventoryItem,
 } from "@/lib/spa-queries";
@@ -50,6 +51,13 @@ import {
   kardexBalanceLabel,
 } from "@/lib/inventory-kardex";
 import { requirePathAccess } from "@/lib/route-access";
+import { permissionsFor } from "@/lib/roles";
+import { WorkingLocationBar } from "@/components/working-location-bar";
+import {
+  pickWorkingLocation,
+  readWorkingLocationId,
+  writeWorkingLocationId,
+} from "@/lib/working-location";
 
 export const Route = createFileRoute("/_authenticated/panel/inventario")({
   beforeLoad: requirePathAccess("/panel/inventario"),
@@ -302,6 +310,15 @@ function toForm(i: InventoryItem): ItemForm {
   };
 }
 
+function isStockedHere(i: InventoryItem): boolean {
+  return Number(i.quantity) > 0 || Boolean(i.stocked_here);
+}
+
+/** Ficha del catálogo para alta en esta sede: no copia el stock de otra. */
+function toCatalogForm(i: InventoryItem): ItemForm {
+  return { ...toForm(i), units_qty: "0" };
+}
+
 function nextExpiry(i: InventoryItem): string | null {
   const raw = i.next_expires_at || i.expires_at;
   return raw ? String(raw).slice(0, 10) : null;
@@ -329,9 +346,26 @@ function isBanioCategory(category: string): boolean {
 }
 
 function Inventario() {
+  const { user } = useRouteContext({ from: "/_authenticated" });
+  const canSeeInventoryValue = permissionsFor(user?.role).isAdmin;
   const qc = useQueryClient();
-  const inv = useQuery(inventoryQuery);
-  const invSummary = useQuery(inventorySummaryQuery);
+  const locationsQ = useQuery({ queryKey: ["locations"], queryFn: getLocations });
+  const activeLocations = (locationsQ.data?.items ?? []).filter((x) => x.active);
+  const [workingLocationId, setWorkingLocationId] = useState("");
+  useEffect(() => {
+    const active = (locationsQ.data?.items ?? []).filter((x) => x.active);
+    const picked = pickWorkingLocation(active, readWorkingLocationId());
+    if (!picked) return;
+    setWorkingLocationId((prev) => {
+      const next = active.some((x) => x.id === prev) ? prev : picked.id;
+      writeWorkingLocationId(next);
+      return next;
+    });
+  }, [locationsQ.data]);
+  const workingLocation = pickWorkingLocation(activeLocations, workingLocationId);
+  const locationId = workingLocation?.id || "";
+  const inv = useQuery(inventoryAtLocationQuery(locationId));
+  const invSummary = useQuery(inventorySummaryAtLocationQuery(locationId));
   const cats = useQuery(inventoryCategoriesQuery);
   const [q, setQ] = useState("");
   const [editing, setEditing] = useState<InventoryItem | "new" | null>(null);
@@ -345,30 +379,78 @@ function Inventario() {
   const [showNewCategory, setShowNewCategory] = useState(false);
   const [costOpen, setCostOpen] = useState<Record<string, boolean>>({});
   const [pendingDelete, setPendingDelete] = useState<InventoryItem | null>(null);
+  const [nameSuggestOpen, setNameSuggestOpen] = useState(false);
+  const nameSuggestRef = useRef<HTMLDivElement>(null);
   const selectedId = editing && editing !== "new" ? editing.id : null;
-  const moves = useQuery(inventoryMovementsQuery(selectedId, movePage));
+  const moves = useQuery(inventoryMovementsQuery(selectedId, movePage, locationId || undefined));
 
   useEffect(() => {
     setMovePage(0);
   }, [selectedId]);
 
-  const items = (inv.data ?? []).filter((i) =>
-    `${i.name} ${i.category ?? ""}`.toLowerCase().includes(q.toLowerCase()),
-  );
+  const catalog = inv.data ?? [];
+  const items = catalog.filter((i) => {
+    const hay = `${i.name} ${i.category ?? ""}`.toLowerCase().includes(q.toLowerCase());
+    if (!hay) return false;
+    if (q.trim()) return true;
+    return Number(i.quantity) > 0 || Boolean(i.stocked_here);
+  });
 
   const liveItem = useMemo(() => {
     if (!selectedId) return null;
-    return (inv.data ?? []).find((i) => i.id === selectedId) ?? (editing !== "new" ? editing : null);
-  }, [inv.data, selectedId, editing]);
+    return catalog.find((i) => i.id === selectedId) ?? (editing !== "new" ? editing : null);
+  }, [catalog, selectedId, editing]);
 
   const soon = new Date();
   soon.setMonth(soon.getMonth() + 3);
-  const outOfStock = (inv.data ?? []).filter((i) => Number(i.quantity) === 0);
-  const expiring = (inv.data ?? []).filter((i) => {
+  const scoped = catalog.filter((i) => Number(i.quantity) > 0 || Boolean(i.stocked_here));
+  const outOfStock = scoped.filter((i) => Number(i.quantity) === 0);
+  const expiring = scoped.filter((i) => {
     const exp = nextExpiry(i);
     return exp && Number(i.quantity) > 0 && new Date(exp) <= soon;
   });
   const totalValue = invSummary.data?.total_cost_value ?? 0;
+  const nameNeedle = form.name.trim().toLowerCase();
+  const nameSuggestions =
+    editing === "new" && nameSuggestOpen && nameNeedle.length >= 2
+      ? catalog
+          .filter((i) => {
+            const n = i.name.toLowerCase();
+            if (n === nameNeedle) return false;
+            return n.includes(nameNeedle);
+          })
+          .slice(0, 8)
+      : [];
+
+  useEffect(() => {
+    if (!nameSuggestOpen) return;
+    const onDoc = (e: MouseEvent) => {
+      if (!nameSuggestRef.current?.contains(e.target as Node)) {
+        setNameSuggestOpen(false);
+      }
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setNameSuggestOpen(false);
+    };
+    document.addEventListener("mousedown", onDoc);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDoc);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [nameSuggestOpen]);
+
+  const applyNameSuggestion = (item: InventoryItem) => {
+    setShowNewCategory(false);
+    setNameSuggestOpen(false);
+    if (isStockedHere(item)) {
+      setForm(toForm(item));
+      setEditing(item);
+      return;
+    }
+    setForm(toCatalogForm(item));
+    setEditing("new");
+  };
 
   const categoryOptions = useMemo(() => {
     const names = new Set((cats.data ?? []).map((c) => c.name));
@@ -450,6 +532,7 @@ function Inventario() {
           sku: null,
           shoot_markup: 1,
           quantity: initialQty,
+          location_id: locationId || null,
         } as Parameters<typeof createInventoryItem>[0]);
       }
       if (editing && typeof editing === "object") {
@@ -457,7 +540,7 @@ function Inventario() {
         if (editing.sku) patch.sku = editing.sku;
         patch.shoot_markup = 1;
         const saved = await patchInventoryItem(editing.id, patch);
-        const currentUnits = packagesOf(saved);
+        const currentUnits = packagesOf(editing);
         const deltaUnits = Math.round(unitsWanted - currentUnits);
         if (deltaUnits !== 0) {
           await createInventoryMove(editing.id, {
@@ -466,6 +549,7 @@ function Inventario() {
             note: storesTotalContent(saved.unit_kind ?? form.unit_kind)
               ? "Ajuste de envases / packs"
               : "Ajuste de piezas",
+            location_id: locationId || null,
           });
         }
         const pack = Number(saved.pack_size) || packSize;
@@ -484,7 +568,9 @@ function Inventario() {
     },
     onSuccess: async (item) => {
       await qc.invalidateQueries({ queryKey: ["inventory"] });
-      toast.success("Producto guardado");
+      toast.success(
+        item?.reused ? "SKU del catálogo: stock cargado en esta sede" : "Producto guardado",
+      );
       if (item) {
         setForm(toForm(item));
         setEditing(item);
@@ -523,6 +609,7 @@ function Inventario() {
         delta: signed,
         kind: moveKind,
         expires_at: signed > 0 && moveHasExpiry ? moveExpires : null,
+        location_id: locationId || null,
       });
     },
     onSuccess: async () => {
@@ -559,13 +646,30 @@ function Inventario() {
   };
 
   return (
-    <AppShell title="Inventario" subtitle={`${items.length} productos · historial de existencias`}>
+    <AppShell
+      title="Inventario"
+      subtitle={
+        workingLocation
+          ? `Stock de ${workingLocation.name} · el catálogo es el mismo en todas las sedes`
+          : `${items.length} productos · historial de existencias`
+      }
+    >
+      <WorkingLocationBar
+        location={workingLocation}
+        locations={activeLocations}
+        onChange={(id) => {
+          writeWorkingLocationId(id);
+          setWorkingLocationId(id);
+          setEditing(null);
+        }}
+      />
       <div className="mb-4 flex justify-end">
         <Button
           className="rounded-xl"
           onClick={() => {
             setForm(emptyForm());
             setShowNewCategory(false);
+            setNameSuggestOpen(true);
             setEditing("new");
           }}
         >
@@ -574,10 +678,27 @@ function Inventario() {
         </Button>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-3">
-        <StatCard icon={AlertTriangle} label="Productos agotados" value={outOfStock.length} tone="accent" />
-        <StatCard icon={CalendarX} label="Productos por vencer" value={expiring.length} tone="gold" />
-        <StatCard icon={Coins} label="Valor total del inventario" value={cop(totalValue)} tone="primary" />
+      <div className={cn("grid gap-4", canSeeInventoryValue ? "sm:grid-cols-3" : "sm:grid-cols-2")}>
+        <StatCard
+          icon={AlertTriangle}
+          label={workingLocation ? `Agotados en ${workingLocation.name}` : "Productos agotados"}
+          value={outOfStock.length}
+          tone="accent"
+        />
+        <StatCard
+          icon={CalendarX}
+          label={workingLocation ? `Por vencer en ${workingLocation.name}` : "Productos por vencer"}
+          value={expiring.length}
+          tone="gold"
+        />
+        {canSeeInventoryValue ? (
+          <StatCard
+            icon={Coins}
+            label={workingLocation ? `Valor en ${workingLocation.name}` : "Valor total del inventario"}
+            value={cop(totalValue)}
+            tone="primary"
+          />
+        ) : null}
       </div>
 
       <div className="card-soft mt-6 flex items-center gap-3 p-4">
@@ -723,7 +844,17 @@ function Inventario() {
             </table>
             </TooltipProvider>
           </div>
-          {!items.length ? <Empty message="Sin productos que coincidan." /> : null}
+          {!items.length ? (
+            <Empty
+              message={
+                q.trim()
+                  ? "Sin productos que coincidan."
+                  : workingLocation
+                    ? `No hay existencias cargadas en ${workingLocation.name}. Creá o buscá un SKU del catálogo.`
+                    : "Sin productos que coincidan."
+              }
+            />
+          ) : null}
         </div>
 
         {editing ? (
@@ -738,13 +869,63 @@ function Inventario() {
             </div>
 
             <div className="mt-4 grid gap-3">
-              <div className="space-y-1">
+              <div ref={nameSuggestRef} className="relative space-y-1">
                 <Label>Nombre</Label>
                 <Input
                   className="h-11 rounded-xl"
                   value={form.name}
-                  onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
+                  autoComplete="off"
+                  onChange={(e) => {
+                    setNameSuggestOpen(true);
+                    setForm((f) => ({ ...f, name: e.target.value }));
+                  }}
+                  onFocus={() => {
+                    if (editing === "new" && form.name.trim().length >= 2) {
+                      setNameSuggestOpen(true);
+                    }
+                  }}
                 />
+                {nameSuggestions.length ? (
+                  <ul className="absolute z-20 mt-1 max-h-56 w-full overflow-auto rounded-xl border border-border bg-card py-1 shadow-soft">
+                    {nameSuggestions.map((item) => {
+                      const here = Number(item.quantity) || 0;
+                      const all = Number(item.quantity_all ?? here) || 0;
+                      const elsewhere = Math.max(0, all - here);
+                      return (
+                        <li key={item.id}>
+                          <button
+                            type="button"
+                            className="flex w-full flex-col items-start gap-0.5 px-3 py-2 text-left text-sm hover:bg-secondary/70"
+                            onMouseDown={(e) => {
+                              e.preventDefault();
+                              applyNameSuggestion(item);
+                            }}
+                          >
+                            <span className="font-medium">{item.name}</span>
+                            <span className="text-[11px] text-muted-foreground">
+                              {item.category || "Sin categoría"}
+                              {here > 0
+                                ? ` · acá ${stockSummary(item).primary}`
+                                : " · sin stock en esta sede"}
+                              {elsewhere > 0 ? " · hay en otra sede" : ""}
+                            </span>
+                          </button>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                ) : null}
+                {editing === "new" ? (
+                  <p className="text-[11px] text-muted-foreground">
+                    Si el nombre ya existe, se reusa la ficha del producto (categoría, precios,
+                    envase). El stock de esta sede lo cargás vos; no se copia el de otra sede.
+                  </p>
+                ) : Number(liveItem?.quantity_all ?? 0) > Number(liveItem?.quantity ?? 0) ? (
+                  <p className="text-[11px] text-muted-foreground">
+                    Este SKU también tiene existencias en otra sede. Acá solo ves y movés el stock
+                    de {workingLocation?.name ?? "esta sede"}.
+                  </p>
+                ) : null}
               </div>
 
               <div className="space-y-1">
