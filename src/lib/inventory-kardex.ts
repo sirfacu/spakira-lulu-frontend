@@ -1,22 +1,46 @@
 /** Textos del historial de existencias (kardex). */
 
-export function kardexActionLabel(kind: string, delta: number): string {
-  const n = Math.abs(Number(delta) || 0);
-  const units = n === 1 ? "unidad" : "unidades";
-  if (kind === "venta_cita" || kind === "venta_mostrador") {
-    return `Venta ${n} ${units}`;
+import {
+  formatContentQty,
+  formatPackagesLabel,
+  isPackUnit,
+  isVolumeUnit,
+  storedToPresentation,
+} from "./inventory-qty";
+
+export type KardexUnit = {
+  unit_kind?: string | null;
+  pack_size?: number | null;
+};
+
+export function kardexQtyPhrase(stored: number, unit?: KardexUnit): string {
+  const n = Math.abs(Number(stored) || 0);
+  const kind = (unit?.unit_kind || "unidad").toLowerCase();
+  const pack = Number(unit?.pack_size) || 1;
+  if (isVolumeUnit(kind)) {
+    const packs = storedToPresentation(kind, pack, n);
+    return `${formatPackagesLabel(packs, kind)} (${formatContentQty(n, kind)})`;
   }
-  if (kind === "compra") return `Alta de stock ${n} ${units}`;
-  if (kind === "merma") return `Baja ${n} ${units}`;
-  if (kind === "consumo_servicio") return `Consumo servicio ${n} ${units}`;
-  if (delta > 0) return `Alta de stock ${n} ${units}`;
-  return `Ajuste −${n} ${units}`;
+  if (isPackUnit(kind)) {
+    return formatPackagesLabel(storedToPresentation(kind, pack, n), kind);
+  }
+  return n === 1 ? "1 unidad" : `${n} unidades`;
 }
 
-export function kardexBalanceLabel(quantityAfter: number): string {
-  const n = Number(quantityAfter) || 0;
-  const word = n === 1 ? "existencia" : "existencias";
-  return `Inventario ${n} ${word}`;
+export function kardexActionLabel(kind: string, delta: number, unit?: KardexUnit): string {
+  const qty = kardexQtyPhrase(delta, unit);
+  if (kind === "venta_cita" || kind === "venta_mostrador") {
+    return `Venta ${qty}`;
+  }
+  if (kind === "compra") return `Alta de stock ${qty}`;
+  if (kind === "merma") return `Baja ${qty}`;
+  if (kind === "consumo_servicio") return `Consumo servicio ${qty}`;
+  if (delta > 0) return `Alta de stock ${qty}`;
+  return `Ajuste −${qty}`;
+}
+
+export function kardexBalanceLabel(quantityAfter: number, unit?: KardexUnit): string {
+  return `Saldo ${kardexQtyPhrase(quantityAfter, unit)}`;
 }
 
 export function formatKardexWhen(iso: string | null | undefined): string {
@@ -37,5 +61,5 @@ export function kardexActor(name?: string | null, email?: string | null): string
   return "Sistema";
 }
 
-export const KARDEX_HELP =
-  "Cada cambio de stock queda asentado: quién lo hizo, cuántas unidades y el saldo que quedó. Las ventas descuentan primero lo que caduca antes (el lote más viejo).";
+export const KARDEX_TITLE = "Kardex";
+export const KARDEX_HELP = "Altas, bajas y ajustes de esta sede. Lo que caduca primero se vende primero.";

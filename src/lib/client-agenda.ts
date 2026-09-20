@@ -97,3 +97,30 @@ export function slotWhenLabel(dateYmd: string, hour: number): string {
   });
   return `${day} · ${String(hour).padStart(2, "0")}:00`;
 }
+
+/** Orden de la ficha del cliente: mascota, sede, servicio. */
+export const CLIENT_BOOKING_FIELD_ORDER = ["pet", "location", "service"] as const;
+
+export function clientCreateAppointmentBody(input: {
+  petId: string;
+  serviceId: string;
+  locationId: string;
+  startsAtIso: string;
+  locationsAvailable?: number;
+}) {
+  const pet_id = input.petId.trim();
+  const service_id = input.serviceId.trim();
+  const location_id = input.locationId.trim();
+  if (!pet_id) throw new Error("Elegí mascota");
+  if (!service_id) throw new Error("Elegí el servicio");
+  if ((input.locationsAvailable ?? 1) > 0 && !location_id) {
+    throw new Error("Elegí la sede");
+  }
+  return {
+    pet_id,
+    service_id,
+    ...(location_id ? { location_id } : {}),
+    starts_at: input.startsAtIso,
+    sync_google: false as const,
+  };
+}

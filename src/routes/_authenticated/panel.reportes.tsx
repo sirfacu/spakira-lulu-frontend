@@ -34,9 +34,11 @@ import {
   deleteFixedCostEntry,
   appointmentCostDetailQuery,
   staffQuery,
+  getLocations,
   type FixedCostEntry,
   type ServiceMarginLine,
 } from "@/lib/spa-queries";
+import { WorkingLocationBar } from "@/components/working-location-bar";
 import { cop, dayKey, shortDate } from "@/lib/format";
 import {
   DollarSign,
@@ -94,11 +96,19 @@ function monthStartEnd(ym: string): { from: string; to: string } {
   };
 }
 
+const ALL_REPORTS = "todas";
+
 function Reportes() {
   const { user } = useRouteContext({ from: "/_authenticated" });
   const canFinance = permissionsFor(user?.role).canViewSalesAnalytics;
   const [tab, setTab] = useState("resumen");
   const [yearMonth, setYearMonth] = useState(currentYearMonth);
+  const [reportLocationId, setReportLocationId] = useState(ALL_REPORTS);
+  const locationsQ = useQuery({ queryKey: ["locations"], queryFn: getLocations });
+  const activeLocations = (locationsQ.data?.items ?? []).filter((x) => x.active);
+  const scopedLocationId = reportLocationId === ALL_REPORTS ? null : reportLocationId;
+  const selectedLocation =
+    activeLocations.find((x) => x.id === reportLocationId) ?? activeLocations[0] ?? null;
 
   const range = useMemo(() => monthStartEnd(yearMonth), [yearMonth]);
 
@@ -107,6 +117,16 @@ function Reportes() {
       title="Reportes"
       subtitle="Margen de servicios, gastos y resultado del mes — no confundir margen con utilidad neta"
     >
+      {activeLocations.length ? (
+        <WorkingLocationBar
+          noun="Reportes"
+          location={selectedLocation}
+          locations={activeLocations}
+          selectedId={reportLocationId}
+          allOption={{ id: ALL_REPORTS, label: "Todas las sedes" }}
+          onChange={setReportLocationId}
+        />
+      ) : null}
       <div className="mb-4 flex flex-wrap items-end gap-3">
         <div className="space-y-1">
           <Label className="text-xs">Mes</Label>
@@ -134,23 +154,35 @@ function Reportes() {
         </TabsList>
 
         <TabsContent value="resumen" className="space-y-6">
-          <ResumenTab canFinance={canFinance} />
+          <ResumenTab canFinance={canFinance} locationId={scopedLocationId} />
         </TabsContent>
         <TabsContent value="margen" className="space-y-6">
-          {canFinance ? <MargenTab dateFrom={range.from} dateTo={range.to} /> : null}
+          {canFinance ? (
+            <MargenTab
+              dateFrom={range.from}
+              dateTo={range.to}
+              locationId={scopedLocationId}
+            />
+          ) : null}
         </TabsContent>
         <TabsContent value="fijos" className="space-y-6">
-          {canFinance ? <FijosTab yearMonth={yearMonth} /> : null}
+          {canFinance ? <FijosTab yearMonth={yearMonth} scoped={Boolean(scopedLocationId)} /> : null}
         </TabsContent>
         <TabsContent value="mes" className="space-y-6">
-          {canFinance ? <MesTab yearMonth={yearMonth} /> : null}
+          {canFinance ? <MesTab yearMonth={yearMonth} locationId={scopedLocationId} /> : null}
         </TabsContent>
       </Tabs>
     </AppShell>
   );
 }
 
-function ResumenTab({ canFinance }: { canFinance: boolean }) {
+function ResumenTab({
+  canFinance,
+  locationId,
+}: {
+  canFinance: boolean;
+  locationId: string | null;
+}) {
   const sales = useQuery({
     ...salesQuery,
     enabled: canFinance,
@@ -159,7 +191,9 @@ function ResumenTab({ canFinance }: { canFinance: boolean }) {
   const pets = useQuery(petsQuery);
   const owners = useQuery(ownersQuery);
 
-  const all = (sales.data ?? []).filter((s) => isActiveSale(s.status));
+  const all = (sales.data ?? []).filter(
+    (s) => isActiveSale(s.status) && (!locationId || s.location_id === locationId),
+  );
   const trend = Array.from({ length: 14 }).map((_, idx) => {
     const d = new Date();
     d.setDate(d.getDate() - (13 - idx));
@@ -172,8 +206,11 @@ function ResumenTab({ canFinance }: { canFinance: boolean }) {
     };
   });
 
+  const scopedAppts = (appts.data ?? []).filter(
+    (a) => !locationId || a.location_id === locationId,
+  );
   const byService = new Map<string, number>();
-  for (const a of appts.data ?? []) {
+  for (const a of scopedAppts) {
     const n = a.services?.name ?? "Otro";
     byService.set(n, (byService.get(n) ?? 0) + Number(a.price));
   }
@@ -197,7 +234,7 @@ function ResumenTab({ canFinance }: { canFinance: boolean }) {
         <StatCard
           icon={CalendarCheck}
           label="Citas registradas"
-          value={(appts.data ?? []).length}
+          value={scopedAppts.length}
           tone="primary"
         />
         <StatCard icon={Dog} label="Mascotas activas" value={(pets.data ?? []).length} tone="mint" />
@@ -238,8 +275,16 @@ function ResumenTab({ canFinance }: { canFinance: boolean }) {
   );
 }
 
-function MargenTab({ dateFrom, dateTo }: { dateFrom: string; dateTo: string }) {
-  const q = useQuery(serviceMarginsQuery(dateFrom, dateTo));
+function MargenTab({
+  dateFrom,
+  dateTo,
+  locationId,
+}: {
+  dateFrom: string;
+  dateTo: string;
+  locationId: string | null;
+}) {
+  const q = useQuery(serviceMarginsQuery(dateFrom, dateTo, locationId));
   const s = q.data?.summary;
   const [selected, setSelected] = useState<ServiceMarginLine | null>(null);
 
@@ -520,7 +565,7 @@ function AppointmentCostDialog({
   );
 }
 
-function FijosTab({ yearMonth }: { yearMonth: string }) {
+function FijosTab({ yearMonth, scoped }: { yearMonth: string; scoped: boolean }) {
   const qc = useQueryClient();
   const q = useQuery(fixedCostsQuery(yearMonth));
   const staffQ = useQuery(staffQuery);
@@ -583,8 +628,14 @@ function FijosTab({ yearMonth }: { yearMonth: string }) {
   return (
     <>
       <p className="text-xs text-muted-foreground">
-        Nombre y monto de los gastos del mes. El total entra en Resultado del mes.
+        Nombre y monto de los gastos del mes. El total entra en Resultado del mes
+        {scoped ? " solo en la vista Todas las sedes" : ""}.
       </p>
+      {scoped ? (
+        <p className="rounded-2xl border border-border bg-secondary/40 px-4 py-3 text-sm text-muted-foreground">
+          Los gastos fijos no se parten por sede: arriendo y servicios son de toda la instalación.
+        </p>
+      ) : null}
       {hasNomina && staffOnPayroll ? (
         <p className="rounded-2xl border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm">
           Hay una línea <strong>Nómina</strong> y también gente en Personal con pago fijo o mixto.
@@ -745,14 +796,15 @@ function PnlLine({
   );
 }
 
-function MesTab({ yearMonth }: { yearMonth: string }) {
-  const q = useQuery(monthFinanceQuery(yearMonth));
+function MesTab({ yearMonth, locationId }: { yearMonth: string; locationId: string | null }) {
+  const q = useQuery(monthFinanceQuery(yearMonth, locationId));
   const d = q.data;
   const sm = d?.service_margins;
   const costs = d?.cost_breakdown;
+  const includeFixed = !locationId && d?.fixed_costs.included_in_operating !== false;
   const insumos = costs?.insumos ?? sm?.materials_cost ?? 0;
   const profesionales = costs?.profesionales ?? sm?.labor_cost ?? 0;
-  const fijos = costs?.fijos ?? d?.fixed_costs.total ?? 0;
+  const fijos = includeFixed ? (costs?.fijos ?? d?.fixed_costs.total ?? 0) : 0;
   const extrasCost = costs?.adicionales_cost ?? sm?.extras_cost ?? 0;
   const extrasRev = sm?.extras_revenue ?? 0;
   const extrasMargin = sm?.extras_margin ?? 0;
@@ -779,6 +831,12 @@ function MesTab({ yearMonth }: { yearMonth: string }) {
         Luego extras de vitrina, mostrador y gastos fijos (arriendo, día a día, servicios). El
         prorrateo de fijos por cita es solo un indicador.
       </p>
+      {locationId ? (
+        <p className="rounded-2xl border border-border bg-secondary/40 px-4 py-3 text-sm text-muted-foreground">
+          {d?.indicators.note ||
+            "Vista de una sede: el resultado no resta arriendo ni servicios (son de toda la instalación)."}
+        </p>
+      ) : null}
       {q.isLoading ? <p className="text-sm text-muted-foreground">Cargando…</p> : null}
       {q.isError ? (
         <p className="text-sm text-destructive">
@@ -806,7 +864,11 @@ function MesTab({ yearMonth }: { yearMonth: string }) {
               icon={Wallet}
               label="Gastos fijos"
               value={cop(fijos)}
-              hint="Arriendo, servicios, conductor, día a día"
+              hint={
+                includeFixed
+                  ? "Arriendo, servicios, conductor, día a día"
+                  : "De toda la instalación; no se restan acá"
+              }
               tone="accent"
             />
             <StatCard

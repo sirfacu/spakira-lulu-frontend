@@ -555,7 +555,11 @@ function Ventas() {
           {saleDetailQ.isLoading ? (
             <p className="mt-3 text-sm text-muted-foreground">Cargando líneas…</p>
           ) : saleDetailQ.isError ? (
-            <p className="mt-3 text-sm text-destructive">No se pudo cargar esta venta.</p>
+            <p className="mt-3 text-sm text-destructive">
+              {saleDetailQ.error instanceof Error
+                ? saleDetailQ.error.message
+                : "No se pudo cargar esta venta."}
+            </p>
           ) : saleDetail ? (
             <div className="mt-4 space-y-4">
               <div className="grid gap-1 text-sm">

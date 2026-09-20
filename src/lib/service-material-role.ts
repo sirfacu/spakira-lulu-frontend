@@ -1,4 +1,6 @@
 /** Roles líquidos usados para dosis / perfil de raza. */
+import { formatContentQty, isVolumeUnit } from "./inventory-qty";
+
 export const LIQUID_MATERIAL_ROLES = ["shampoo", "conditioner"] as const;
 
 export const QTY_REQUIRED_ROLES = [] as const;
@@ -42,6 +44,20 @@ export function visitCareSalePrice(item: {
   const pack = Number(item.sale_price) || 0;
   const size = Number(item.pack_size) || 1;
   return pack > 0 && size > 0 ? pack / size : 0;
+}
+
+/** Etiqueta del combo en agenda: stock de ESTA sede, no el catálogo global. */
+export function visitCarePickerLabel(item: {
+  name: string;
+  unit_kind?: string | null;
+  available?: number | null;
+  quantity?: number | null;
+}): string {
+  const avail = Number(item.available ?? item.quantity) || 0;
+  const unit = item.unit_kind || "ml";
+  if (avail <= 0) return `${item.name} · sin stock en esta sede`;
+  if (isVolumeUnit(unit)) return `${item.name} · ${formatContentQty(avail, unit)} libres`;
+  return `${item.name} · ${avail} libres`;
 }
 
 export function matchesVisitCareRole(item: InferItem, role: "medicated" | "dye"): boolean {

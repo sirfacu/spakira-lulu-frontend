@@ -46,6 +46,7 @@ import {
 import {
   formatKardexWhen,
   KARDEX_HELP,
+  KARDEX_TITLE,
   kardexActionLabel,
   kardexActor,
   kardexBalanceLabel,
@@ -65,7 +66,7 @@ import {
 import { requirePathAccess } from "@/lib/route-access";
 import { permissionsFor } from "@/lib/roles";
 import { isWearCategory, normalizeCategory } from "@/lib/service-material-role";
-import { needsSalePrice } from "@/lib/inventory-pricing";
+import { inventoryLineValue, needsSalePrice, purchaseCostNoun } from "@/lib/inventory-pricing";
 import { WorkingLocationBar } from "@/components/working-location-bar";
 import {
   pickWorkingLocation,
@@ -325,6 +326,7 @@ function Inventario() {
   const [form, setForm] = useState<ItemForm>(emptyForm());
   const [moveDelta, setMoveDelta] = useState("1");
   const [moveKind, setMoveKind] = useState<"compra" | "merma" | "ajuste">("compra");
+  const [moveCost, setMoveCost] = useState("");
   const [moveHasExpiry, setMoveHasExpiry] = useState(false);
   const [moveExpires, setMoveExpires] = useState("");
   const [movePage, setMovePage] = useState(0);
@@ -567,9 +569,19 @@ function Inventario() {
       if (signed > 0 && moveHasExpiry && !moveExpires) {
         throw new Error("Indicá la fecha de caducidad de este ingreso");
       }
+      const costIn = Number(moveCost);
+      const note =
+        moveKind === "compra" && costIn > 0
+          ? `Costo ${costIn} / ${purchaseCostNoun(form.unit_kind)}`
+          : undefined;
+      if (moveKind === "compra" && costIn > 0) {
+        await patchInventoryItem(selectedId, { purchase_price: costIn });
+      }
       return createInventoryMove(selectedId, {
         delta: signed,
         kind: moveKind,
+        as_packs: true,
+        note,
         expires_at: signed > 0 && moveHasExpiry ? moveExpires : null,
         location_id: locationId || null,
       });
@@ -579,6 +591,7 @@ function Inventario() {
       await qc.invalidateQueries({ queryKey: ["inventory", selectedId, "movements"] });
       setMoveHasExpiry(false);
       setMoveExpires("");
+      setMoveCost("");
       toast.success("Existencias actualizadas");
     },
     onError: (err: Error) => toast.error(err.message),
@@ -690,7 +703,7 @@ function Inventario() {
                   >
                     Mínimo
                   </th>
-                  <th className="border-b border-border bg-secondary px-5 py-3.5 font-semibold">Costo</th>
+                  <th className="border-b border-border bg-secondary px-5 py-3.5 font-semibold">Costo / valor</th>
                   <th className="border-b border-border bg-secondary px-5 py-3.5 font-semibold">Precio venta</th>
                   <th className="border-b border-border bg-secondary px-5 py-3.5 font-semibold">Estado</th>
                 </tr>
@@ -778,8 +791,24 @@ function Inventario() {
                         {formatMinCell(i)}
                       </td>
                       <td className="border-b border-border/60 px-5 py-3.5 text-muted-foreground">
-                        <div className="flex items-center gap-1.5">
-                          <span className="tabular-nums">{showCost ? cop(i.purchase_price) : "******"}</span>
+                        <div className="flex items-start gap-1.5">
+                          <div className="min-w-0">
+                            {showCost ? (
+                              <>
+                                <span className="tabular-nums">
+                                  {cop(i.purchase_price)} / {purchaseCostNoun(i.unit_kind)}
+                                </span>
+                                <span className="mt-0.5 block text-xs font-medium text-foreground tabular-nums">
+                                  Valor {cop(i.cost_value ?? inventoryLineValue(i))}
+                                </span>
+                              </>
+                            ) : (
+                              <>
+                                <span>******</span>
+                                <span className="mt-0.5 block text-xs">******</span>
+                              </>
+                            )}
+                          </div>
                           <button
                             type="button"
                             className="rounded-md p-1 text-muted-foreground hover:bg-secondary hover:text-foreground"
@@ -1172,18 +1201,46 @@ function Inventario() {
               )}
 
               <div className="space-y-1">
-                <Label>Costo</Label>
+                <Label>Costo de un {purchaseCostNoun(form.unit_kind)}</Label>
                 <Input
                   type="number"
                   className="h-11 rounded-xl"
                   value={form.purchase_price}
                   onChange={(e) => setForm((f) => ({ ...f, purchase_price: e.target.value }))}
                 />
+                  <p className="text-xs text-muted-foreground">
+                    De un {purchaseCostNoun(form.unit_kind)}. El valor es cantidad × este costo, no × las
+                    piezas de adentro.
+                  </p>
+                {(() => {
+                  const storedQty = presentationToStored(
+                    form.unit_kind,
+                    Number(form.pack_size) || 1,
+                    Number(form.units_qty) || 0,
+                  );
+                  const packs = Number(form.units_qty) || 0;
+                  const cost = Number(form.purchase_price) || 0;
+                  const total = inventoryLineValue({
+                    quantity: storedQty,
+                    purchase_price: cost,
+                    pack_size: Number(form.pack_size) || 1,
+                    unit_kind: form.unit_kind,
+                  });
+                  if (!(cost > 0) || packs <= 0) return null;
+                  return (
+                    <p className="text-sm font-medium tabular-nums text-foreground">
+                      Valor en esta sede {cop(total)}
+                      <span className="ml-1 text-xs font-normal text-muted-foreground">
+                        ({packs} × {cop(cost)})
+                      </span>
+                    </p>
+                  );
+                })()}
               </div>
 
               {saleRequired ? (
                 <div className="space-y-1">
-                  <Label>Precio venta</Label>
+                  <Label>Precio venta de un {purchaseCostNoun(form.unit_kind)}</Label>
                   <Input
                     type="number"
                     className="h-11 rounded-xl"
@@ -1191,7 +1248,7 @@ function Inventario() {
                     onChange={(e) => setForm((f) => ({ ...f, sale_price: e.target.value }))}
                   />
                   <p className="text-xs text-muted-foreground">
-                    Obligatorio para venta y para medicado/tinte cobrados en la cita.
+                    Lo que cobrás por un {purchaseCostNoun(form.unit_kind)}, no por pieza.
                   </p>
                 </div>
               ) : null}
@@ -1242,7 +1299,7 @@ function Inventario() {
 
             {selectedId ? (
               <div className="mt-6 border-t border-border pt-4">
-                <p className="text-sm font-medium">Historial de existencias</p>
+                <p className="text-sm font-medium">{KARDEX_TITLE}</p>
                 <p className="mt-1 text-xs text-muted-foreground">{KARDEX_HELP}</p>
                 <div className="mt-3 flex flex-wrap items-end gap-2">
                   <div className="space-y-1">
@@ -1266,6 +1323,18 @@ function Inventario() {
                       onChange={(e) => setMoveDelta(e.target.value)}
                     />
                   </div>
+                  {moveKind === "compra" ? (
+                    <div className="space-y-1">
+                      <Label>Costo / {purchaseCostNoun(form.unit_kind)} (opcional)</Label>
+                      <Input
+                        type="number"
+                        className="h-11 w-36 rounded-xl"
+                        placeholder={form.purchase_price || "igual que ahora"}
+                        value={moveCost}
+                        onChange={(e) => setMoveCost(e.target.value)}
+                      />
+                    </div>
+                  ) : null}
                   <Button
                     variant="outline"
                     className="rounded-xl"
@@ -1309,12 +1378,21 @@ function Inventario() {
                           {kardexActor(m.actor_name, m.actor_email)}
                         </span>
                       </p>
-                      <p className="text-foreground">{kardexActionLabel(m.kind, m.delta)}</p>
-                      <p className="text-muted-foreground">{kardexBalanceLabel(m.quantity_after)}</p>
+                      <p className="text-foreground">
+                        {kardexActionLabel(m.kind, m.delta, liveItem ?? undefined)}
+                      </p>
+                      <p className="text-muted-foreground">
+                        {kardexBalanceLabel(m.quantity_after, liveItem ?? undefined)}
+                      </p>
+                      {m.note ? (
+                        <p className="text-xs text-muted-foreground">{m.note}</p>
+                      ) : null}
                     </li>
                   ))}
                   {!moveItems.length ? (
-                    <li className="text-xs text-muted-foreground">Todavía no hay cambios de stock.</li>
+                    <li className="text-xs text-muted-foreground">
+                      Todavía no hay cambios de stock en {workingLocation?.name ?? "esta sede"}.
+                    </li>
                   ) : null}
                 </ul>
                 {moveTotal > moveLimit ? (

@@ -4,6 +4,7 @@ import { Input } from "@/components/ui/input";
 import { cop } from "@/lib/format";
 import {
   visitCareItems,
+  visitCarePickerLabel,
   visitCareSalePrice,
 } from "@/lib/service-material-role";
 import type { InventoryItem } from "@/lib/spa-queries";
@@ -105,7 +106,7 @@ function RolePicker({
               <option value="">Agregar producto</option>
               {items.map((item) => (
                 <option key={item.id} value={item.id}>
-                  {item.name}
+                  {visitCarePickerLabel(item)}
                 </option>
               ))}
             </select>
@@ -284,7 +285,7 @@ function VisitCareQuickAdd({
             <option value="">Elegir producto</option>
             {items.map((i) => (
               <option key={i.id} value={i.id}>
-                {i.name}
+                {visitCarePickerLabel(i)}
               </option>
             ))}
           </select>

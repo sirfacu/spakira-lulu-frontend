@@ -1339,7 +1339,7 @@ export async function createSale(input: {
 export async function updateAppointmentStatus(
   id: string,
   status: string,
-  extra?: {
+    extra?: {
     price?: number;
     medicated_declared?: boolean;
     colorimetry_declared?: boolean;
@@ -1348,6 +1348,7 @@ export async function updateAppointmentStatus(
       quantity: number;
       material_role: string;
     }[];
+    cancel_reason?: string;
   },
 ) {
   await api(`/appointments/${id}/status`, {
@@ -1362,6 +1363,7 @@ export async function updateAppointmentStatus(
         ? { colorimetry_declared: extra.colorimetry_declared }
         : {}),
       ...(extra?.visit_care_lines?.length ? { visit_care_lines: extra.visit_care_lines } : {}),
+      ...(extra?.cancel_reason ? { cancel_reason: extra.cancel_reason } : {}),
     },
   });
 }
@@ -1385,6 +1387,7 @@ export async function updateAppointment(
       quantity: number;
       material_role: string;
     }[];
+    cancel_reason?: string;
   },
 ) {
   return api<Appointment & { email_notifications?: { sent: boolean; email?: string }[] }>(
@@ -2456,9 +2459,15 @@ export type FixedCostTemplate = {
 
 export type MonthFinanceSummary = {
   year_month: string;
+  location_id?: string | null;
   service_margins: ServiceMarginsResponse["summary"];
   sales: { cita: number; mostrador: number; mostrador_cost?: number; mostrador_margin?: number; total: number };
-  fixed_costs: { total: number; entries: FixedCostEntry[] };
+  fixed_costs: {
+    total: number;
+    entries: FixedCostEntry[];
+    scope?: string;
+    included_in_operating?: boolean;
+  };
   operating_result: number;
   indicators: {
     proration_fixed_per_appointment: number | null;
@@ -2518,11 +2527,19 @@ export type AppointmentCostDetail = {
   extras_margin?: number;
 };
 
-export function serviceMarginsQuery(dateFrom: string, dateTo: string) {
+export function financeLocationParam(locationId?: string | null): string | undefined {
+  const v = (locationId || "").trim();
+  if (!v || v === "todas") return undefined;
+  return v;
+}
+
+export function serviceMarginsQuery(dateFrom: string, dateTo: string, locationId?: string | null) {
+  const loc = financeLocationParam(locationId);
   return queryOptions({
-    queryKey: ["finance-service-margins", dateFrom, dateTo],
+    queryKey: ["finance-service-margins", dateFrom, dateTo, loc || "todas"],
     queryFn: () => {
       const q = new URLSearchParams({ date_from: dateFrom, date_to: dateTo });
+      if (loc) q.set("location_id", loc);
       return api<ServiceMarginsResponse>(`/finance/service-margins?${q}`);
     },
   });
@@ -2539,10 +2556,14 @@ export function appointmentCostDetailQuery(appointmentId: string | null) {
   });
 }
 
-export function monthFinanceQuery(yearMonth: string) {
+export function monthFinanceQuery(yearMonth: string, locationId?: string | null) {
+  const loc = financeLocationParam(locationId);
   return queryOptions({
-    queryKey: ["finance-month", yearMonth],
-    queryFn: () => api<MonthFinanceSummary>(`/finance/month/${yearMonth}`),
+    queryKey: ["finance-month", yearMonth, loc || "todas"],
+    queryFn: () => {
+      const q = loc ? `?location_id=${encodeURIComponent(loc)}` : "";
+      return api<MonthFinanceSummary>(`/finance/month/${yearMonth}${q}`);
+    },
   });
 }
 

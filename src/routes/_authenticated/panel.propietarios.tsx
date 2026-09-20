@@ -34,18 +34,28 @@ import { LoyaltyCard } from "@/components/loyalty-card";
 
 export const Route = createFileRoute("/_authenticated/panel/propietarios")({
   beforeLoad: requirePathAccess("/panel/propietarios"),
-  head: () => ({
-    meta: [
-      { title: "Usuarios | Spa Kira" },
-      {
-        name: "description",
-        content:
-          "Cuentas de acceso, ficha de cada persona y (admin) auditoría.",
-      },
-      { property: "og:title", content: "Usuarios | Spa Kira" },
-      { property: "og:description", content: "Directorio de usuarios del spa canino y felino." },
-    ],
-  }),
+  head: ({ context }) => {
+    const cliente = normalizeRole(context.user?.role) === "cliente";
+    const title = cliente ? "Mi perfil | Spa Kira" : "Usuarios | Spa Kira";
+    return {
+      meta: [
+        { title },
+        {
+          name: "description",
+          content: cliente
+            ? "Tus datos, notificaciones y perfil en Spa Kira."
+            : "Cuentas de acceso, ficha de cada persona y (admin) auditoría.",
+        },
+        { property: "og:title", content: title },
+        {
+          property: "og:description",
+          content: cliente
+            ? "Tus datos y notificaciones."
+            : "Directorio de usuarios del spa canino y felino.",
+        },
+      ],
+    };
+  },
   component: Propietarios,
 });
 
@@ -274,7 +284,7 @@ function Propietarios() {
 
   if (perms.isCliente) {
     return (
-      <AppShell title="Usuarios" subtitle="Tu información y notificaciones">
+      <AppShell title="Mi perfil" subtitle="Tu información y notificaciones">
         <UserSelfProfile />
       </AppShell>
     );

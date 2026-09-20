@@ -9,6 +9,7 @@ import {
   panoletaFamilyKey,
   parsePanoletaSize,
   visitCareItems,
+  visitCarePickerLabel,
   visitCareSalePrice,
 } from "../service-material-role";
 
@@ -86,5 +87,14 @@ describe("service-material-role", () => {
     expect(visitCareItems(items, "medicated").map((i) => i.name)).toEqual(["Asuntol"]);
     expect(visitCareItems(items, "dye").map((i) => i.name)).toEqual(["Pigmento rojo"]);
     expect(visitCareSalePrice(items[1])).toBe(400);
+  });
+
+  it("labels visit-care picker with stock of this sede", () => {
+    expect(
+      visitCarePickerLabel({ name: "Asuntol", unit_kind: "ml", available: 4000 }),
+    ).toBe("Asuntol · 4000 ml libres");
+    expect(
+      visitCarePickerLabel({ name: "Asuntol", unit_kind: "ml", available: 0, quantity: 0 }),
+    ).toBe("Asuntol · sin stock en esta sede");
   });
 });

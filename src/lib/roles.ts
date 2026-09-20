@@ -63,9 +63,32 @@ export function displayRole(role: string | undefined | null): string {
 export function pathsForModules(modules: string[] | undefined, role?: string | null): string[] {
   if (modules && modules.length) {
     const allow = new Set(modules);
-    return PANEL_MODULES.filter((m) => allow.has(m.id)).map((m) => m.path);
+    const paths = PANEL_MODULES.filter((m) => allow.has(m.id)).map((m) => m.path);
+    return sortPanelNavPaths(paths, role);
   }
-  return [...ROLE_TABS[normalizeRole(role)]];
+  return sortPanelNavPaths([...ROLE_TABS[normalizeRole(role)]], role);
+}
+
+/** Orden del menú cliente: Servicios y después Mi perfil. */
+export function sortPanelNavPaths(
+  paths: string[],
+  role?: string | null,
+): string[] {
+  if (normalizeRole(role) !== "cliente") return [...paths];
+  const order: readonly string[] = ROLE_TABS.cliente;
+  const rank = (path: string) => {
+    const i = order.indexOf(path);
+    return i === -1 ? 100 + paths.indexOf(path) : i;
+  };
+  return [...paths].sort((a, b) => rank(a) - rank(b));
+}
+
+export function panelNavLabel(path: string, role?: string | null): string {
+  const r = normalizeRole(role);
+  if (path === "/panel/agenda" && (r === "colaborador" || r === "cliente")) return "Mi agenda";
+  if (path === "/panel/mascotas" && r === "cliente") return "Mis mascotas";
+  if (path === "/panel/propietarios" && r === "cliente") return "Mi perfil";
+  return PANEL_MODULES.find((m) => m.path === path)?.label ?? path;
 }
 
 export function homeForRole(role: string | undefined | null, modules?: string[]): string {
@@ -142,6 +165,13 @@ export function permissionsFor(role: string | undefined | null) {
 
 export const APPOINTMENT_STATUSES = ["pendiente", "enproceso", "finalizada", "cancelada"] as const;
 
+/** Filtro de la grilla: cancelada no se lista en Agenda. */
+export const AGENDA_FILTER_STATUSES = ["pendiente", "enproceso", "finalizada"] as const;
+
+export function isVisibleOnAgenda(status: string | undefined | null): boolean {
+  return _normApptStatus(status) !== "cancelada";
+}
+
 function _normApptStatus(value: string | undefined | null): string {
   return (value || "").replace(/\s|_/g, "").toLowerCase();
 }
@@ -161,7 +191,9 @@ export function editableAppointmentStatuses(
     return ["pendiente", "enproceso", "cancelada"];
   }
   if (current === "enproceso") {
-    return ["enproceso", "finalizada", "cancelada"];
+    const next = ["enproceso", "finalizada"];
+    if (p.isAdmin) next.push("cancelada");
+    return next;
   }
   return current ? [current] : [];
 }
@@ -173,7 +205,7 @@ export function canCancelAppointment(
   const current = _normApptStatus(currentStatus);
   if (current === "pendiente") return true;
   const p = permissionsFor(role);
-  return p.isStaff && current === "enproceso";
+  return p.isAdmin && current === "enproceso";
 }
 
 export function isActiveSale(status: string | undefined | null): boolean {

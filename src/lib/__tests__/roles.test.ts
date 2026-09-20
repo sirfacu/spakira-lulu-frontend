@@ -5,12 +5,16 @@ import {
   canCancelAppointment,
   displayRole,
   homeForRole,
+  isVisibleOnAgenda,
+  AGENDA_FILTER_STATUSES,
   maskEmail,
   maskEndingDigits,
   normalizeRole,
+  panelNavLabel,
   permissionsFor,
   editableAppointmentStatuses,
   isActiveSale,
+  sortPanelNavPaths,
 } from "../roles";
 
 describe("roles", () => {
@@ -37,6 +41,27 @@ describe("roles", () => {
     const mod = PANEL_MODULES.find((m) => m.id === "propietarios");
     expect(mod?.label).toBe("Usuarios");
     expect(mod?.path).toBe("/panel/propietarios");
+  });
+
+  it("cliente sidebar: Mi perfil under Servicios", () => {
+    expect(panelNavLabel("/panel/propietarios", "cliente")).toBe("Mi perfil");
+    expect(panelNavLabel("/panel/propietarios", "admin")).toBe("Usuarios");
+    expect(panelNavLabel("/panel/precios", "cliente")).toBe("Servicios");
+    expect(panelNavLabel("/panel/agenda", "cliente")).toBe("Mi agenda");
+    expect(panelNavLabel("/panel/mascotas", "cliente")).toBe("Mis mascotas");
+    expect(
+      sortPanelNavPaths(
+        ["/panel/propietarios", "/panel/agenda", "/panel/mascotas", "/panel/precios"],
+        "cliente",
+      ),
+    ).toEqual(["/panel/agenda", "/panel/mascotas", "/panel/precios", "/panel/propietarios"]);
+    const servicios = sortPanelNavPaths(
+      ["/panel/propietarios", "/panel/precios"],
+      "cliente",
+    );
+    expect(servicios.indexOf("/panel/precios")).toBeLessThan(
+      servicios.indexOf("/panel/propietarios"),
+    );
   });
 
   it("gates razas tab via mascotas (admin)", () => {
@@ -111,6 +136,10 @@ describe("roles", () => {
     expect(editableAppointmentStatuses("colaborador", "enproceso")).toEqual([
       "enproceso",
       "finalizada",
+    ]);
+    expect(editableAppointmentStatuses("admin", "enproceso")).toEqual([
+      "enproceso",
+      "finalizada",
       "cancelada",
     ]);
     expect(editableAppointmentStatuses("colaborador", "finalizada")).toEqual(["finalizada"]);
@@ -119,10 +148,38 @@ describe("roles", () => {
     expect(editableAppointmentStatuses("cliente", "pendiente")).toEqual([]);
     expect(canCancelAppointment("cliente", "pendiente")).toBe(true);
     expect(canCancelAppointment("cliente", "enproceso")).toBe(false);
-    expect(canCancelAppointment("colaborador", "enproceso")).toBe(true);
+    expect(canCancelAppointment("colaborador", "enproceso")).toBe(false);
+    expect(canCancelAppointment("admin", "enproceso")).toBe(true);
     expect(canCancelAppointment("admin", "finalizada")).toBe(false);
     expect(isActiveSale("activa")).toBe(true);
     expect(isActiveSale("anulada")).toBe(false);
     expect(isActiveSale(undefined)).toBe(true);
+  });
+
+  it("hides cancelled appointments from the agenda grid", () => {
+    expect(isVisibleOnAgenda("pendiente")).toBe(true);
+    expect(isVisibleOnAgenda("enproceso")).toBe(true);
+    expect(isVisibleOnAgenda("finalizada")).toBe(true);
+    expect(isVisibleOnAgenda("cancelada")).toBe(false);
+    expect(AGENDA_FILTER_STATUSES).toEqual(["pendiente", "enproceso", "finalizada"]);
+    expect(AGENDA_FILTER_STATUSES).not.toContain("cancelada");
+  });
+
+  it("cliente never reaches ventas, inventario, reportes, staff or permisos", () => {
+    for (const path of [
+      "/panel/ventas",
+      "/panel/inventario",
+      "/panel/reportes",
+      "/panel/personal",
+      "/panel/permisos",
+      "/panel/configuracion",
+      "/panel/promociones",
+    ]) {
+      expect(canAccessPath("cliente", path)).toBe(false);
+    }
+    expect(permissionsFor("cliente").canSeeWhatsAppLinks).toBe(false);
+    expect(permissionsFor("cliente").canViewSalesAnalytics).toBe(false);
+    expect(permissionsFor("colaborador").canViewSalesAnalytics).toBe(false);
+    expect(permissionsFor("colaborador").maskOwnerPii).toBe(true);
   });
 });
