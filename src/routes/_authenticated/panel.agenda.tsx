@@ -8,13 +8,14 @@ import {
   Filter,
   Minus,
   Plus,
-  MessageCircle,
   Pencil,
   Trash2,
   Search,
   CalendarDays,
   Clock,
   MapPin,
+  FileText,
+  MessageCircle,
 } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
 import { StatusPill, Empty } from "@/components/ui-kit";
@@ -51,7 +52,11 @@ import {
   reviewAppointmentReschedule,
   inventoryShopQuery,
   inventoryQuery,
+  inventoryAtLocationQuery,
+  inventoryShopAtLocationQuery,
   fetchNextAppointmentSlot,
+  fetchAppointmentWhatsAppLinks,
+  openAppointmentInvoice,
   getLocations,
   getBusinessHours,
   weekSlotsQuery,
@@ -65,6 +70,7 @@ import {
 } from "@/lib/spa-queries";
 import {
   dayKey,
+  shortDate,
   statusMeta,
   normalizeStatus,
   time,
@@ -75,7 +81,8 @@ import {
 } from "@/lib/format";
 import { requirePathAccess } from "@/lib/route-access";
 import {
-  APPOINTMENT_STATUSES,
+  AGENDA_FILTER_STATUSES,
+  isVisibleOnAgenda,
   canCancelAppointment,
   editableAppointmentStatuses,
   permissionsFor,
@@ -86,6 +93,14 @@ import { FinishAppointmentDialog } from "@/components/finish-appointment-dialog"
 import { MaterialEstimatePanel } from "@/components/material-estimate-panel";
 import { CouponApplyFields } from "@/components/coupon-apply-fields";
 import { ConfirmServicePriceDialog, type VisitStartPayload } from "@/components/confirm-service-price-dialog";
+import { AppointmentWhatsAppBar } from "@/components/appointment-whatsapp-bar";
+import { inferMaterialRole } from "@/lib/service-material-role";
+import {
+  appointmentProductCatalog,
+  extraSearchAllowsCustom,
+  extraSearchHits,
+} from "@/lib/appointment-extras-catalog";
+import { appointmentOwnerChatMessage, ownerChatLinks } from "@/lib/whatsapp-link";
 import {
   appointmentShowsChargedPrice,
   PENDING_SERVICE_PRICE_LABEL,
@@ -117,6 +132,21 @@ const ACTIVITY_SKILLS: Record<string, string[]> = {
   pulgas: ["groomer", "auxiliar"],
   oidos: ["groomer", "auxiliar"],
 };
+
+const DRAFT_EXTRA_PREFIX = "draft-";
+
+function isDraftExtraId(id: string) {
+  return id.startsWith(DRAFT_EXTRA_PREFIX);
+}
+
+function newDraftExtraId() {
+  return `${DRAFT_EXTRA_PREFIX}${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function visitCareRoleFromItem(item: { name: string; category?: string }) {
+  const role = inferMaterialRole({ name: item.name, category: item.category });
+  return role === "medicated" || role === "dye" ? role : null;
+}
 
 function staffCoversService(
   staff: { skills?: string[]; role_title?: string | null },
@@ -257,6 +287,26 @@ function appointmentLocation(
   return { id, name };
 }
 
+function chatLinksFromAppointment(a: Appointment) {
+  const owners = [
+    ...(a.pets?.owners_list ?? []),
+    ...(a.pets?.owners ? [a.pets.owners] : []),
+  ].filter((o, i, all) => o?.id && all.findIndex((x) => x?.id === o.id) === i);
+  if (!owners.length && a.pets?.owners) owners.push(a.pets.owners);
+  const built = ownerChatLinks(owners, (name) =>
+    appointmentOwnerChatMessage({
+      ownerName: name,
+      petName: a.pets?.name,
+      serviceName: a.services?.name,
+      whenLabel: `${shortDate(a.starts_at)} ${time(a.starts_at)}`,
+    }),
+  );
+  return {
+    items: built.items,
+    missing: built.missing.map((m) => (m.full_name || "").trim()).filter(Boolean),
+  };
+}
+
 function Agenda() {
   const { user } = useRouteContext({ from: "/_authenticated" });
   const perms = permissionsFor(user?.role);
@@ -276,17 +326,6 @@ function StaffAgenda() {
   const services = useQuery(panelServicesQuery);
   const locationsQ = useQuery({ queryKey: ["locations"], queryFn: getLocations });
   const activeLocations = (locationsQ.data?.items ?? []).filter((x) => x.active);
-  const shop = useQuery(inventoryShopQuery);
-  const inventoryAll = useQuery({ ...inventoryQuery, enabled: perms.isStaff });
-  const miscCatalog = useMemo(() => {
-    return (shop.data ?? []).map((i) => ({
-      id: i.id,
-      name: i.name,
-      category: i.category || "Vitrina",
-      unit_price: Number(i.sale_price_unit || i.sale_price) || 0,
-      available: Number(i.available ?? i.quantity) || 0,
-    }));
-  }, [shop.data]);
   const myStaff = useQuery({
     queryKey: ["staff-me"],
     queryFn: getMyStaff,
@@ -333,8 +372,11 @@ function StaffAgenda() {
   const [notes, setNotes] = useState("");
   const [shootSelections, setShootSelections] = useState<Record<string, boolean>>({});
   const [lastWa, setLastWa] = useState<
-    { owner_id?: string; full_name?: string; link: string }[] | null
+    { owner_id?: string; full_name?: string | null; link: string }[] | null
   >(null);
+  const [waMissing, setWaMissing] = useState<string[]>([]);
+  const [waPetName, setWaPetName] = useState<string | null>(null);
+  const [waLoading, setWaLoading] = useState(false);
   const [finishAppt, setFinishAppt] = useState<Appointment | null>(null);
   const [citaPromo, setCitaPromo] = useState<import("@/lib/spa-queries").PromoValidate | null>(null);
   const [finishCouponCode, setFinishCouponCode] = useState<string | null>(null);
@@ -344,11 +386,35 @@ function StaffAgenda() {
     nextStatus: string;
   } | null>(null);
   const [selected, setSelected] = useState<Appointment | null>(null);
+  const stockLocationId =
+    selected?.location_id ||
+    pricePrompt?.appointment.location_id ||
+    finishAppt?.location_id ||
+    (locFilter !== "todas" ? locFilter : "") ||
+    readWorkingLocationId() ||
+    activeLocations[0]?.id ||
+    "";
+  const shop = useQuery({
+    ...(stockLocationId ? inventoryShopAtLocationQuery(stockLocationId) : inventoryShopQuery),
+    enabled: perms.isStaff,
+  });
+  const inventoryAll = useQuery({
+    ...(stockLocationId ? inventoryAtLocationQuery(stockLocationId) : inventoryQuery),
+    enabled: perms.isStaff,
+  });
+  const productCatalog = useMemo(
+    () =>
+      appointmentProductCatalog(inventoryAll.data ?? [], shop.data ?? [], {
+        shopOnly: perms.isCliente,
+      }),
+    [shop.data, inventoryAll.data, perms.isCliente],
+  );
   const [confirmAction, setConfirmAction] = useState<{
     title: string;
     description: string;
     actionLabel: string;
-    onConfirm: () => void;
+    reasonRequired?: boolean;
+    onConfirm: (reason?: string) => void;
   } | null>(null);
   const [petConflict, setPetConflict] = useState<{
     conflict: PetBookedConflict;
@@ -357,7 +423,8 @@ function StaffAgenda() {
     wantedServiceId: string;
   } | null>(null);
   const [extras, setExtras] = useState<AppointmentExtra[]>([]);
-  const [extrasBaseline, setExtrasBaseline] = useState("");
+  const [extrasSaved, setExtrasSaved] = useState<AppointmentExtra[]>([]);
+  const [extrasBaseline, setExtrasBaseline] = useState("[]");
   const [extraQuery, setExtraQuery] = useState("");
   const [extraPrice, setExtraPrice] = useState("");
   const [editForm, setEditForm] = useState({
@@ -419,17 +486,37 @@ function StaffAgenda() {
     void Promise.all(keys.map((queryKey) => qc.invalidateQueries({ queryKey })));
   };
 
-  const loadExtras = async (appointmentId: string, opts?: { syncBaseline?: boolean }) => {
+  const loadExtras = async (
+    appointmentId: string,
+    opts?: { syncBaseline?: boolean; keepLocal?: boolean },
+  ) => {
     try {
       const rows = await listAppointmentExtras(appointmentId);
-      setExtras(rows);
-      if (opts?.syncBaseline) {
+      setExtras((prev) => {
+        if (!opts?.keepLocal) return rows;
+        const drafts = prev.filter((e) => isDraftExtraId(e.id));
+        const qtyById = new Map(prev.map((e) => [e.id, e]));
+        const merged = rows.map((r) => {
+          const local = qtyById.get(r.id);
+          if (local && Number(local.quantity) !== Number(r.quantity)) {
+            const qty = Number(local.quantity);
+            return { ...r, quantity: qty, total: qty * Number(r.unit_price) };
+          }
+          return r;
+        });
+        return [...merged, ...drafts];
+      });
+      setExtrasSaved(rows);
+      if (opts?.syncBaseline !== false) {
         setExtrasBaseline(extrasFingerprint(rows));
       }
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "No se pudieron cargar extras");
-      setExtras([]);
-      if (opts?.syncBaseline) setExtrasBaseline("");
+      if (!opts?.keepLocal) {
+        setExtras([]);
+        setExtrasSaved([]);
+      }
+      if (opts?.syncBaseline) setExtrasBaseline("[]");
     }
   };
 
@@ -450,6 +537,13 @@ function StaffAgenda() {
     setEditBaseline(form);
     setExtraQuery("");
     setExtraPrice("");
+    if (perms.canSeeWhatsAppLinks) {
+      const fallback = chatLinksFromAppointment(a);
+      setLastWa(fallback.items);
+      setWaMissing(fallback.missing);
+      setWaPetName(a.pets?.name ?? null);
+      setWaLoading(true);
+    }
     if (perms.isStaff) {
       void loadExtras(a.id, { syncBaseline: true });
     } else {
@@ -458,6 +552,35 @@ function StaffAgenda() {
     }
     refreshList(["pets"], ["staff"], ["services"], ["appointments"]);
   };
+
+  useEffect(() => {
+    if (!selected?.id || !perms.canSeeWhatsAppLinks) return;
+    let cancelled = false;
+    setWaLoading(true);
+    void fetchAppointmentWhatsAppLinks(selected.id)
+      .then((data) => {
+        if (cancelled) return;
+        setLastWa(data.items ?? []);
+        setWaMissing(
+          (data.missing ?? [])
+            .map((m) => (m.full_name || "").trim())
+            .filter(Boolean),
+        );
+        setWaPetName(data.pet_name || selected.pets?.name || null);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        const fallback = chatLinksFromAppointment(selected);
+        setLastWa(fallback.items);
+        setWaMissing(fallback.missing);
+      })
+      .finally(() => {
+        if (!cancelled) setWaLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selected?.id, perms.canSeeWhatsAppLinks, selected]);
 
   const openNewAppointment = (day?: Date) => {
     const target = day ?? new Date();
@@ -530,10 +653,79 @@ function StaffAgenda() {
     };
   }, [search.service, search.google, navigate]);
 
+  const persistLocalExtras = async (appointmentId: string) => {
+    const savedIds = new Set(extrasSaved.map((e) => e.id));
+    for (const ex of extras) {
+      if (isDraftExtraId(ex.id)) {
+        await addAppointmentExtra(appointmentId, {
+          item_name: ex.item_name,
+          quantity: Number(ex.quantity),
+          unit_price: Number(ex.unit_price),
+        });
+        continue;
+      }
+      if (!savedIds.has(ex.id)) continue;
+      const orig = extrasSaved.find((row) => row.id === ex.id);
+      if (orig && Number(orig.quantity) !== Number(ex.quantity)) {
+        await updateAppointmentExtra(appointmentId, ex.id, { quantity: Number(ex.quantity) });
+      }
+    }
+    const keepIds = new Set(extras.filter((e) => !isDraftExtraId(e.id)).map((e) => e.id));
+    for (const orig of extrasSaved) {
+      if (!keepIds.has(orig.id) && orig.line_kind !== "shoot") {
+        await deleteAppointmentExtra(appointmentId, orig.id);
+      }
+    }
+  };
+
+  const addLocalExtra = (input: {
+    item_name: string;
+    unit_price: number;
+    quantity?: number;
+    category?: string;
+  }) => {
+    if (!selected) return;
+    const quantity = input.quantity ?? 1;
+    const material_role = visitCareRoleFromItem({
+      name: input.item_name,
+      category: input.category,
+    });
+    setExtras((prev) => [
+      ...prev,
+      {
+        id: newDraftExtraId(),
+        appointment_id: selected.id,
+        pet_id: selected.pet_id ?? null,
+        owner_id: null,
+        item_name: input.item_name,
+        quantity,
+        unit_price: input.unit_price,
+        total: quantity * input.unit_price,
+        line_kind: "vitrina",
+        material_role,
+      },
+    ]);
+    setExtraQuery("");
+    setExtraPrice("");
+    toast.message("Producto en la cita · el inventario se reserva al Guardar cambios");
+  };
+
+  const bumpLocalExtraQty = (extraId: string, quantity: number) => {
+    setExtras((prev) =>
+      prev.map((ex) =>
+        ex.id === extraId
+          ? { ...ex, quantity, total: quantity * Number(ex.unit_price) }
+          : ex,
+      ),
+    );
+  };
+
   const saveMut = useMutation({
-    mutationFn: async (opts?: { price?: number } & Partial<VisitStartPayload>) => {
+    mutationFn: async (
+      opts?: { price?: number; cancel_reason?: string } & Partial<VisitStartPayload>,
+    ) => {
       if (!selected) throw new Error("Sin cita");
-      if (!formDirty && !extrasDirty && opts?.price == null) {
+      if (!formDirty && !extrasDirty && opts?.price == null && !opts?.cancel_reason) {
         throw new Error("No hay cambios para guardar");
       }
       const nextStatus = editForm.status;
@@ -542,8 +734,15 @@ function StaffAgenda() {
         setSelected(null);
         return null;
       }
+      if (extrasDirty) {
+        await persistLocalExtras(selected.id);
+        const rows = await listAppointmentExtras(selected.id);
+        setExtras(rows);
+        setExtrasSaved(rows);
+        setExtrasBaseline(extrasFingerprint(rows));
+      }
       // PATCH ya notifica por correo (actualización o cancelación) con snapshot + notas.
-      if (formDirty || opts?.price != null) {
+      if (formDirty || opts?.price != null || opts?.cancel_reason) {
         const patched = await updateAppointment(selected.id, {
           pet_id: editForm.pet_id || undefined,
           service_id: editForm.service_id || undefined,
@@ -568,6 +767,7 @@ function StaffAgenda() {
           ...(opts?.visit_care_lines?.length
             ? { visit_care_lines: opts.visit_care_lines }
             : {}),
+          ...(opts?.cancel_reason ? { cancel_reason: opts.cancel_reason } : {}),
         });
         return {
           ok: true,
@@ -596,10 +796,11 @@ function StaffAgenda() {
             : "Cambios guardados (correo en log si SMTP no está configurado)",
         );
       }
-      setExtrasBaseline(extrasFingerprint(extras));
+      setExtrasBaseline(extrasFingerprint(extrasSaved));
       setEditBaseline(editForm);
       setSelected(null);
       void qc.invalidateQueries({ queryKey: ["appointments"] });
+      void qc.invalidateQueries({ queryKey: ["inventory"] });
       void qc.invalidateQueries({ queryKey: ["notifications"] });
       void qc.invalidateQueries({ queryKey: ["appointment-reschedules"] });
     },
@@ -629,81 +830,70 @@ function StaffAgenda() {
       medicated_declared,
       colorimetry_declared,
       visit_care_lines,
+      cancel_reason,
     }: {
       id: string;
       status: string;
       price?: number;
+      cancel_reason?: string;
     } & Partial<VisitStartPayload>) =>
       updateAppointmentStatus(id, status, {
         ...(price != null ? { price } : {}),
         ...(medicated_declared != null ? { medicated_declared } : {}),
         ...(colorimetry_declared != null ? { colorimetry_declared } : {}),
         ...(visit_care_lines?.length ? { visit_care_lines } : {}),
+        ...(cancel_reason ? { cancel_reason } : {}),
       }),
     onSuccess: () => {
       setPricePrompt(null);
       void qc.invalidateQueries({ queryKey: ["appointments"] });
+      void qc.invalidateQueries({ queryKey: ["inventory"] });
       toast.success("Estado actualizado");
     },
     onError: (e) => toast.error(e instanceof Error ? e.message : "Error"),
   });
 
   const addExtraMut = useMutation({
-    mutationFn: (input: { item_name: string; unit_price: number }) => {
-      if (!selected) throw new Error("Sin cita");
-      return addAppointmentExtra(selected.id, { ...input, quantity: 1 });
+    mutationFn: async (input: {
+      item_name: string;
+      unit_price: number;
+      quantity?: number;
+      category?: string;
+    }) => {
+      addLocalExtra(input);
     },
-    onSuccess: () => {
-      toast.success("Extra agregado · el correo se envía al Guardar cambios");
-      setExtraQuery("");
-      setExtraPrice("");
-      if (selected) void loadExtras(selected.id);
-      void qc.invalidateQueries({ queryKey: ["appointments"] });
-      void qc.invalidateQueries({ queryKey: ["inventory"] });
-    },
-    onError: (e) => toast.error(e instanceof Error ? e.message : "No se pudo agregar"),
   });
 
   const deleteExtraMut = useMutation({
-    mutationFn: (extraId: string) => {
-      if (!selected) throw new Error("Sin cita");
-      return deleteAppointmentExtra(selected.id, extraId);
+    mutationFn: async (extraId: string) => {
+      setExtras((prev) => prev.filter((ex) => ex.id !== extraId));
     },
     onSuccess: () => {
-      toast.success("Extra eliminado · el correo se envía al Guardar cambios");
-      if (selected) void loadExtras(selected.id);
-      void qc.invalidateQueries({ queryKey: ["appointments"] });
+      toast.message("Se quita al Guardar cambios · el inventario no se toca hasta entonces");
     },
-    onError: (e) => toast.error(e instanceof Error ? e.message : "No se pudo eliminar"),
   });
 
   const patchExtraMut = useMutation({
-    mutationFn: ({ extraId, quantity }: { extraId: string; quantity: number }) => {
-      if (!selected) throw new Error("Sin cita");
-      return updateAppointmentExtra(selected.id, extraId, { quantity });
+    mutationFn: async ({ extraId, quantity }: { extraId: string; quantity: number }) => {
+      bumpLocalExtraQty(extraId, quantity);
     },
-    onSuccess: (row) => {
-      setExtras((prev) => {
-        const next = prev.map((ex) => (ex.id === row.id ? { ...ex, ...row } : ex));
-        return next;
-      });
-      void qc.invalidateQueries({ queryKey: ["appointments"] });
-    },
-    onError: (e) => toast.error(e instanceof Error ? e.message : "No se pudo actualizar"),
   });
 
   const cancelMut = useMutation({
-    mutationFn: async (id: string) => {
+    mutationFn: async ({ id, reason }: { id: string; reason?: string }) => {
       if (perms.isCliente) {
         await updateAppointment(id, { status: "cancelada" });
       } else {
-        await updateAppointmentStatus(id, "cancelada");
+        await updateAppointmentStatus(id, "cancelada", {
+          ...(reason ? { cancel_reason: reason } : {}),
+        });
       }
     },
     onSuccess: () => {
       toast.success("Turno cancelado. Avisamos por correo a los dueños.");
       setSelected(null);
       void qc.invalidateQueries({ queryKey: ["appointments"] });
+      void qc.invalidateQueries({ queryKey: ["inventory"] });
     },
     onError: (e) => toast.error(e instanceof Error ? e.message : "No se pudo cancelar"),
   });
@@ -743,7 +933,13 @@ function StaffAgenda() {
           : perms.canSeeWhatsAppLinks && data.whatsapp_link
             ? [{ link: data.whatsapp_link }]
             : [];
-      setLastWa(links.length ? links : null);
+      setLastWa(links);
+      setWaMissing(
+        (data.whatsapp_missing ?? [])
+          .map((m) => (m.full_name || "").trim())
+          .filter(Boolean),
+      );
+      setWaPetName(data.pets?.name ?? null);
       // Asegurar que la semana visible incluye la cita nueva
       const createdDay = new Date(startsAt);
       setAnchor(startOfWeek(createdDay));
@@ -826,6 +1022,7 @@ function StaffAgenda() {
   });
 
   const filtered = (appts.data ?? []).filter((a) => {
+    if (!isVisibleOnAgenda(a.status)) return false;
     const text = `${a.pets?.name ?? ""} ${a.pets?.owners?.full_name ?? ""}`.toLowerCase();
     if (q && !text.includes(q.toLowerCase())) return false;
     if (breed !== "todas" && a.pets?.breed !== breed) return false;
@@ -1071,7 +1268,7 @@ function StaffAgenda() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="todos">Todos los estados</SelectItem>
-              {APPOINTMENT_STATUSES.map((s) => (
+              {AGENDA_FILTER_STATUSES.map((s) => (
                 <SelectItem key={s} value={s} className="capitalize">
                   {statusMeta(s).label}
                 </SelectItem>
@@ -1081,7 +1278,8 @@ function StaffAgenda() {
         </div>
       </div>
 
-      <div className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7">
+      <div className="mt-6 overflow-x-auto pb-1">
+        <div className="grid min-w-[84rem] grid-cols-7 gap-3">
         {days.map((d) => {
           const key = dayKey(d);
           const list = filtered.filter((a) => dayKey(new Date(a.starts_at)) === key);
@@ -1131,7 +1329,7 @@ function StaffAgenda() {
                   return (
                     <article
                       key={a.id}
-                      className="overflow-hidden rounded-xl border border-border/70 bg-background/70 p-2 shadow-soft transition-all duration-200 hover:-translate-y-0.5 hover:border-primary/30 hover:shadow-lift"
+                      className="overflow-hidden rounded-2xl border border-border/70 bg-background p-3 shadow-soft transition-all duration-200 hover:-translate-y-0.5 hover:border-primary/30 hover:shadow-lift"
                       style={
                         locTone
                           ? { borderLeftColor: locTone.accent, borderLeftWidth: 3 }
@@ -1143,56 +1341,54 @@ function StaffAgenda() {
                         onClick={() => openManage(a)}
                         className="w-full text-left"
                       >
-                        <div className="flex items-start gap-2">
+                        <div className="flex items-start gap-2.5">
                           {a.pets?.photo_url ? (
                             <img
                               src={resolveMediaUrl(a.pets.photo_url)}
                               alt={a.pets.name}
-                              className="h-9 w-9 shrink-0 rounded-lg object-cover"
+                              className="h-12 w-12 shrink-0 rounded-xl object-cover"
                             />
                           ) : (
-                            <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-primary/10 text-[11px] font-semibold text-primary">
+                            <span className="grid h-12 w-12 shrink-0 place-items-center rounded-xl bg-primary/10 text-sm font-semibold text-primary">
                               {initials(a.pets?.name ?? "?")}
                             </span>
                           )}
                           <div className="min-w-0 flex-1">
-                            <div className="flex items-baseline justify-between gap-1">
-                              <p className="truncate text-sm font-semibold text-foreground">
-                                {a.pets?.name}
-                              </p>
-                              <p className="shrink-0 text-[11px] tabular-nums text-muted-foreground">
-                                {time(a.starts_at)}
-                              </p>
-                            </div>
+                            <p className="text-sm font-semibold leading-snug text-foreground [overflow-wrap:anywhere]">
+                              {a.pets?.name}
+                            </p>
                             {loc ? (
                               <p
-                                className="truncate text-[11px] font-semibold"
+                                className="mt-0.5 text-[11px] font-semibold leading-snug [overflow-wrap:anywhere]"
                                 style={{ color: locTone?.accent }}
                                 title={loc.name}
                               >
                                 {loc.name}
                               </p>
                             ) : null}
+                            <p className="mt-0.5 text-xs tabular-nums text-muted-foreground">
+                              {time(a.starts_at)}
+                            </p>
                             {a.services?.name ? (
-                              <p className="truncate text-[11px] text-muted-foreground">
+                              <p className="mt-0.5 text-[11px] leading-snug text-muted-foreground [overflow-wrap:anywhere]">
                                 {a.services.name}
                               </p>
                             ) : null}
+                            <p className="mt-0.5 text-[11px] leading-snug text-muted-foreground [overflow-wrap:anywhere]">
+                              Atiende · {a.staff?.full_name || "sin asignar"}
+                            </p>
+                            <p className="mt-1.5 text-sm font-semibold text-accent">
+                              {appointmentShowsChargedPrice(a, perms.isCliente)
+                                ? cop(appointmentChargeTotal(a))
+                                : PENDING_SERVICE_PRICE_LABEL}
+                              {Number(a.extras_count ?? 0) > 0 ? (
+                                <span className="ml-1 text-[11px] font-normal text-muted-foreground">
+                                  · {a.extras_count} extra
+                                  {Number(a.extras_count) === 1 ? "" : "s"}
+                                </span>
+                              ) : null}
+                            </p>
                           </div>
-                        </div>
-                        <div className="mt-1.5 flex items-center justify-between gap-2">
-                          <StatusPill label={meta.label} className={meta.className} hint={meta.hint} />
-                          <span className="text-right text-[11px] font-medium text-accent">
-                            {appointmentShowsChargedPrice(a, perms.isCliente)
-                              ? cop(appointmentChargeTotal(a))
-                              : PENDING_SERVICE_PRICE_LABEL}
-                            {Number(a.extras_count ?? 0) > 0 ? (
-                              <span className="mt-0.5 block text-[9px] font-normal text-muted-foreground">
-                                incl. {a.extras_count} extra
-                                {Number(a.extras_count) === 1 ? "" : "s"}
-                              </span>
-                            ) : null}
-                          </span>
                         </div>
                         {prog ? (
                           <div className="mt-2">
@@ -1218,7 +1414,7 @@ function StaffAgenda() {
                       </button>
                       {perms.canChangeAppointmentStatus ? (
                       <div
-                        className="mt-2"
+                        className="mt-2.5"
                         onClick={(e) => e.stopPropagation()}
                         onPointerDown={(e) => e.stopPropagation()}
                       >
@@ -1236,10 +1432,26 @@ function StaffAgenda() {
                               setPricePrompt({ appointment: a, mode: "status", nextStatus: v });
                               return;
                             }
+                            if (v === "cancelada" && normalizeStatus(a.status) === "enproceso") {
+                              setConfirmAction({
+                                title: "Cancelar servicio en proceso",
+                                description:
+                                  "Esto es una reversión: se avisa a los dueños y el inventario vuelve con traza. Solo admin. Anotá por qué.",
+                                actionLabel: "Sí, cancelar y devolver stock",
+                                reasonRequired: true,
+                                onConfirm: (reason) =>
+                                  statusMut.mutate({
+                                    id: a.id,
+                                    status: v,
+                                    cancel_reason: reason,
+                                  }),
+                              });
+                              return;
+                            }
                             statusMut.mutate({ id: a.id, status: v });
                           }}
                         >
-                          <SelectTrigger className="h-8 rounded-lg text-xs">
+                          <SelectTrigger className={cn("h-9 rounded-xl text-xs", meta.className)}>
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
@@ -1251,7 +1463,11 @@ function StaffAgenda() {
                           </SelectContent>
                         </Select>
                       </div>
-                      ) : null}
+                      ) : (
+                        <div className="mt-2.5">
+                          <StatusPill label={meta.label} className={meta.className} hint={meta.hint} />
+                        </div>
+                      )}
                     </article>
                   );
                 })}
@@ -1268,6 +1484,7 @@ function StaffAgenda() {
             </div>
           );
         })}
+        </div>
       </div>
 
       {openForm ? (
@@ -1531,25 +1748,13 @@ function StaffAgenda() {
         </div>
       ) : null}
 
-      {perms.canSeeWhatsAppLinks && lastWa?.length ? (
-        <div className="mb-6 rounded-2xl border border-border bg-card p-4">
-          <div className="flex items-start gap-3">
-            <MessageCircle className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
-            <div className="min-w-0 flex-1">
-              <p className="text-sm text-muted-foreground">
-                Cita lista. Avisá por WhatsApp a cada dueño (abre el chat con el mensaje).
-              </p>
-              <div className="mt-3 flex flex-wrap gap-2">
-                {lastWa.map((wa) => (
-                  <Button key={wa.link} asChild className="h-10 rounded-xl">
-                    <a href={wa.link} target="_blank" rel="noopener noreferrer">
-                      WhatsApp{wa.full_name ? ` · ${wa.full_name}` : ""}
-                    </a>
-                  </Button>
-                ))}
-              </div>
-            </div>
-          </div>
+      {perms.canSeeWhatsAppLinks && (lastWa?.length || waMissing.length) ? (
+        <div className="mb-6">
+          <AppointmentWhatsAppBar
+            items={lastWa ?? []}
+            missingNames={waMissing}
+            petName={waPetName}
+          />
         </div>
       ) : null}
 
@@ -1584,15 +1789,6 @@ function StaffAgenda() {
         petName={pricePrompt?.appointment.pets?.name}
         defaultPrice={pricePrompt?.appointment.price}
         saving={statusMut.isPending || saveMut.isPending}
-        usesMedicated={Boolean(
-          (services.data ?? []).find((s) => s.id === pricePrompt?.appointment.service_id)
-            ?.uses_medicated,
-        )}
-        usesColorimetry={Boolean(
-          (services.data ?? []).find((s) => s.id === pricePrompt?.appointment.service_id)
-            ?.uses_colorimetry,
-        )}
-        inventory={inventoryAll.data ?? []}
         onOpenChange={(o) => {
           if (!o) setPricePrompt(null);
         }}
@@ -1613,16 +1809,16 @@ function StaffAgenda() {
       />
 
       <Dialog open={!!selected} onOpenChange={(o) => !o && setSelected(null)}>
-        <DialogContent className="flex max-h-[90vh] max-w-lg flex-col overflow-hidden rounded-3xl p-0">
+        <DialogContent className="flex max-h-[92vh] w-[calc(100vw-1.5rem)] max-w-3xl flex-col overflow-hidden rounded-3xl p-0">
           {selected ? (
             <div className="flex min-h-0 flex-1 flex-col">
-              <div className="shrink-0 border-b border-border px-6 pb-4 pt-6 pr-12">
+              <div className="shrink-0 bg-gradient-to-br from-primary/12 via-blush/40 to-background px-6 pb-4 pt-6 pr-12">
                 <div className="flex items-start gap-4">
                   {selected.pets?.photo_url ? (
                     <img
                       src={resolveMediaUrl(selected.pets.photo_url)}
                       alt={selected.pets.name}
-                      className="h-16 w-16 shrink-0 rounded-2xl object-cover"
+                      className="h-16 w-16 shrink-0 rounded-2xl object-cover ring-2 ring-white/70"
                     />
                   ) : (
                     <span className="grid h-16 w-16 shrink-0 place-items-center rounded-2xl bg-primary/10 text-lg font-semibold text-primary">
@@ -1630,7 +1826,7 @@ function StaffAgenda() {
                     </span>
                   )}
                   <div className="min-w-0">
-                    <p className="text-xs uppercase tracking-wider text-muted-foreground">
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-primary/80">
                       Gestionar cita
                     </p>
                     <h2 className="font-display text-xl font-bold text-primary">
@@ -1652,6 +1848,18 @@ function StaffAgenda() {
                       <br />
                       {selected.pets?.owners?.full_name ?? "—"}
                     </p>
+                    {perms.canSeeWhatsAppLinks && lastWa?.length ? (
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        {lastWa.map((wa) => (
+                          <Button key={wa.link} asChild className="h-9 rounded-xl">
+                            <a href={wa.link} target="_blank" rel="noopener noreferrer">
+                              <MessageCircle className="mr-1.5 h-4 w-4" />
+                              WhatsApp{wa.full_name ? ` · ${wa.full_name}` : ""}
+                            </a>
+                          </Button>
+                        ))}
+                      </div>
+                    ) : null}
                   </div>
                 </div>
               </div>
@@ -1840,7 +2048,9 @@ function StaffAgenda() {
                       appointmentId={selected.id}
                       serviceId={selected.service_id}
                       petId={selected.pet_id}
-                      onBillableChange={() => void loadExtras(selected.id, { syncBaseline: true })}
+                      onBillableChange={() =>
+                        void loadExtras(selected.id, { keepLocal: true, syncBaseline: false })
+                      }
                     />
                   </div>
                 ) : null}
@@ -1896,13 +2106,13 @@ function StaffAgenda() {
                 ) : null}
 
                 {perms.isStaff || perms.isCliente ? (
-                <div className="mt-6 rounded-2xl border border-border p-4">
-                  <h3 className="font-display text-base font-bold text-primary">
-                    Cobro adicional (vitrina)
-                  </h3>
+                <div className="mt-4 rounded-2xl border border-border p-4">
+                  <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                    Insumos y productos
+                  </p>
                   <p className="mt-1 text-xs text-muted-foreground">
-                    Los adicionales (medicado, etc.) se eligen arriba. Acá van galletas, BARF,
-                    collares, etc.
+                    Cualquier producto de esta sede (medicado, tinte, vitrina u otro). Si no está,
+                    escribí el nombre y un precio. Hasta Guardar cambios no se reserva inventario.
                   </p>
                   {(() => {
                     const extrasStatus = normalizeStatus(selected.status);
@@ -1917,8 +2127,8 @@ function StaffAgenda() {
                     <div className="relative mt-3">
                     <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                     <Input
-                      className="h-11 rounded-xl pl-9"
-                      placeholder="Buscar en la vitrina…"
+                      className="h-12 rounded-2xl border-border/80 bg-card pl-10 shadow-soft"
+                      placeholder="Buscar producto o escribir uno nuevo…"
                       value={extraQuery}
                       onChange={(e) => setExtraQuery(e.target.value)}
                     />
@@ -1931,35 +2141,33 @@ function StaffAgenda() {
                     </p>
                   )}
                   {canEditExtras && extraQuery.trim().length >= 1 ? (
-                    <ul className="mt-2 max-h-36 space-y-1 overflow-y-auto rounded-xl border border-border bg-card p-1">
-                      {miscCatalog.filter((item) =>
-                        item.name.toLowerCase().includes(extraQuery.trim().toLowerCase()),
-                      )
-                        .slice(0, 8)
-                        .map((item) => (
+                    <ul className="mt-2 overflow-hidden rounded-2xl border border-border bg-card shadow-lift">
+                      {extraSearchHits(productCatalog, extraQuery).map((item) => (
                           <li key={item.id}>
                             <button
                               type="button"
-                              disabled={item.available < 1}
-                              className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm hover:bg-secondary/60 disabled:opacity-50"
+                              disabled={perms.isCliente && item.available < 1}
+                              className="flex w-full items-center justify-between gap-3 px-4 py-2.5 text-left text-sm transition-colors hover:bg-secondary/60 disabled:opacity-50"
                               onClick={() =>
                                 addExtraMut.mutate({
                                   item_name: item.name,
                                   unit_price: item.unit_price,
+                                  category: item.category,
                                 })
                               }
                             >
-                              <span>{item.name}</span>
-                              <span className="text-accent">
-                                {cop(item.unit_price)} · quedan {item.available}
+                              <span className="min-w-0">
+                                <span className="block truncate font-medium">{item.name}</span>
+                                <span className="text-[11px] text-muted-foreground">{item.category}</span>
+                              </span>
+                              <span className="shrink-0 text-xs font-medium text-accent">
+                                {cop(item.unit_price)}
+                                {item.available ? ` · quedan ${item.available}` : " · sin stock"}
                               </span>
                             </button>
                           </li>
                         ))}
-                      {perms.isStaff &&
-                      !miscCatalog.some(
-                        (i) => i.name.toLowerCase() === extraQuery.trim().toLowerCase(),
-                      ) && extraQuery.trim().length >= 2 ? (
+                      {perms.isStaff && extraSearchAllowsCustom(extraQuery, productCatalog) ? (
                         <li className="border-t border-border p-2">
                           <div className="flex gap-2">
                             <Input
@@ -1995,7 +2203,11 @@ function StaffAgenda() {
 
                   <ul className="mt-3 space-y-2">
                     {extras.map((ex) => {
-                      const qty = Math.max(1, Number(ex.quantity) || 1);
+                      const visitCare =
+                        ex.material_role === "medicated" || ex.material_role === "dye";
+                      const qty = visitCare
+                        ? Number(ex.quantity) || 0
+                        : Math.max(1, Number(ex.quantity) || 1);
                       const unit = Number(ex.unit_price) || 0;
                       const total = Number(ex.total) || qty * unit;
                       return (
@@ -2042,22 +2254,34 @@ function StaffAgenda() {
                                 variant="outline"
                                 size="icon"
                                 className="h-8 w-8 rounded-lg"
-                                disabled={!canEditExtras || patchExtraMut.isPending || qty <= 1}
+                                disabled={
+                                  !canEditExtras ||
+                                  patchExtraMut.isPending ||
+                                  qty <= (visitCare ? 0.1 : 1)
+                                }
                                 aria-label="Restar"
                                 onClick={() =>
-                                  patchExtraMut.mutate({ extraId: ex.id, quantity: qty - 1 })
+                                  patchExtraMut.mutate({
+                                    extraId: ex.id,
+                                    quantity: visitCare ? Math.max(0.1, qty - 1) : qty - 1,
+                                  })
                                 }
                               >
                                 <Minus className="h-3.5 w-3.5" />
                               </Button>
                               <Input
                                 type="number"
-                                min={1}
-                                step={1}
-                                className="h-8 w-14 rounded-lg px-1 text-center text-sm"
+                                min={visitCare ? 0.1 : 1}
+                                step={visitCare ? 0.1 : 1}
+                                className="h-8 w-16 rounded-lg px-1 text-center text-sm"
                                 value={qty}
                                 onChange={(e) => {
-                                  const next = Math.max(1, Math.floor(Number(e.target.value) || 1));
+                                  const raw = Number(e.target.value);
+                                  const next = visitCare
+                                    ? Number.isFinite(raw) && raw > 0
+                                      ? raw
+                                      : qty
+                                    : Math.max(1, Math.floor(raw || 1));
                                   setExtras((prev) =>
                                     prev.map((row) =>
                                       row.id === ex.id
@@ -2071,7 +2295,12 @@ function StaffAgenda() {
                                   );
                                 }}
                                 onBlur={(e) => {
-                                  const next = Math.max(1, Math.floor(Number(e.target.value) || 1));
+                                  const raw = Number(e.target.value);
+                                  const next = visitCare
+                                    ? Number.isFinite(raw) && raw > 0
+                                      ? raw
+                                      : Number(ex.quantity) || 0
+                                    : Math.max(1, Math.floor(raw || 1));
                                   if (next !== Number(ex.quantity)) {
                                     patchExtraMut.mutate({ extraId: ex.id, quantity: next });
                                   }
@@ -2102,7 +2331,9 @@ function StaffAgenda() {
                       );
                     })}
                     {!extras.length ? (
-                      <li className="text-xs text-muted-foreground">Sin extras en esta cita.</li>
+                      <li className="rounded-2xl border border-dashed border-border px-4 py-6 text-center text-sm text-muted-foreground">
+                        Sin productos en insumos. Buscá arriba para agregar.
+                      </li>
                     ) : null}
                   </ul>
                   <div className="mt-3 space-y-1 border-t border-border pt-3 text-sm">
@@ -2115,7 +2346,7 @@ function StaffAgenda() {
                       </span>
                     </div>
                     <div className="flex justify-between text-muted-foreground">
-                      <span>Extras</span>
+                      <span>Insumos cobrados</span>
                       <span>
                         {cop(extras.reduce((s, ex) => s + Number(ex.total || 0), 0))}
                       </span>
@@ -2151,8 +2382,8 @@ function StaffAgenda() {
                     {appointmentShowsChargedPrice(selected, perms.isCliente) ? (
                       normalizeStatus(selected.status) === "finalizada" ? null : (
                         <p className="pt-1 text-[11px] leading-snug text-muted-foreground">
-                          Medicado, tinte y extras se confirman en recepción y pueden cambiar este
-                          total.
+                          Medicado, tinte y vitrina quedan en insumos. El stock se reserva al
+                          Guardar cambios.
                         </p>
                       )
                     ) : (
@@ -2183,6 +2414,36 @@ function StaffAgenda() {
                 <div className="flex flex-wrap gap-2">
                   {perms.isStaff || perms.isCliente ? (
                     <>
+                      {normalizeStatus(selected.status) === "finalizada" ? (
+                        <>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            className="rounded-xl"
+                            onClick={() => {
+                              void openAppointmentInvoice(selected.id, "view").catch((e) =>
+                                toast.error(e instanceof Error ? e.message : "No se pudo abrir el PDF"),
+                              );
+                            }}
+                          >
+                            <FileText className="mr-2 h-4 w-4" /> Ver PDF
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            className="rounded-xl"
+                            onClick={() => {
+                              void openAppointmentInvoice(selected.id, "download").catch((e) =>
+                                toast.error(
+                                  e instanceof Error ? e.message : "No se pudo descargar el PDF",
+                                ),
+                              );
+                            }}
+                          >
+                            Descargar PDF
+                          </Button>
+                        </>
+                      ) : null}
                       <Button
                         className="rounded-xl"
                         disabled={
@@ -2200,6 +2461,20 @@ function StaffAgenda() {
                               appointment: selected,
                               mode: "save",
                               nextStatus: "enproceso",
+                            });
+                            return;
+                          }
+                          if (
+                            editForm.status === "cancelada" &&
+                            normalizeStatus(selected.status) === "enproceso"
+                          ) {
+                            setConfirmAction({
+                              title: "Cancelar servicio en proceso",
+                              description:
+                                "Esto es una reversión: se avisa a los dueños y el inventario vuelve con traza. Anotá por qué.",
+                              actionLabel: "Sí, cancelar y devolver stock",
+                              reasonRequired: true,
+                              onConfirm: (reason) => saveMut.mutate({ cancel_reason: reason }),
                             });
                             return;
                           }
@@ -2227,7 +2502,7 @@ function StaffAgenda() {
                         </span>
                       ) : null}
                       {perms.canFinishAppointments &&
-                      normalizeStatus(selected.status) !== "finalizada" ? (
+                      normalizeStatus(selected.status) === "enproceso" ? (
                       <Button
                         variant="outline"
                         className="rounded-xl"
@@ -2247,11 +2522,18 @@ function StaffAgenda() {
                         disabled={cancelMut.isPending}
                         onClick={() => {
                           const petName = selected.pets?.name ?? (perms.isCliente ? "tu mascota" : "esta mascota");
+                          const fromEnproceso = normalizeStatus(selected.status) === "enproceso";
                           setConfirmAction({
-                            title: "Cancelar turno",
-                            description: `¿Cancelar el turno de ${petName}? Avisaremos por correo. La cita queda en la agenda como cancelada.`,
-                            actionLabel: "Sí, cancelar",
-                            onConfirm: () => cancelMut.mutate(selected.id),
+                            title: fromEnproceso ? "Cancelar servicio en proceso" : "Cancelar turno",
+                            description: fromEnproceso
+                              ? `¿Cancelar el servicio de ${petName} ya en proceso? Es una reversión de admin: se avisa por correo y el inventario vuelve con traza.`
+                              : `¿Cancelar el turno de ${petName}? Avisaremos por correo.`,
+                            actionLabel: fromEnproceso
+                              ? "Sí, cancelar y devolver stock"
+                              : "Sí, cancelar",
+                            reasonRequired: fromEnproceso,
+                            onConfirm: (reason) =>
+                              cancelMut.mutate({ id: selected.id, reason }),
                           });
                         }}
                       >
@@ -2332,7 +2614,9 @@ function StaffAgenda() {
         description={confirmAction?.description}
         confirmLabel={confirmAction?.actionLabel ?? "Confirmar"}
         cancelLabel="Volver"
-        onConfirm={() => confirmAction?.onConfirm()}
+        pending={cancelMut.isPending || statusMut.isPending || saveMut.isPending}
+        reasonRequired={confirmAction?.reasonRequired}
+        onConfirm={(reason) => confirmAction?.onConfirm(reason)}
         onOpenChange={(o) => {
           if (!o) setConfirmAction(null);
         }}

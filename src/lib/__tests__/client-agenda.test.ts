@@ -11,6 +11,8 @@ import {
   startOfWeekMonday,
   ymd,
   isPastHour,
+  CLIENT_BOOKING_FIELD_ORDER,
+  clientCreateAppointmentBody,
 } from "@/lib/client-agenda";
 
 describe("client agenda copy", () => {
@@ -49,5 +51,31 @@ describe("client agenda copy", () => {
     expect(isPastHour("2026-08-30", 9, now)).toBe(true);
     expect(isPastHour("2026-08-30", 11, now)).toBe(false);
     expect(isPastHour("2026-08-31", 8, now)).toBe(false);
+  });
+
+  it("requires pet, sede and service when the client books", () => {
+    expect(CLIENT_BOOKING_FIELD_ORDER).toEqual(["pet", "location", "service"]);
+    expect(
+      clientCreateAppointmentBody({
+        petId: "p1",
+        serviceId: "s1",
+        locationId: "cota",
+        startsAtIso: "2026-09-21T15:00:00.000Z",
+      }),
+    ).toEqual({
+      pet_id: "p1",
+      service_id: "s1",
+      location_id: "cota",
+      starts_at: "2026-09-21T15:00:00.000Z",
+      sync_google: false,
+    });
+    expect(() =>
+      clientCreateAppointmentBody({
+        petId: "p1",
+        serviceId: "s1",
+        locationId: "",
+        startsAtIso: "2026-09-21T15:00:00.000Z",
+      }),
+    ).toThrow(/sede/i);
   });
 });

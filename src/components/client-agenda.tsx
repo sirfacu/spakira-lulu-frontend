@@ -30,6 +30,7 @@ import {
 import { WeekSlotGrid } from "@/components/week-slot-grid";
 import {
   addDays,
+  clientCreateAppointmentBody,
   sexMark,
   speciesEmoji,
   speciesLabel,
@@ -170,15 +171,17 @@ export function ClientAgenda() {
 
   const createMut = useMutation({
     mutationFn: async () => {
-      if (!selected || !book || !serviceId) throw new Error("Elegí mascota y servicio");
+      if (!selected || !book) throw new Error("Elegí mascota y horario");
       const starts = new Date(`${book.date}T${String(book.hour).padStart(2, "0")}:00:00`);
-      return createAppointment({
-        pet_id: selected.id,
-        service_id: serviceId,
-        location_id: locationId || null,
-        starts_at: starts.toISOString(),
-        sync_google: false,
-      });
+      return createAppointment(
+        clientCreateAppointmentBody({
+          petId: selected.id,
+          serviceId,
+          locationId,
+          startsAtIso: starts.toISOString(),
+          locationsAvailable: activeLocations.length,
+        }),
+      );
     },
     onSuccess: () => {
       toast.success(`¡Listo! Reservamos el momento para ${selected?.name}.`);
@@ -200,6 +203,10 @@ export function ClientAgenda() {
   const openBook = (date: string, hour: number) => {
     if (!selected) {
       toast.message("Primero elegí a tu peludito 🐾");
+      return;
+    }
+    if (!locationId) {
+      toast.message("Elegí la sede.");
       return;
     }
     if (!serviceId) {
@@ -253,39 +260,32 @@ export function ClientAgenda() {
         <aside className="space-y-4">
           <section className="rounded-3xl border border-border/60 bg-card p-4 shadow-soft">
             {selected ? (
-              <>
-                <div className="flex items-center gap-3">
-                  <PetAvatar pet={selected} size="lg" />
-                  <div className="min-w-0">
-                    <PetMeta pet={selected} />
-                    <Link
-                      to="/panel/mascotas"
-                      className="mt-1 inline-flex text-xs font-medium text-primary underline-offset-4 hover:underline"
-                    >
-                      Ver perfil
-                    </Link>
-                  </div>
-                </div>
-                <div className="mt-4">
-                  <PetPicker
-                    pets={list}
-                    selectedId={selected.id}
-                    open={pickerOpen}
-                    onOpenChange={setPickerOpen}
-                    onSelect={(id) => {
-                      setPetId(id);
-                      setPickerOpen(false);
-                    }}
-                    onCreate={() => {
-                      setPickerOpen(false);
-                      void navigate({
-                        to: "/panel/mascotas",
-                        search: { alta: true, from: "agenda" },
-                      });
-                    }}
-                  />
-                </div>
-              </>
+              <div className="space-y-1.5">
+                <Label className="text-xs text-muted-foreground">Mascota</Label>
+                <PetPicker
+                  pets={list}
+                  selectedId={selected.id}
+                  open={pickerOpen}
+                  onOpenChange={setPickerOpen}
+                  onSelect={(id) => {
+                    setPetId(id);
+                    setPickerOpen(false);
+                  }}
+                  onCreate={() => {
+                    setPickerOpen(false);
+                    void navigate({
+                      to: "/panel/mascotas",
+                      search: { alta: true, from: "agenda" },
+                    });
+                  }}
+                />
+                <Link
+                  to="/panel/mascotas"
+                  className="inline-flex text-xs font-medium text-primary underline-offset-4 hover:underline"
+                >
+                  Ver perfil
+                </Link>
+              </div>
             ) : (
               <p className="text-sm text-muted-foreground">
                 Primero registrá una mascota para ver la agenda.{" "}
@@ -299,21 +299,6 @@ export function ClientAgenda() {
               </p>
             )}
 
-            <div className="mt-5 space-y-1.5">
-              <Label className="text-xs text-muted-foreground">Servicio</Label>
-              <Select value={serviceId} onValueChange={setServiceId}>
-                <SelectTrigger className="h-11 rounded-xl">
-                  <SelectValue placeholder="Elegí el consentimiento" />
-                </SelectTrigger>
-                <SelectContent>
-                  {(services.data ?? []).map((s) => (
-                    <SelectItem key={s.id} value={s.id}>
-                      {s.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
             <div className="mt-5 space-y-1.5">
               <Label className="text-xs text-muted-foreground">Sede</Label>
               {activeLocations.length ? (
@@ -333,6 +318,22 @@ export function ClientAgenda() {
               ) : (
                 <p className="text-sm font-medium">Sede principal</p>
               )}
+            </div>
+
+            <div className="mt-5 space-y-1.5">
+              <Label className="text-xs text-muted-foreground">Servicio</Label>
+              <Select value={serviceId} onValueChange={setServiceId}>
+                <SelectTrigger className="h-11 rounded-xl">
+                  <SelectValue placeholder="Elegí el consentimiento" />
+                </SelectTrigger>
+                <SelectContent>
+                  {(services.data ?? []).map((s) => (
+                    <SelectItem key={s.id} value={s.id}>
+                      {s.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             <dl className="mt-4 space-y-2 text-sm">
               <div className="flex items-center justify-between gap-2">
@@ -416,6 +417,24 @@ export function ClientAgenda() {
             {book ? slotWhenLabel(book.date, book.hour) : "Confirmá el servicio para completar la reserva."}
           </DialogDescription>
           <div className="space-y-2">
+            {activeLocations.length ? (
+              <div className="space-y-2">
+                <Label>Sede</Label>
+                <Select value={locationId} onValueChange={setLocationId}>
+                  <SelectTrigger className="h-11 rounded-xl">
+                    <SelectValue placeholder="Elegí la sede" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {activeLocations.map((loc) => (
+                      <SelectItem key={loc.id} value={loc.id}>
+                        {loc.name}
+                        {loc.city ? ` · ${loc.city}` : ""}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            ) : null}
             <Label>Servicio</Label>
             <Select value={serviceId} onValueChange={setServiceId}>
               <SelectTrigger className="h-11 rounded-xl">
@@ -441,7 +460,7 @@ export function ClientAgenda() {
             </Button>
             <Button
               className="rounded-xl"
-              disabled={!serviceId || createMut.isPending}
+              disabled={!serviceId || (!!activeLocations.length && !locationId) || createMut.isPending}
               onClick={() => createMut.mutate()}
             >
               Confirmar aventura
@@ -531,11 +550,9 @@ function PetPicker({
       type="button"
       className="flex w-full items-center gap-3 rounded-2xl border border-border/80 bg-background px-3 py-2.5 text-left hover:border-primary/40"
     >
-      <PetAvatar pet={selected} size="sm" />
-      <span className="min-w-0 flex-1 truncate text-sm font-medium">
-        {speciesEmoji(selected.species)} {selected.name}
-      </span>
-      <ChevronDown className="h-4 w-4 text-muted-foreground" />
+      <PetAvatar pet={selected} size="lg" />
+      <PetMeta pet={selected} />
+      <ChevronDown className="ml-auto h-4 w-4 shrink-0 text-muted-foreground" />
     </button>
   );
   return (

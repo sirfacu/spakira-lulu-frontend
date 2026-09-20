@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { createFileRoute, useRouteContext } from "@tanstack/react-router";
 import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { DollarSign, TrendingUp, Receipt, Sparkles, Plus, Minus, Trash2 } from "lucide-react";
+import { DollarSign, TrendingUp, Receipt, Sparkles, Plus, Minus, Trash2, FileText } from "lucide-react";
 import {
   ResponsiveContainer,
   BarChart,
@@ -15,6 +15,7 @@ import {
 import { AppShell } from "@/components/app-shell";
 import { StatCard, SectionCard, Empty } from "@/components/ui-kit";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Select,
@@ -31,16 +32,26 @@ import {
   staffQuery,
   panelServicesQuery,
   inventoryShopQuery,
+  inventoryShopAtLocationQuery,
   paymentMethodsQuery,
   createSale,
+  getSale,
+  openSaleInvoice,
   getMyStaff,
   getLoyaltyCustomer,
+  getLocations,
   type InventoryItem,
   type PromoValidate,
 } from "@/lib/spa-queries";
 import { cop, dayKey, shortDate } from "@/lib/format";
 import { requirePathAccess } from "@/lib/route-access";
 import { isActiveSale, permissionsFor } from "@/lib/roles";
+import { WorkingLocationBar } from "@/components/working-location-bar";
+import {
+  pickWorkingLocation,
+  readWorkingLocationId,
+  writeWorkingLocationId,
+} from "@/lib/working-location";
 
 export const Route = createFileRoute("/_authenticated/panel/ventas")({
   beforeLoad: requirePathAccess("/panel/ventas"),
@@ -75,11 +86,28 @@ function Ventas() {
   const perms = permissionsFor(user?.role);
   const canSeeAnalytics = perms.canViewSalesAnalytics;
   const qc = useQueryClient();
+  const locationsQ = useQuery({ queryKey: ["locations"], queryFn: getLocations });
+  const activeLocations = (locationsQ.data?.items ?? []).filter((x) => x.active);
+  const [workingLocationId, setWorkingLocationId] = useState("");
+  useEffect(() => {
+    const active = (locationsQ.data?.items ?? []).filter((x) => x.active);
+    const picked = pickWorkingLocation(active, readWorkingLocationId());
+    if (!picked) return;
+    setWorkingLocationId((prev) => {
+      const next = active.some((x) => x.id === prev) ? prev : picked.id;
+      writeWorkingLocationId(next);
+      return next;
+    });
+  }, [locationsQ.data]);
+  const workingLocation = pickWorkingLocation(activeLocations, workingLocationId);
+  const locationId = workingLocation?.id || "";
   const sales = useQuery({ ...salesQuery, enabled: canSeeAnalytics });
   const owners = useQuery(ownersQuery);
   const staff = useQuery({ ...staffQuery, enabled: perms.isAdmin });
   const services = useQuery(panelServicesQuery);
-  const shop = useQuery(inventoryShopQuery);
+  const shop = useQuery(
+    locationId ? inventoryShopAtLocationQuery(locationId) : inventoryShopQuery,
+  );
   const payMethods = useQuery(paymentMethodsQuery);
   const myStaff = useQuery({
     queryKey: ["staff-me"],
@@ -95,6 +123,13 @@ function Ventas() {
   const [productId, setProductId] = useState("");
   const [cart, setCart] = useState<CartLine[]>([]);
   const [promo, setPromo] = useState<PromoValidate | null>(null);
+  const [detailSaleId, setDetailSaleId] = useState<string | null>(null);
+  const saleDetailQ = useQuery({
+    queryKey: ["sale", detailSaleId],
+    queryFn: () => getSale(detailSaleId!),
+    enabled: Boolean(detailSaleId),
+  });
+  const saleDetail = saleDetailQ.data;
 
   const loyalty = useQuery({
     queryKey: ["loyalty-customer", ownerId],
@@ -154,6 +189,7 @@ function Ventas() {
       createSale({
         owner_id: ownerId || null,
         staff_id: staffId || null,
+        location_id: locationId || null,
         payment_method: method,
         ...(evidenceUrl ? { payment_evidence_url: evidenceUrl } : {}),
         service_id: serviceId || null,
@@ -210,6 +246,16 @@ function Ventas() {
           : "Registrar venta de mostrador (vitrina o servicio suelto)"
       }
     >
+      <WorkingLocationBar
+        location={workingLocation}
+        locations={activeLocations}
+        noun="Ventas"
+        onChange={(id) => {
+          writeWorkingLocationId(id);
+          setWorkingLocationId(id);
+          setCart([]);
+        }}
+      />
       {canSeeAnalytics ? (
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           <StatCard icon={DollarSign} label="Ventas del día" value={cop(todayTotal)} tone="accent" />
@@ -433,7 +479,11 @@ function Ventas() {
                     </thead>
                     <tbody>
                       {all.map((s) => (
-                        <tr key={s.id} className="border-b border-border/60 last:border-0">
+                        <tr
+                          key={s.id}
+                          className="cursor-pointer border-b border-border/60 last:border-0 hover:bg-secondary/40"
+                          onClick={() => setDetailSaleId(s.id)}
+                        >
                           <td className="py-3 text-muted-foreground">{shortDate(s.sold_at)}</td>
                           <td className="py-3 text-muted-foreground">
                             {s.source === "cita"
@@ -498,6 +548,115 @@ function Ventas() {
           </>
         ) : null}
       </Tabs>
+
+      <Dialog open={Boolean(detailSaleId)} onOpenChange={(o) => !o && setDetailSaleId(null)}>
+        <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto rounded-3xl">
+          <h2 className="font-display text-xl font-bold text-primary">Detalle de venta</h2>
+          {saleDetailQ.isLoading ? (
+            <p className="mt-3 text-sm text-muted-foreground">Cargando líneas…</p>
+          ) : saleDetailQ.isError ? (
+            <p className="mt-3 text-sm text-destructive">
+              {saleDetailQ.error instanceof Error
+                ? saleDetailQ.error.message
+                : "No se pudo cargar esta venta."}
+            </p>
+          ) : saleDetail ? (
+            <div className="mt-4 space-y-4">
+              <div className="grid gap-1 text-sm">
+                <p>
+                  <span className="text-muted-foreground">Fecha · </span>
+                  {shortDate(saleDetail.sold_at)}
+                </p>
+                <p>
+                  <span className="text-muted-foreground">Origen · </span>
+                  {saleDetail.source === "cita"
+                    ? `Servicio${saleDetail.pet_name ? ` · ${saleDetail.pet_name}` : ""}`
+                    : "Mostrador"}
+                </p>
+                <p>
+                  <span className="text-muted-foreground">Cliente · </span>
+                  {saleDetail.owners?.full_name ?? "—"}
+                </p>
+                {saleDetail.service_name ? (
+                  <p>
+                    <span className="text-muted-foreground">Servicio · </span>
+                    {saleDetail.service_name}
+                  </p>
+                ) : null}
+                <p>
+                  <span className="text-muted-foreground">Pago · </span>
+                  {saleDetail.payment_method_label || saleDetail.payment_method}
+                </p>
+                {saleDetail.invoice_number ? (
+                  <p>
+                    <span className="text-muted-foreground">Factura · </span>
+                    {saleDetail.invoice_number}
+                  </p>
+                ) : null}
+              </div>
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-border text-left text-xs uppercase tracking-wider text-muted-foreground">
+                    <th className="py-2 font-semibold">Ítem</th>
+                    <th className="py-2 text-right font-semibold">Cant.</th>
+                    <th className="py-2 text-right font-semibold">Unitario</th>
+                    <th className="py-2 text-right font-semibold">Subtotal</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(saleDetail.items ?? []).map((it) => (
+                    <tr key={it.id} className="border-b border-border/50 last:border-0">
+                      <td className="py-2">{it.description}</td>
+                      <td className="py-2 text-right tabular-nums">{it.quantity}</td>
+                      <td className="py-2 text-right">{cop(it.unit_price)}</td>
+                      <td className="py-2 text-right font-medium">
+                        {cop(Number(it.quantity) * Number(it.unit_price))}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <p className="text-right text-base font-semibold text-accent">
+                Total {cop(saleDetail.total)}
+              </p>
+              {saleDetail.has_invoice ? (
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="rounded-xl"
+                    onClick={() => {
+                      void openSaleInvoice(saleDetail.id, "view").catch((e) =>
+                        toast.error(e instanceof Error ? e.message : "No se pudo abrir el PDF"),
+                      );
+                    }}
+                  >
+                    <FileText className="mr-2 h-4 w-4" /> Ver PDF
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="rounded-xl"
+                    onClick={() => {
+                      void openSaleInvoice(saleDetail.id, "download").catch((e) =>
+                        toast.error(e instanceof Error ? e.message : "No se pudo descargar el PDF"),
+                      );
+                    }}
+                  >
+                    Descargar
+                  </Button>
+                </div>
+              ) : (
+                <p className="text-xs text-muted-foreground">
+                  {saleDetail.source === "cita"
+                    ? "Esta venta de cita no tiene factura PDF."
+                    : "La venta de mostrador no genera factura PDF; el detalle de ítems está arriba."}
+                </p>
+              )}
+            </div>
+          ) : null}
+        </DialogContent>
+      </Dialog>
     </AppShell>
   );
 }

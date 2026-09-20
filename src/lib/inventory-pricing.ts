@@ -27,25 +27,33 @@ export type InventoryValueLine = {
   unit_kind?: string | null;
 };
 
-/** Valor en costo de una línea (para totales del panel). */
+/** Sustantivo del costo cargado en la ficha (un envase / pack / unidad). */
+export function purchaseCostNoun(unitKind?: string | null): string {
+  const k = (unitKind || "unidad").toLowerCase();
+  if (k === "ml" || k === "g" || k === "l") return "envase";
+  if (k === "pack") return "pack";
+  return "unidad";
+}
+
+/** Valor en costo de una línea (para totales del panel). Alineado con backend. */
 export function inventoryLineValue(item: InventoryValueLine): number {
   const cost = Number(item.purchase_price) || 0;
   const qty = Number(item.quantity) || 0;
   const pack = Number(item.pack_size) || 1;
   const kind = (item.unit_kind || "unidad").toLowerCase();
 
-  // BARF, bidones ml, etc.: quantity = envases; purchase_price = costo del envase
-  if (kind === "g" || kind === "ml") {
-    return cost * qty;
+  // g/ml/l/pack: quantity = contenido total; purchase_price = costo de UN envase/pack
+  if (kind === "g" || kind === "ml" || kind === "l" || kind === "pack") {
+    return Math.round(cost * (qty / (pack || 1)));
   }
   // Gemas/bandas: qty >= pack → unidades sueltas; qty < pack → cantidad de presentaciones
   if (pack > 1 && kind === "unidad") {
     if (qty >= pack) {
-      return cost * (qty / pack);
+      return Math.round(cost * (qty / pack));
     }
-    return cost * qty;
+    return Math.round(cost * qty);
   }
-  return cost * qty;
+  return Math.round(cost * qty);
 }
 
 export function needsSalePrice(

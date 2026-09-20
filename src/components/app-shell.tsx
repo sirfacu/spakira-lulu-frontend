@@ -23,7 +23,7 @@ import {
 import { cn } from "@/lib/utils";
 import { BrandMark, PawIcon } from "@/components/brand";
 import { logout as apiLogout, resolveMediaUrl } from "@/lib/api";
-import { canAccessPath, normalizeRole } from "@/lib/roles";
+import { canAccessPath, normalizeRole, panelNavLabel, sortPanelNavPaths } from "@/lib/roles";
 import { markNotificationsRead, notificationsQuery, getBusinessSettings } from "@/lib/spa-queries";
 import { initials, shortDate, time } from "@/lib/format";
 import { EmacCredit } from "@/components/emac-credit";
@@ -62,20 +62,18 @@ export function AppShell({
   const role = normalizeRole(user?.role);
   const profileLocked = role === "cliente" && user?.profile_complete === false;
   const needsPet = role === "cliente" && user?.profile_complete !== false && !!user?.needs_pet;
-  const nav = (
-    profileLocked
-      ? []
-      : needsPet
-        ? NAV.filter((item) => item.to === "/panel/mascotas")
-        : NAV.filter((item) => canAccessPath(role, item.to, user?.modules))
-  ).map((item) => {
-    if (item.to === "/panel/agenda" && (role === "colaborador" || role === "cliente")) {
-      return { ...item, label: "Mi agenda" };
-    }
-    if (item.to === "/panel/mascotas" && role === "cliente") {
-      return { ...item, label: "Mis mascotas" };
-    }
-    return item;
+  const allowedNav = profileLocked
+    ? []
+    : needsPet
+      ? NAV.filter((item) => item.to === "/panel/mascotas")
+      : NAV.filter((item) => canAccessPath(role, item.to, user?.modules));
+  const nav = sortPanelNavPaths(
+    allowedNav.map((item) => item.to),
+    role,
+  ).flatMap((path) => {
+    const item = NAV.find((n) => n.to === path);
+    if (!item) return [];
+    return [{ ...item, label: panelNavLabel(item.to, role) }];
   });
   const qc = useQueryClient();
   const notifs = useQuery(notificationsQuery);

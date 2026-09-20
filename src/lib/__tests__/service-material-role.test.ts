@@ -4,9 +4,13 @@ import {
   isLiquidMaterialRole,
   isPanoletaItem,
   isServiceAttachableItem,
+  isVisitOnlyCategory,
   isWearEstimateLine,
   panoletaFamilyKey,
   parsePanoletaSize,
+  visitCareItems,
+  visitCarePickerLabel,
+  visitCareSalePrice,
 } from "../service-material-role";
 
 describe("service-material-role", () => {
@@ -34,6 +38,7 @@ describe("service-material-role", () => {
     );
     expect(inferMaterialRole({ name: "Orenda Otico 100 ml", category: "Salud" })).toBe("health");
     expect(inferMaterialRole({ name: "tinte colorimetria", category: "Tinte" })).toBe("dye");
+    expect(inferMaterialRole({ name: "Pigmento rojo", category: "Colorimetría" })).toBe("dye");
     expect(
       inferMaterialRole({ name: "Maquina Andis", category: "Herramienta de trabajo" }),
     ).toBe("tool");
@@ -68,6 +73,28 @@ describe("service-material-role", () => {
   it("keeps medicado and tinte off the service recipe", () => {
     expect(isServiceAttachableItem({ name: "Asuntol", category: "Medicado" })).toBe(false);
     expect(isServiceAttachableItem({ name: "Tinte rojo", category: "Tinte" })).toBe(false);
+    expect(isServiceAttachableItem({ name: "Pigmento", category: "Colorimetría" })).toBe(false);
     expect(isServiceAttachableItem({ name: "Hydra", category: "Shampoo" })).toBe(true);
+    expect(isVisitOnlyCategory("Colorimetría")).toBe(true);
+  });
+
+  it("lists medicado/tinte for any visit, including colorimetría category", () => {
+    const items = [
+      { name: "Asuntol", category: "Medicado", sale_price_unit: 80 },
+      { name: "Pigmento rojo", category: "Colorimetría", sale_price: 40000, pack_size: 100 },
+      { name: "Galleta", category: "Alimentos", sale_price_unit: 5000 },
+    ];
+    expect(visitCareItems(items, "medicated").map((i) => i.name)).toEqual(["Asuntol"]);
+    expect(visitCareItems(items, "dye").map((i) => i.name)).toEqual(["Pigmento rojo"]);
+    expect(visitCareSalePrice(items[1])).toBe(400);
+  });
+
+  it("labels visit-care picker with stock of this sede", () => {
+    expect(
+      visitCarePickerLabel({ name: "Asuntol", unit_kind: "ml", available: 4000 }),
+    ).toBe("Asuntol · 4000 ml libres");
+    expect(
+      visitCarePickerLabel({ name: "Asuntol", unit_kind: "ml", available: 0, quantity: 0 }),
+    ).toBe("Asuntol · sin stock en esta sede");
   });
 });
