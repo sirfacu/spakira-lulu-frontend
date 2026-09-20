@@ -106,7 +106,6 @@ describe("roles", () => {
     expect(editableAppointmentStatuses("colaborador", "pendiente")).toEqual([
       "pendiente",
       "enproceso",
-      "finalizada",
       "cancelada",
     ]);
     expect(editableAppointmentStatuses("colaborador", "enproceso")).toEqual([

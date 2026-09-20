@@ -8,13 +8,14 @@ import {
   Filter,
   Minus,
   Plus,
-  MessageCircle,
   Pencil,
   Trash2,
   Search,
   CalendarDays,
   Clock,
   MapPin,
+  FileText,
+  MessageCircle,
 } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
 import { StatusPill, Empty } from "@/components/ui-kit";
@@ -52,6 +53,8 @@ import {
   inventoryShopQuery,
   inventoryQuery,
   fetchNextAppointmentSlot,
+  fetchAppointmentWhatsAppLinks,
+  openAppointmentInvoice,
   getLocations,
   getBusinessHours,
   weekSlotsQuery,
@@ -65,6 +68,7 @@ import {
 } from "@/lib/spa-queries";
 import {
   dayKey,
+  shortDate,
   statusMeta,
   normalizeStatus,
   time,
@@ -86,6 +90,10 @@ import { FinishAppointmentDialog } from "@/components/finish-appointment-dialog"
 import { MaterialEstimatePanel } from "@/components/material-estimate-panel";
 import { CouponApplyFields } from "@/components/coupon-apply-fields";
 import { ConfirmServicePriceDialog, type VisitStartPayload } from "@/components/confirm-service-price-dialog";
+import { VisitCareAddFields } from "@/components/visit-care-fields";
+import { AppointmentWhatsAppBar } from "@/components/appointment-whatsapp-bar";
+import { visitCareSalePrice } from "@/lib/service-material-role";
+import { appointmentOwnerChatMessage, ownerChatLinks } from "@/lib/whatsapp-link";
 import {
   appointmentShowsChargedPrice,
   PENDING_SERVICE_PRICE_LABEL,
@@ -257,6 +265,26 @@ function appointmentLocation(
   return { id, name };
 }
 
+function chatLinksFromAppointment(a: Appointment) {
+  const owners = [
+    ...(a.pets?.owners_list ?? []),
+    ...(a.pets?.owners ? [a.pets.owners] : []),
+  ].filter((o, i, all) => o?.id && all.findIndex((x) => x?.id === o.id) === i);
+  if (!owners.length && a.pets?.owners) owners.push(a.pets.owners);
+  const built = ownerChatLinks(owners, (name) =>
+    appointmentOwnerChatMessage({
+      ownerName: name,
+      petName: a.pets?.name,
+      serviceName: a.services?.name,
+      whenLabel: `${shortDate(a.starts_at)} ${time(a.starts_at)}`,
+    }),
+  );
+  return {
+    items: built.items,
+    missing: built.missing.map((m) => (m.full_name || "").trim()).filter(Boolean),
+  };
+}
+
 function Agenda() {
   const { user } = useRouteContext({ from: "/_authenticated" });
   const perms = permissionsFor(user?.role);
@@ -333,8 +361,11 @@ function StaffAgenda() {
   const [notes, setNotes] = useState("");
   const [shootSelections, setShootSelections] = useState<Record<string, boolean>>({});
   const [lastWa, setLastWa] = useState<
-    { owner_id?: string; full_name?: string; link: string }[] | null
+    { owner_id?: string; full_name?: string | null; link: string }[] | null
   >(null);
+  const [waMissing, setWaMissing] = useState<string[]>([]);
+  const [waPetName, setWaPetName] = useState<string | null>(null);
+  const [waLoading, setWaLoading] = useState(false);
   const [finishAppt, setFinishAppt] = useState<Appointment | null>(null);
   const [citaPromo, setCitaPromo] = useState<import("@/lib/spa-queries").PromoValidate | null>(null);
   const [finishCouponCode, setFinishCouponCode] = useState<string | null>(null);
@@ -450,6 +481,13 @@ function StaffAgenda() {
     setEditBaseline(form);
     setExtraQuery("");
     setExtraPrice("");
+    if (perms.canSeeWhatsAppLinks) {
+      const fallback = chatLinksFromAppointment(a);
+      setLastWa(fallback.items);
+      setWaMissing(fallback.missing);
+      setWaPetName(a.pets?.name ?? null);
+      setWaLoading(true);
+    }
     if (perms.isStaff) {
       void loadExtras(a.id, { syncBaseline: true });
     } else {
@@ -458,6 +496,35 @@ function StaffAgenda() {
     }
     refreshList(["pets"], ["staff"], ["services"], ["appointments"]);
   };
+
+  useEffect(() => {
+    if (!selected?.id || !perms.canSeeWhatsAppLinks) return;
+    let cancelled = false;
+    setWaLoading(true);
+    void fetchAppointmentWhatsAppLinks(selected.id)
+      .then((data) => {
+        if (cancelled) return;
+        setLastWa(data.items ?? []);
+        setWaMissing(
+          (data.missing ?? [])
+            .map((m) => (m.full_name || "").trim())
+            .filter(Boolean),
+        );
+        setWaPetName(data.pet_name || selected.pets?.name || null);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        const fallback = chatLinksFromAppointment(selected);
+        setLastWa(fallback.items);
+        setWaMissing(fallback.missing);
+      })
+      .finally(() => {
+        if (!cancelled) setWaLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selected?.id, perms.canSeeWhatsAppLinks, selected]);
 
   const openNewAppointment = (day?: Date) => {
     const target = day ?? new Date();
@@ -649,9 +716,9 @@ function StaffAgenda() {
   });
 
   const addExtraMut = useMutation({
-    mutationFn: (input: { item_name: string; unit_price: number }) => {
+    mutationFn: (input: { item_name: string; unit_price: number; quantity?: number }) => {
       if (!selected) throw new Error("Sin cita");
-      return addAppointmentExtra(selected.id, { ...input, quantity: 1 });
+      return addAppointmentExtra(selected.id, { ...input, quantity: input.quantity ?? 1 });
     },
     onSuccess: () => {
       toast.success("Extra agregado · el correo se envía al Guardar cambios");
@@ -743,7 +810,13 @@ function StaffAgenda() {
           : perms.canSeeWhatsAppLinks && data.whatsapp_link
             ? [{ link: data.whatsapp_link }]
             : [];
-      setLastWa(links.length ? links : null);
+      setLastWa(links);
+      setWaMissing(
+        (data.whatsapp_missing ?? [])
+          .map((m) => (m.full_name || "").trim())
+          .filter(Boolean),
+      );
+      setWaPetName(data.pets?.name ?? null);
       // Asegurar que la semana visible incluye la cita nueva
       const createdDay = new Date(startsAt);
       setAnchor(startOfWeek(createdDay));
@@ -1081,7 +1154,8 @@ function StaffAgenda() {
         </div>
       </div>
 
-      <div className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7">
+      <div className="mt-6 overflow-x-auto pb-1">
+        <div className="grid min-w-[84rem] grid-cols-7 gap-3">
         {days.map((d) => {
           const key = dayKey(d);
           const list = filtered.filter((a) => dayKey(new Date(a.starts_at)) === key);
@@ -1131,7 +1205,7 @@ function StaffAgenda() {
                   return (
                     <article
                       key={a.id}
-                      className="overflow-hidden rounded-xl border border-border/70 bg-background/70 p-2 shadow-soft transition-all duration-200 hover:-translate-y-0.5 hover:border-primary/30 hover:shadow-lift"
+                      className="overflow-hidden rounded-2xl border border-border/70 bg-background p-3 shadow-soft transition-all duration-200 hover:-translate-y-0.5 hover:border-primary/30 hover:shadow-lift"
                       style={
                         locTone
                           ? { borderLeftColor: locTone.accent, borderLeftWidth: 3 }
@@ -1143,56 +1217,54 @@ function StaffAgenda() {
                         onClick={() => openManage(a)}
                         className="w-full text-left"
                       >
-                        <div className="flex items-start gap-2">
+                        <div className="flex items-start gap-2.5">
                           {a.pets?.photo_url ? (
                             <img
                               src={resolveMediaUrl(a.pets.photo_url)}
                               alt={a.pets.name}
-                              className="h-9 w-9 shrink-0 rounded-lg object-cover"
+                              className="h-12 w-12 shrink-0 rounded-xl object-cover"
                             />
                           ) : (
-                            <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-primary/10 text-[11px] font-semibold text-primary">
+                            <span className="grid h-12 w-12 shrink-0 place-items-center rounded-xl bg-primary/10 text-sm font-semibold text-primary">
                               {initials(a.pets?.name ?? "?")}
                             </span>
                           )}
                           <div className="min-w-0 flex-1">
-                            <div className="flex items-baseline justify-between gap-1">
-                              <p className="truncate text-sm font-semibold text-foreground">
-                                {a.pets?.name}
-                              </p>
-                              <p className="shrink-0 text-[11px] tabular-nums text-muted-foreground">
-                                {time(a.starts_at)}
-                              </p>
-                            </div>
+                            <p className="text-sm font-semibold leading-snug text-foreground [overflow-wrap:anywhere]">
+                              {a.pets?.name}
+                            </p>
                             {loc ? (
                               <p
-                                className="truncate text-[11px] font-semibold"
+                                className="mt-0.5 text-[11px] font-semibold leading-snug [overflow-wrap:anywhere]"
                                 style={{ color: locTone?.accent }}
                                 title={loc.name}
                               >
                                 {loc.name}
                               </p>
                             ) : null}
+                            <p className="mt-0.5 text-xs tabular-nums text-muted-foreground">
+                              {time(a.starts_at)}
+                            </p>
                             {a.services?.name ? (
-                              <p className="truncate text-[11px] text-muted-foreground">
+                              <p className="mt-0.5 text-[11px] leading-snug text-muted-foreground [overflow-wrap:anywhere]">
                                 {a.services.name}
                               </p>
                             ) : null}
+                            <p className="mt-0.5 text-[11px] leading-snug text-muted-foreground [overflow-wrap:anywhere]">
+                              Atiende · {a.staff?.full_name || "sin asignar"}
+                            </p>
+                            <p className="mt-1.5 text-sm font-semibold text-accent">
+                              {appointmentShowsChargedPrice(a, perms.isCliente)
+                                ? cop(appointmentChargeTotal(a))
+                                : PENDING_SERVICE_PRICE_LABEL}
+                              {Number(a.extras_count ?? 0) > 0 ? (
+                                <span className="ml-1 text-[11px] font-normal text-muted-foreground">
+                                  · {a.extras_count} extra
+                                  {Number(a.extras_count) === 1 ? "" : "s"}
+                                </span>
+                              ) : null}
+                            </p>
                           </div>
-                        </div>
-                        <div className="mt-1.5 flex items-center justify-between gap-2">
-                          <StatusPill label={meta.label} className={meta.className} hint={meta.hint} />
-                          <span className="text-right text-[11px] font-medium text-accent">
-                            {appointmentShowsChargedPrice(a, perms.isCliente)
-                              ? cop(appointmentChargeTotal(a))
-                              : PENDING_SERVICE_PRICE_LABEL}
-                            {Number(a.extras_count ?? 0) > 0 ? (
-                              <span className="mt-0.5 block text-[9px] font-normal text-muted-foreground">
-                                incl. {a.extras_count} extra
-                                {Number(a.extras_count) === 1 ? "" : "s"}
-                              </span>
-                            ) : null}
-                          </span>
                         </div>
                         {prog ? (
                           <div className="mt-2">
@@ -1218,7 +1290,7 @@ function StaffAgenda() {
                       </button>
                       {perms.canChangeAppointmentStatus ? (
                       <div
-                        className="mt-2"
+                        className="mt-2.5"
                         onClick={(e) => e.stopPropagation()}
                         onPointerDown={(e) => e.stopPropagation()}
                       >
@@ -1239,7 +1311,7 @@ function StaffAgenda() {
                             statusMut.mutate({ id: a.id, status: v });
                           }}
                         >
-                          <SelectTrigger className="h-8 rounded-lg text-xs">
+                          <SelectTrigger className={cn("h-9 rounded-xl text-xs", meta.className)}>
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
@@ -1251,7 +1323,11 @@ function StaffAgenda() {
                           </SelectContent>
                         </Select>
                       </div>
-                      ) : null}
+                      ) : (
+                        <div className="mt-2.5">
+                          <StatusPill label={meta.label} className={meta.className} hint={meta.hint} />
+                        </div>
+                      )}
                     </article>
                   );
                 })}
@@ -1268,6 +1344,7 @@ function StaffAgenda() {
             </div>
           );
         })}
+        </div>
       </div>
 
       {openForm ? (
@@ -1531,25 +1608,13 @@ function StaffAgenda() {
         </div>
       ) : null}
 
-      {perms.canSeeWhatsAppLinks && lastWa?.length ? (
-        <div className="mb-6 rounded-2xl border border-border bg-card p-4">
-          <div className="flex items-start gap-3">
-            <MessageCircle className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
-            <div className="min-w-0 flex-1">
-              <p className="text-sm text-muted-foreground">
-                Cita lista. Avisá por WhatsApp a cada dueño (abre el chat con el mensaje).
-              </p>
-              <div className="mt-3 flex flex-wrap gap-2">
-                {lastWa.map((wa) => (
-                  <Button key={wa.link} asChild className="h-10 rounded-xl">
-                    <a href={wa.link} target="_blank" rel="noopener noreferrer">
-                      WhatsApp{wa.full_name ? ` · ${wa.full_name}` : ""}
-                    </a>
-                  </Button>
-                ))}
-              </div>
-            </div>
-          </div>
+      {perms.canSeeWhatsAppLinks && (lastWa?.length || waMissing.length) ? (
+        <div className="mb-6">
+          <AppointmentWhatsAppBar
+            items={lastWa ?? []}
+            missingNames={waMissing}
+            petName={waPetName}
+          />
         </div>
       ) : null}
 
@@ -1613,7 +1678,7 @@ function StaffAgenda() {
       />
 
       <Dialog open={!!selected} onOpenChange={(o) => !o && setSelected(null)}>
-        <DialogContent className="flex max-h-[90vh] max-w-lg flex-col overflow-hidden rounded-3xl p-0">
+        <DialogContent className="flex max-h-[92vh] w-[calc(100vw-1.5rem)] max-w-3xl flex-col overflow-hidden rounded-3xl p-0">
           {selected ? (
             <div className="flex min-h-0 flex-1 flex-col">
               <div className="shrink-0 border-b border-border px-6 pb-4 pt-6 pr-12">
@@ -1652,6 +1717,18 @@ function StaffAgenda() {
                       <br />
                       {selected.pets?.owners?.full_name ?? "—"}
                     </p>
+                    {perms.canSeeWhatsAppLinks && lastWa?.length ? (
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        {lastWa.map((wa) => (
+                          <Button key={wa.link} asChild className="h-9 rounded-xl">
+                            <a href={wa.link} target="_blank" rel="noopener noreferrer">
+                              <MessageCircle className="mr-1.5 h-4 w-4" />
+                              WhatsApp{wa.full_name ? ` · ${wa.full_name}` : ""}
+                            </a>
+                          </Button>
+                        ))}
+                      </div>
+                    ) : null}
                   </div>
                 </div>
               </div>
@@ -1895,14 +1972,32 @@ function StaffAgenda() {
                   </div>
                 ) : null}
 
+                {!perms.isCliente ? (
+                  <div className="mt-6 rounded-2xl border border-border p-4">
+                    <VisitCareAddFields
+                      inventory={inventoryAll.data ?? []}
+                      disabled={
+                        normalizeStatus(selected.status) === "finalizada" ||
+                        normalizeStatus(selected.status) === "cancelada"
+                      }
+                      onAdd={(item, quantity) =>
+                        addExtraMut.mutate({
+                          item_name: item.name,
+                          unit_price: visitCareSalePrice(item),
+                          quantity,
+                        })
+                      }
+                    />
+                  </div>
+                ) : null}
+
                 {perms.isStaff || perms.isCliente ? (
                 <div className="mt-6 rounded-2xl border border-border p-4">
                   <h3 className="font-display text-base font-bold text-primary">
                     Cobro adicional (vitrina)
                   </h3>
                   <p className="mt-1 text-xs text-muted-foreground">
-                    Los adicionales (medicado, etc.) se eligen arriba. Acá van galletas, BARF,
-                    collares, etc.
+                    Galletas, BARF, collares y demás. Medicado y colorimetría van arriba.
                   </p>
                   {(() => {
                     const extrasStatus = normalizeStatus(selected.status);
@@ -1995,7 +2090,11 @@ function StaffAgenda() {
 
                   <ul className="mt-3 space-y-2">
                     {extras.map((ex) => {
-                      const qty = Math.max(1, Number(ex.quantity) || 1);
+                      const visitCare =
+                        ex.material_role === "medicated" || ex.material_role === "dye";
+                      const qty = visitCare
+                        ? Number(ex.quantity) || 0
+                        : Math.max(1, Number(ex.quantity) || 1);
                       const unit = Number(ex.unit_price) || 0;
                       const total = Number(ex.total) || qty * unit;
                       return (
@@ -2042,22 +2141,34 @@ function StaffAgenda() {
                                 variant="outline"
                                 size="icon"
                                 className="h-8 w-8 rounded-lg"
-                                disabled={!canEditExtras || patchExtraMut.isPending || qty <= 1}
+                                disabled={
+                                  !canEditExtras ||
+                                  patchExtraMut.isPending ||
+                                  qty <= (visitCare ? 0.1 : 1)
+                                }
                                 aria-label="Restar"
                                 onClick={() =>
-                                  patchExtraMut.mutate({ extraId: ex.id, quantity: qty - 1 })
+                                  patchExtraMut.mutate({
+                                    extraId: ex.id,
+                                    quantity: visitCare ? Math.max(0.1, qty - 1) : qty - 1,
+                                  })
                                 }
                               >
                                 <Minus className="h-3.5 w-3.5" />
                               </Button>
                               <Input
                                 type="number"
-                                min={1}
-                                step={1}
-                                className="h-8 w-14 rounded-lg px-1 text-center text-sm"
+                                min={visitCare ? 0.1 : 1}
+                                step={visitCare ? 0.1 : 1}
+                                className="h-8 w-16 rounded-lg px-1 text-center text-sm"
                                 value={qty}
                                 onChange={(e) => {
-                                  const next = Math.max(1, Math.floor(Number(e.target.value) || 1));
+                                  const raw = Number(e.target.value);
+                                  const next = visitCare
+                                    ? Number.isFinite(raw) && raw > 0
+                                      ? raw
+                                      : qty
+                                    : Math.max(1, Math.floor(raw || 1));
                                   setExtras((prev) =>
                                     prev.map((row) =>
                                       row.id === ex.id
@@ -2071,7 +2182,12 @@ function StaffAgenda() {
                                   );
                                 }}
                                 onBlur={(e) => {
-                                  const next = Math.max(1, Math.floor(Number(e.target.value) || 1));
+                                  const raw = Number(e.target.value);
+                                  const next = visitCare
+                                    ? Number.isFinite(raw) && raw > 0
+                                      ? raw
+                                      : Number(ex.quantity) || 0
+                                    : Math.max(1, Math.floor(raw || 1));
                                   if (next !== Number(ex.quantity)) {
                                     patchExtraMut.mutate({ extraId: ex.id, quantity: next });
                                   }
@@ -2175,6 +2291,17 @@ function StaffAgenda() {
               </div>
 
               <div className="shrink-0 border-t border-border px-6 py-4">
+                {perms.canSeeWhatsAppLinks ? (
+                  <div className="mb-3">
+                    <AppointmentWhatsAppBar
+                      items={lastWa ?? []}
+                      missingNames={waMissing}
+                      petName={waPetName || selected.pets?.name}
+                      loading={waLoading}
+                      className="border-0 bg-secondary/40 p-3 shadow-none"
+                    />
+                  </div>
+                ) : null}
                 {normalizeStatus(selected.status) === "finalizada" ? (
                   <p className="mb-3 text-[11px] text-muted-foreground">
                     Servicio cerrado: quedó cobrado. No se puede devolver, cancelar ni borrar.
@@ -2183,6 +2310,36 @@ function StaffAgenda() {
                 <div className="flex flex-wrap gap-2">
                   {perms.isStaff || perms.isCliente ? (
                     <>
+                      {normalizeStatus(selected.status) === "finalizada" ? (
+                        <>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            className="rounded-xl"
+                            onClick={() => {
+                              void openAppointmentInvoice(selected.id, "view").catch((e) =>
+                                toast.error(e instanceof Error ? e.message : "No se pudo abrir el PDF"),
+                              );
+                            }}
+                          >
+                            <FileText className="mr-2 h-4 w-4" /> Ver PDF
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            className="rounded-xl"
+                            onClick={() => {
+                              void openAppointmentInvoice(selected.id, "download").catch((e) =>
+                                toast.error(
+                                  e instanceof Error ? e.message : "No se pudo descargar el PDF",
+                                ),
+                              );
+                            }}
+                          >
+                            Descargar PDF
+                          </Button>
+                        </>
+                      ) : null}
                       <Button
                         className="rounded-xl"
                         disabled={
@@ -2227,7 +2384,7 @@ function StaffAgenda() {
                         </span>
                       ) : null}
                       {perms.canFinishAppointments &&
-                      normalizeStatus(selected.status) !== "finalizada" ? (
+                      normalizeStatus(selected.status) === "enproceso" ? (
                       <Button
                         variant="outline"
                         className="rounded-xl"

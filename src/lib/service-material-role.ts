@@ -26,7 +26,39 @@ export function isVisitOnlyRole(role: string): boolean {
 }
 
 export function isVisitOnlyCategory(category: string | null | undefined): boolean {
-  return (VISIT_ONLY_CATEGORIES as readonly string[]).includes(normalizeCategory(category));
+  const cat = normalizeCategory(category);
+  if ((VISIT_ONLY_CATEGORIES as readonly string[]).includes(cat)) return true;
+  return cat.includes("tinte") || cat.includes("colorimetr") || cat.includes("medicad");
+}
+
+/** Precio de venta por ml/g/pieza — mismo criterio que el backend. */
+export function visitCareSalePrice(item: {
+  sale_price_unit?: number | null;
+  sale_price?: number | null;
+  pack_size?: number | null;
+}): number {
+  const unit = Number(item.sale_price_unit);
+  if (Number.isFinite(unit) && unit > 0) return unit;
+  const pack = Number(item.sale_price) || 0;
+  const size = Number(item.pack_size) || 1;
+  return pack > 0 && size > 0 ? pack / size : 0;
+}
+
+export function matchesVisitCareRole(item: InferItem, role: "medicated" | "dye"): boolean {
+  const cat = normalizeCategory(item.category);
+  if (role === "medicated") {
+    return cat === "medicado" || cat.includes("medicad") || inferMaterialRole(item) === "medicated";
+  }
+  return (
+    cat === "tinte" ||
+    cat.includes("tinte") ||
+    cat.includes("colorimetr") ||
+    inferMaterialRole(item) === "dye"
+  );
+}
+
+export function visitCareItems<T extends InferItem>(items: T[], role: "medicated" | "dye"): T[] {
+  return items.filter((i) => matchesVisitCareRole(i, role));
 }
 
 export function stripAccents(s: string) {
@@ -140,7 +172,13 @@ export function inferMaterialRole(item: InferItem): string {
     return "tool";
   }
 
-  if (cat === "tinte" || name.includes("tinte")) {
+  if (
+    cat === "tinte" ||
+    cat.includes("tinte") ||
+    cat.includes("colorimetr") ||
+    name.includes("tinte") ||
+    name.includes("colorimetr")
+  ) {
     return "dye";
   }
 

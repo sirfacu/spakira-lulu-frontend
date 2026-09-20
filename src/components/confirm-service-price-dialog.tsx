@@ -1,11 +1,14 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { normalizeCategory } from "@/lib/service-material-role";
 import { cop } from "@/lib/format";
 import type { InventoryItem } from "@/lib/spa-queries";
+import {
+  VisitCareDeclareFields,
+  type VisitCareDraftLine,
+} from "@/components/visit-care-fields";
 
 export type VisitCareLinePayload = {
   inventory_item_id: string;
@@ -20,13 +23,6 @@ export type VisitStartPayload = {
   visit_care_lines: VisitCareLinePayload[];
 };
 
-type DraftLine = {
-  inventory_item_id: string;
-  name: string;
-  quantity: string;
-  unit_kind: string;
-};
-
 type ConfirmServicePriceDialogProps = {
   open: boolean;
   petName?: string;
@@ -39,118 +35,24 @@ type ConfirmServicePriceDialogProps = {
   onConfirm: (payload: VisitStartPayload) => void;
 };
 
-function itemsForRole(items: InventoryItem[], role: "medicated" | "dye") {
-  const want = role === "medicated" ? "medicado" : "tinte";
-  return items.filter((i) => normalizeCategory(i.category) === want);
-}
-
-function RoleBlock({
-  title,
-  hint,
-  value,
-  onChange,
-  items,
-  lines,
-  onLines,
-}: {
-  title: string;
-  hint?: string;
-  value: boolean | null;
-  onChange: (next: boolean) => void;
-  items: InventoryItem[];
-  lines: DraftLine[];
-  onLines: (next: DraftLine[]) => void;
-}) {
-  const [pick, setPick] = useState("");
-  return (
-    <div className="space-y-2 rounded-xl border border-border p-3">
-      <p className="text-sm font-medium text-foreground">{title}</p>
-      {hint ? <p className="text-[11px] text-muted-foreground">{hint}</p> : null}
-      <div className="flex gap-2">
-        <Button
-          type="button"
-          variant={value === false ? "default" : "outline"}
-          className="h-9 rounded-xl"
-          onClick={() => {
-            onChange(false);
-            onLines([]);
-          }}
-        >
-          No
-        </Button>
-        <Button
-          type="button"
-          variant={value === true ? "default" : "outline"}
-          className="h-9 rounded-xl"
-          onClick={() => onChange(true)}
-        >
-          Sí
-        </Button>
-      </div>
-      {value === true ? (
-        <div className="space-y-2">
-          <select
-            className="h-10 w-full rounded-xl border border-border bg-background px-3 text-sm"
-            value={pick}
-            onChange={(e) => {
-              const id = e.target.value;
-              setPick("");
-              const item = items.find((i) => i.id === id);
-              if (!item) return;
-              if (lines.some((l) => l.inventory_item_id === item.id)) return;
-              onLines([
-                ...lines,
-                {
-                  inventory_item_id: item.id,
-                  name: item.name,
-                  quantity: "",
-                  unit_kind: item.unit_kind || "ml",
-                },
-              ]);
-            }}
-          >
-            <option value="">Agregar producto</option>
-            {items.map((item) => (
-              <option key={item.id} value={item.id}>
-                {item.name}
-              </option>
-            ))}
-          </select>
-          {lines.map((line) => (
-            <div key={line.inventory_item_id} className="flex items-center gap-2">
-              <span className="min-w-0 flex-1 truncate text-sm">{line.name}</span>
-              <Input
-                className="h-9 w-24 rounded-xl"
-                inputMode="decimal"
-                placeholder="qty"
-                value={line.quantity}
-                onChange={(e) =>
-                  onLines(
-                    lines.map((l) =>
-                      l.inventory_item_id === line.inventory_item_id
-                        ? { ...l, quantity: e.target.value.replace(/[^\d.]/g, "") }
-                        : l,
-                    ),
-                  )
-                }
-              />
-              <span className="w-8 text-xs text-muted-foreground">{line.unit_kind}</span>
-              <Button
-                type="button"
-                variant="ghost"
-                className="h-8 px-2"
-                onClick={() =>
-                  onLines(lines.filter((l) => l.inventory_item_id !== line.inventory_item_id))
-                }
-              >
-                Quitar
-              </Button>
-            </div>
-          ))}
-        </div>
-      ) : null}
-    </div>
-  );
+function parseRoleLines(
+  declared: boolean | null,
+  lines: VisitCareDraftLine[],
+  role: "medicated" | "dye",
+): VisitCareLinePayload[] | null {
+  if (declared !== true) return [];
+  if (!lines.length) return null;
+  const out: VisitCareLinePayload[] = [];
+  for (const line of lines) {
+    const qty = Number(line.quantity);
+    if (!Number.isFinite(qty) || qty <= 0) return null;
+    out.push({
+      inventory_item_id: line.inventory_item_id,
+      quantity: qty,
+      material_role: role,
+    });
+  }
+  return out;
 }
 
 export function ConfirmServicePriceDialog({
@@ -167,8 +69,8 @@ export function ConfirmServicePriceDialog({
   const [value, setValue] = useState("");
   const [medicated, setMedicated] = useState<boolean | null>(null);
   const [colorimetry, setColorimetry] = useState<boolean | null>(null);
-  const [medLines, setMedLines] = useState<DraftLine[]>([]);
-  const [dyeLines, setDyeLines] = useState<DraftLine[]>([]);
+  const [medLines, setMedLines] = useState<VisitCareDraftLine[]>([]);
+  const [dyeLines, setDyeLines] = useState<VisitCareDraftLine[]>([]);
 
   useEffect(() => {
     if (!open) return;
@@ -183,39 +85,10 @@ export function ConfirmServicePriceDialog({
     setDyeLines([]);
   }, [open, defaultPrice]);
 
-  const medItems = useMemo(() => itemsForRole(inventory, "medicated"), [inventory]);
-  const dyeItems = useMemo(() => itemsForRole(inventory, "dye"), [inventory]);
-
-  const parsedLines = (): VisitCareLinePayload[] | null => {
-    const out: VisitCareLinePayload[] = [];
-    if (medicated === true) {
-      if (!medLines.length) return null;
-      for (const line of medLines) {
-        const qty = Number(line.quantity);
-        if (!Number.isFinite(qty) || qty <= 0) return null;
-        out.push({
-          inventory_item_id: line.inventory_item_id,
-          quantity: qty,
-          material_role: "medicated",
-        });
-      }
-    }
-    if (colorimetry === true) {
-      if (!dyeLines.length) return null;
-      for (const line of dyeLines) {
-        const qty = Number(line.quantity);
-        if (!Number.isFinite(qty) || qty <= 0) return null;
-        out.push({
-          inventory_item_id: line.inventory_item_id,
-          quantity: qty,
-          material_role: "dye",
-        });
-      }
-    }
-    return out;
-  };
-
-  const lines = parsedLines();
+  const medParsed = parseRoleLines(medicated, medLines, "medicated");
+  const dyeParsed = parseRoleLines(colorimetry, dyeLines, "dye");
+  const lines =
+    medParsed == null || dyeParsed == null ? null : [...medParsed, ...dyeParsed];
   const priceOk = Number.isFinite(Number(value)) && Number(value) >= 0 && value.trim() !== "";
   const answered = medicated !== null && colorimetry !== null && lines != null;
 
@@ -226,53 +99,55 @@ export function ConfirmServicePriceDialog({
         if (!next) onOpenChange(false);
       }}
     >
-      <DialogContent className="max-h-[90vh] max-w-md overflow-y-auto rounded-3xl p-6">
-        <h2 className="font-display text-xl font-bold text-primary">Confirmá el valor</h2>
-        <p className="mt-2 text-sm text-muted-foreground">
-          Al pasar a En proceso, el cliente va a ver este monto
-          {petName ? ` para ${petName}` : ""}. Medicado y tinte se cobran aparte al precio de
-          venta.
-        </p>
-        {usesMedicated || usesColorimetry ? (
-          <p className="mt-2 text-[11px] text-muted-foreground">
-            Alistamiento de este servicio:
-            {usesMedicated ? " medicado" : ""}
-            {usesMedicated && usesColorimetry ? " y" : ""}
-            {usesColorimetry ? " colorimetría" : ""}. Igual hay que confirmarlo ahora.
+      <DialogContent className="flex max-h-[92vh] w-[calc(100vw-1.5rem)] max-w-2xl flex-col gap-0 overflow-hidden rounded-3xl p-0">
+        <div className="min-h-0 flex-1 overflow-y-auto px-6 pb-4 pt-6">
+          <h2 className="font-display text-xl font-bold text-primary">Confirmá el valor</h2>
+          <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+            Al pasar a En proceso, el cliente va a ver este monto
+            {petName ? ` para ${petName}` : ""}. Medicado y tinte se cobran aparte al precio de
+            venta, en cualquier servicio.
           </p>
-        ) : null}
-        <div className="mt-4 space-y-2">
-          <Label>Valor del servicio (COP)</Label>
-          <Input
-            className="h-11 rounded-xl"
-            inputMode="numeric"
-            value={value}
-            onChange={(e) => setValue(e.target.value.replace(/[^\d]/g, ""))}
-            placeholder="Ej. 65000"
-          />
-          {priceOk ? (
-            <p className="text-xs text-muted-foreground">{cop(Number(value))}</p>
-          ) : null}
+          {usesMedicated || usesColorimetry ? (
+            <p className="mt-2 text-[12px] text-muted-foreground">
+              Alistamiento de este servicio:
+              {usesMedicated ? " medicado" : ""}
+              {usesMedicated && usesColorimetry ? " y" : ""}
+              {usesColorimetry ? " colorimetría" : ""}. Igual hay que confirmarlo ahora.
+            </p>
+          ) : (
+            <p className="mt-2 text-[12px] text-muted-foreground">
+              Aunque el servicio no traiga medicado ni tinte en la receta, podés cargarlos ahora
+              si se usaron.
+            </p>
+          )}
+          <div className="mt-4 space-y-2">
+            <Label>Valor del servicio (COP)</Label>
+            <Input
+              className="h-11 rounded-xl"
+              inputMode="numeric"
+              value={value}
+              onChange={(e) => setValue(e.target.value.replace(/[^\d]/g, ""))}
+              placeholder="Ej. 65000"
+            />
+            {priceOk ? (
+              <p className="text-xs text-muted-foreground">{cop(Number(value))}</p>
+            ) : null}
+          </div>
+          <div className="mt-4">
+            <VisitCareDeclareFields
+              inventory={inventory}
+              medicated={medicated}
+              colorimetry={colorimetry}
+              medLines={medLines}
+              dyeLines={dyeLines}
+              onMedicated={setMedicated}
+              onColorimetry={setColorimetry}
+              onMedLines={setMedLines}
+              onDyeLines={setDyeLines}
+            />
+          </div>
         </div>
-        <div className="mt-4 space-y-3">
-          <RoleBlock
-            title="¿Usó medicado?"
-            value={medicated}
-            onChange={setMedicated}
-            items={medItems}
-            lines={medLines}
-            onLines={setMedLines}
-          />
-          <RoleBlock
-            title="¿Usó colorimetría?"
-            value={colorimetry}
-            onChange={setColorimetry}
-            items={dyeItems}
-            lines={dyeLines}
-            onLines={setDyeLines}
-          />
-        </div>
-        <div className="mt-5 flex justify-end gap-2">
+        <div className="flex shrink-0 flex-wrap justify-end gap-2 border-t border-border px-6 py-4">
           <Button type="button" variant="outline" className="rounded-xl" onClick={() => onOpenChange(false)}>
             Volver
           </Button>

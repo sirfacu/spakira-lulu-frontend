@@ -92,6 +92,7 @@ export type PetHistoryItem = {
   staff_name: string | null;
   quantity?: number;
   unit_price?: number;
+  invoice_number?: string | null;
 };
 
 export type Staff = {
@@ -246,6 +247,7 @@ export type Appointment = {
   location_id?: string | null;
   reschedule_count?: number;
   reschedule_locked?: boolean;
+  invoice_number?: string | null;
 };
 
 /** Total a cobrar: servicio + extras. */
@@ -327,6 +329,7 @@ export type Sale = {
   id: string;
   owner_id: string | null;
   staff_id: string | null;
+  location_id?: string | null;
   total: number;
   payment_method: string;
   sold_at: string;
@@ -703,6 +706,15 @@ export const inventoryShopQuery = queryOptions({
   queryKey: ["inventory", "shop"],
   queryFn: () => api<InventoryItem[]>("/inventory/shop"),
 });
+
+export function inventoryShopAtLocationQuery(locationId: string) {
+  return queryOptions({
+    queryKey: ["inventory", "shop", locationId] as const,
+    queryFn: () =>
+      api<InventoryItem[]>(`/inventory/shop?location_id=${encodeURIComponent(locationId)}`),
+    enabled: !!locationId,
+  });
+}
 
 export const salesQuery = queryOptions({
   queryKey: ["sales"],
@@ -1312,6 +1324,7 @@ export async function saveUserModules(
 export async function createSale(input: {
   owner_id: string | null;
   staff_id: string | null;
+  location_id?: string | null;
   payment_method: string;
   payment_evidence_url?: string | null;
   service_id?: string | null;
@@ -1469,9 +1482,88 @@ export type AppointmentExtra = {
   shoot_ml?: number | null;
 };
 
+export async function fetchAppointmentWhatsAppLinks(appointmentId: string) {
+  return api<{
+    items: { owner_id?: string; full_name?: string | null; link: string }[];
+    missing: { owner_id?: string; full_name?: string | null }[];
+    pet_name?: string | null;
+  }>(`/appointments/${encodeURIComponent(appointmentId)}/whatsapp-links`);
+}
+
 export async function listAppointmentExtras(appointmentId: string) {
   return api<AppointmentExtra[]>(`/appointments/${appointmentId}/extras`);
 }
+
+export async function fetchAuthPdf(path: string): Promise<{ blob: Blob; filename: string }> {
+  const token = getToken();
+  const res = await fetch(`${getApiBase()}${path}`, {
+    headers: {
+      Accept: "application/pdf",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    credentials: "include",
+  });
+  if (!res.ok) {
+    let message = res.statusText || `Error ${res.status}`;
+    try {
+      const raw = await res.text();
+      if (raw.trim()) {
+        try {
+          const j = JSON.parse(raw) as { detail?: unknown };
+          if (typeof j.detail === "string") message = j.detail;
+        } catch {
+          message = raw.trim();
+        }
+      }
+    } catch {
+      /* ignore */
+    }
+    throw new ApiError(res.status, message);
+  }
+  const blob = await res.blob();
+  const header = res.headers.get("content-disposition") || "";
+  const match = header.match(/filename\*?=(?:UTF-8''|")?([^";]+)/i);
+  const filename = match ? decodeURIComponent(match[1].replace(/"/g, "")) : "factura.pdf";
+  return { blob, filename };
+}
+
+export async function openAppointmentInvoice(appointmentId: string, mode: "view" | "download" = "view") {
+  const { blob, filename } = await fetchAuthPdf(
+    `/appointments/${encodeURIComponent(appointmentId)}/invoice`,
+  );
+  return openPdfBlob(blob, filename, mode);
+}
+
+export async function openSaleInvoice(saleId: string, mode: "view" | "download" = "view") {
+  const { blob, filename } = await fetchAuthPdf(`/sales/${encodeURIComponent(saleId)}/invoice`);
+  return openPdfBlob(blob, filename, mode);
+}
+
+function openPdfBlob(blob: Blob, filename: string, mode: "view" | "download") {
+  const url = URL.createObjectURL(blob);
+  if (mode === "download") {
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    a.click();
+  } else {
+    window.open(url, "_blank", "noopener");
+  }
+  setTimeout(() => URL.revokeObjectURL(url), 60_000);
+}
+
+export async function getSale(saleId: string) {
+  return api<Sale & { items: SaleItem[]; has_invoice?: boolean }>(`/sales/${saleId}`);
+}
+
+export type SaleItem = {
+  id: string;
+  description: string;
+  quantity: number;
+  unit_price: number;
+  service_id?: string | null;
+  item_id?: string | null;
+};
 
 export async function addAppointmentExtra(
   appointmentId: string,
@@ -2014,6 +2106,7 @@ export async function createAppointment(input: {
       };
       whatsapp_link?: string | null;
       whatsapp_links?: { owner_id?: string; full_name?: string; link: string }[];
+      whatsapp_missing?: { owner_id?: string; full_name?: string | null }[];
       owner_email?: string | null;
       owner_emails?: string[];
       email_notifications?: {

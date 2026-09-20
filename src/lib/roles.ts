@@ -158,7 +158,7 @@ export function editableAppointmentStatuses(
   }
   if (!p.canChangeAppointmentStatus) return [];
   if (current === "pendiente") {
-    return ["pendiente", "enproceso", "finalizada", "cancelada"];
+    return ["pendiente", "enproceso", "cancelada"];
   }
   if (current === "enproceso") {
     return ["enproceso", "finalizada", "cancelada"];

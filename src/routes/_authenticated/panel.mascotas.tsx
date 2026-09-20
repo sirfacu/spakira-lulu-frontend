@@ -15,6 +15,7 @@ import {
   ImagePlus,
   Loader2,
   GripVertical,
+  FileText,
 } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
 import { BreedsManager } from "@/components/breeds-manager";
@@ -40,6 +41,7 @@ import {
   createOwner,
   reorderPets,
   breedBathProfilesQuery,
+  openAppointmentInvoice,
   type Pet,
 } from "@/lib/spa-queries";
 import { shortDate, statusMeta, time, cop, ageLabelFromLifeDate } from "@/lib/format";
@@ -753,11 +755,31 @@ function Mascotas() {
                               : ` · ${PENDING_SERVICE_PRICE_LABEL}`}
                           </p>
                         </div>
-                        <StatusPill
-                          label={a.kind === "store_purchase" ? "Misceláneo" : meta.label}
-                          className={meta.className}
-                          hint={a.kind === "store_purchase" ? undefined : meta.hint}
-                        />
+                        <div className="flex shrink-0 items-center gap-2">
+                          {a.kind === "appointment" && a.invoice_number ? (
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              className="h-8 rounded-xl px-2 text-xs"
+                              onClick={() => {
+                                void openAppointmentInvoice(a.id, "view").catch((e) =>
+                                  toast.error(
+                                    e instanceof Error ? e.message : "No se pudo abrir el PDF",
+                                  ),
+                                );
+                              }}
+                            >
+                              <FileText className="mr-1 h-3.5 w-3.5" />
+                              PDF
+                            </Button>
+                          ) : null}
+                          <StatusPill
+                            label={a.kind === "store_purchase" ? "Misceláneo" : meta.label}
+                            className={meta.className}
+                            hint={a.kind === "store_purchase" ? undefined : meta.hint}
+                          />
+                        </div>
                       </li>
                     );
                   })}

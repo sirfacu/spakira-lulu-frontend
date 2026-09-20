@@ -5,12 +5,13 @@ import { Minus, Plus, Search, Trash2, FileText, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { completeAppointment, listAppointmentExtras, inventoryShopQuery, paymentMethodsQuery, getLoyaltyCustomer, type Appointment, type PromoValidate } from "@/lib/spa-queries";
+import { completeAppointment, listAppointmentExtras, inventoryShopQuery, inventoryQuery, paymentMethodsQuery, getLoyaltyCustomer, type Appointment, type PromoValidate } from "@/lib/spa-queries";
 import { CouponApplyFields } from "@/components/coupon-apply-fields";
 import { MaterialEstimatePanel } from "@/components/material-estimate-panel";
 import { ApiError } from "@/lib/api";
 import { cop, time } from "@/lib/format";
 import { PaymentMethodFields } from "@/components/payment-method-fields";
+import { isVisitOnlyCategory, visitCareSalePrice } from "@/lib/service-material-role";
 
 type CatalogItem = {
   id: string;
@@ -64,6 +65,7 @@ export function FinishAppointmentDialog({
   const inputRef = useRef<HTMLInputElement>(null);
 
   const shop = useQuery({ ...inventoryShopQuery, enabled: open });
+  const inventoryAll = useQuery({ ...inventoryQuery, enabled: open });
   const payMethods = useQuery({ ...paymentMethodsQuery, enabled: open });
   const ownerId = appointment?.pets?.owners?.id ?? appointment?.pets?.owner_id ?? null;
   const loyalty = useQuery({
@@ -72,13 +74,24 @@ export function FinishAppointmentDialog({
     enabled: open && !!ownerId,
   });
   const catalog = useMemo(() => {
-    return (shop.data ?? []).map((i) => ({
+    const shopItems = (shop.data ?? []).map((i) => ({
       id: i.id,
       name: i.name,
       category: i.category || "Vitrina",
       unit_price: Number(i.sale_price_unit || i.sale_price) || 0,
     }));
-  }, [shop.data]);
+    const seen = new Set(shopItems.map((i) => i.id));
+    const visit = (inventoryAll.data ?? [])
+      .filter((i) => isVisitOnlyCategory(i.category))
+      .filter((i) => !seen.has(i.id))
+      .map((i) => ({
+        id: i.id,
+        name: i.name,
+        category: i.category || "Cita",
+        unit_price: visitCareSalePrice(i),
+      }));
+    return [...visit, ...shopItems];
+  }, [shop.data, inventoryAll.data]);
 
   useEffect(() => {
     if (!open || !appointment?.id) return;
@@ -295,7 +308,7 @@ export function FinishAppointmentDialog({
   return (
     <>
       <Dialog open={open && !confirmOpen} onOpenChange={onOpenChange}>
-        <DialogContent className="max-h-[90vh] max-w-lg overflow-y-auto rounded-3xl border-border/80 p-0 shadow-lift">
+        <DialogContent className="max-h-[92vh] w-[calc(100vw-1.5rem)] max-w-2xl overflow-y-auto rounded-3xl border-border/80 p-0 shadow-lift">
           <div className="bg-gradient-to-br from-primary/12 via-blush/40 to-background px-6 pb-4 pt-6">
             <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-primary/80">
               Cierre de servicio
@@ -379,7 +392,7 @@ export function FinishAppointmentDialog({
                       addCatalogItem(suggestions[0]);
                     }
                   }}
-                  placeholder="Buscar en vitrina…"
+                  placeholder="Buscar medicado, tinte o vitrina…"
                   className="h-12 rounded-2xl border-border/80 bg-card pl-10 shadow-soft"
                 />
               </div>
