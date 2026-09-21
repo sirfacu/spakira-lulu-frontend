@@ -426,3 +426,36 @@ export async function uploadPhoto(file: File): Promise<{ url: string; key: strin
   const data = (await res.json()) as { url: string; key: string };
   return { ...data, url: resolveMediaUrl(data.url) || data.url };
 }
+
+export async function uploadBrandingPhoto(file: File): Promise<{ url: string; key: string }> {
+  const headers: Record<string, string> = { Accept: "application/json" };
+  const token = getToken();
+  if (token) headers.Authorization = `Bearer ${token}`;
+
+  const body = new FormData();
+  body.append("file", file);
+
+  const path = "/storage/upload-branding";
+  const url = `${getApiBase()}${path}`;
+  const started = performance.now();
+  const res = await fetch(url, { method: "POST", headers, body, credentials: "include" });
+  logHttp({
+    event: "api_fetch",
+    method: "POST",
+    path,
+    status: res.status,
+    ms: Math.round(performance.now() - started),
+  });
+  if (!res.ok) {
+    let detail = res.statusText;
+    try {
+      const j = (await res.json()) as { detail?: string };
+      if (j.detail) detail = typeof j.detail === "string" ? j.detail : JSON.stringify(j.detail);
+    } catch {
+      /* ignore */
+    }
+    throw new ApiError(res.status, detail);
+  }
+  const data = (await res.json()) as { url: string; key: string };
+  return { ...data, url: resolveMediaUrl(data.url) || data.url };
+}

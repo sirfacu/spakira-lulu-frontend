@@ -1,5 +1,7 @@
 import { infiniteQueryOptions, queryOptions } from "@tanstack/react-query";
 import { api, ApiError, getApiBase, getToken } from "@/lib/api";
+import type { IdentityStyles } from "@/lib/identity-styles";
+import type { HomeHero } from "@/lib/home-hero";
 
 export type Owner = {
   id: string;
@@ -1067,6 +1069,11 @@ export type BusinessSettings = {
   location_code?: string | null;
   locations_count?: number;
   logo_url?: string | null;
+  theme_id?: string | null;
+  short_name?: string | null;
+  brand_name?: string | null;
+  descriptor?: string | null;
+  identity_styles?: IdentityStyles | null;
   barcode_scanner_enabled?: boolean;
   barcode_scanner_mode?: string;
   barcode_suffix?: string;
@@ -1102,6 +1109,7 @@ export type HomeContent = {
   news: HomeNewsItem[];
   client_videos: HomeVideoItem[];
   section_order?: string[];
+  hero?: HomeHero | null;
   updated_at?: string | null;
 };
 
@@ -1134,6 +1142,11 @@ export type PublicBusinessSettings = Pick<
   | "phone"
   | "location_name"
   | "logo_url"
+  | "theme_id"
+  | "short_name"
+  | "brand_name"
+  | "descriptor"
+  | "identity_styles"
   | "contact_email"
   | "site_url"
   | "legal_effective_from"
@@ -1220,6 +1233,7 @@ export async function putHomeContent(input: {
   news?: HomeNewsItem[];
   client_videos?: HomeVideoItem[];
   section_order?: string[];
+  hero?: HomeHero;
 }) {
   return api<HomeContent>("/settings/home", { method: "PUT", body: input });
 }

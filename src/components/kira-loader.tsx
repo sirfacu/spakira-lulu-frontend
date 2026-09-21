@@ -2,6 +2,7 @@
 
 import { cn } from "@/lib/utils";
 
+/** Sticker de carga. Original: static/spa-kira-cursores-web/. Copia: kira-branding-assets/logos/. */
 export const KIRA_LOADING_STICKER = "/spa-kira-cursores-web/kira-loading-sticker.png";
 
 type Variant = "fullscreen" | "overlay" | "inline";
@@ -15,9 +16,6 @@ type Props = {
 const floatStyle = {
   animation: "spakira-kira-float 1.4s ease-in-out infinite",
 } as const;
-
-const pinkSolid = { backgroundColor: "rgb(255, 245, 247)" } as const;
-const pinkSoft = { backgroundColor: "rgba(255, 245, 247, 0.9)" } as const;
 
 export function KiraLoader({
   variant = "inline",
@@ -60,7 +58,7 @@ export function KiraLoader({
 
   if (variant === "fullscreen") {
     return (
-      <div className="fixed inset-0 z-50 grid place-items-center" style={pinkSolid}>
+      <div className="fixed inset-0 z-50 grid place-items-center bg-background">
         {content}
         <KiraFloatKeyframes />
       </div>
@@ -69,10 +67,7 @@ export function KiraLoader({
 
   if (variant === "overlay") {
     return (
-      <div
-        className="pointer-events-none fixed inset-0 z-40 grid place-items-center backdrop-blur-sm"
-        style={pinkSoft}
-      >
+      <div className="pointer-events-none fixed inset-0 z-40 grid place-items-center bg-background/90 backdrop-blur-sm">
         {content}
         <KiraFloatKeyframes />
       </div>

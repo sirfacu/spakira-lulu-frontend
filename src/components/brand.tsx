@@ -1,4 +1,11 @@
 import { cn } from "@/lib/utils";
+import { resolveMediaUrl } from "@/lib/api";
+import {
+  identityLineClassName,
+  identityLineColorStyle,
+  normalizeIdentityStyles,
+  type IdentityStyles,
+} from "@/lib/identity-styles";
 
 /** Logo completo (landing / materiales). */
 export const LOGO_SRC = "/images/spa-kira-logo-1mb.png";
@@ -19,7 +26,7 @@ export function PawIcon({ className }: { className?: string }) {
   );
 }
 
-/** Primera palabra en script, resto en display (ej. Spa + KIRA). */
+/** Fallback si aún no hay short_name / brand_name. */
 export function splitTradeName(tradeName?: string | null): { script: string; display: string } {
   const name = (tradeName || "Spa Kira").trim() || "Spa Kira";
   const parts = name.split(/\s+/).filter(Boolean);
@@ -34,35 +41,61 @@ export function BrandMark({
   size = "default",
   tradeName,
   slogan,
+  shortName,
+  brandName,
+  descriptor,
+  logoUrl,
+  identityStyles,
 }: {
   className?: string;
   tagline?: boolean;
-  /** Sidebar: cara grande + nombre. */
   compact?: boolean;
-  /** `auth` = logo grande y centrado (login). */
   size?: "default" | "auth";
   tradeName?: string | null;
   slogan?: string | null;
+  shortName?: string | null;
+  brandName?: string | null;
+  descriptor?: string | null;
+  logoUrl?: string | null;
+  identityStyles?: IdentityStyles | null;
 }) {
-  const { script, display } = splitTradeName(tradeName);
-  const tag = (slogan || "Luxury pet grooming").trim();
-  const alt = tradeName?.trim() || "Spa Kira";
+  const split = splitTradeName(tradeName);
+  const script = (shortName || "").trim() || split.script;
+  const display = (brandName || "").trim() || split.display;
+  const tag = ((descriptor ?? slogan) || "Luxury pet grooming").trim();
+  const alt = [script, display].filter(Boolean).join(" ") || tradeName?.trim() || "Spa Kira";
+  const compactSrc = resolveMediaUrl(logoUrl) || MARK_SRC;
+  const fullSrc = resolveMediaUrl(logoUrl) || LOGO_SRC;
+  const styles = normalizeIdentityStyles(identityStyles);
 
   if (compact) {
     return (
       <div className={cn("flex min-w-0 items-center gap-3", className)}>
         <img
-          src={MARK_SRC}
+          src={compactSrc}
           alt={alt}
-          className="h-14 w-14 shrink-0 rounded-2xl object-cover shadow-soft ring-2 ring-primary/15"
+          className="h-14 w-14 shrink-0 rounded-2xl bg-card object-contain p-0.5 shadow-soft ring-2 ring-primary/15"
         />
         <span className="min-w-0 leading-none">
-          {script ? <span className="block font-script text-lg text-accent">{script}</span> : null}
-          <span className="block font-display text-xl font-bold tracking-wide text-primary uppercase">
+          {script ? (
+            <span
+              className={identityLineClassName(styles.short_name, "short_name")}
+              style={identityLineColorStyle(styles.short_name)}
+            >
+              {script}
+            </span>
+          ) : null}
+          <span
+            className={identityLineClassName(styles.brand_name, "brand_name")}
+            style={identityLineColorStyle(styles.brand_name)}
+          >
             {display}
           </span>
-          {tagline ? (
-            <span className="mt-1 block text-[10px] uppercase tracking-[0.14em] text-muted-foreground">
+          {tagline && tag ? (
+            <span
+              className={identityLineClassName(styles.descriptor, "descriptor")}
+              style={identityLineColorStyle(styles.descriptor)}
+            >
               {tag}
             </span>
           ) : null}
@@ -75,7 +108,7 @@ export function BrandMark({
     return (
       <div className={cn("flex w-full flex-col items-center justify-center", className)}>
         <img
-          src={LOGO_SRC}
+          src={fullSrc}
           alt={`${alt} — ${tag}`}
           className="h-auto w-full max-w-[280px] object-contain sm:max-w-[320px]"
         />
@@ -86,7 +119,7 @@ export function BrandMark({
   return (
     <div className={cn("flex min-w-0 items-center", className)}>
       <img
-        src={LOGO_SRC}
+        src={fullSrc}
         alt={`${alt} — ${tag}`}
         className="h-14 w-auto max-w-[240px] object-contain object-left lg:h-16 lg:max-w-[280px]"
       />
