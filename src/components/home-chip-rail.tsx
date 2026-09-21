@@ -8,16 +8,21 @@ import {
 } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 
 /** Carril horizontal con autoplay suave + flechas para ir adelante/atrás. */
 export function ChipRail({
   children,
   className = "",
+  scrollerClassName = "",
+  itemClassName = "",
   autoplay = true,
   stepPx = 300,
 }: {
   children: ReactNode;
   className?: string;
+  scrollerClassName?: string;
+  itemClassName?: string;
   autoplay?: boolean;
   /** Cuánto avanza cada click / tick de autoplay. */
   stepPx?: number;
@@ -40,18 +45,28 @@ export function ChipRail({
     pauseUntilRef.current = Date.now() + ms;
   }, []);
 
+  const itemStep = useCallback(() => {
+    const el = scrollerRef.current;
+    if (!el) return stepPx;
+    const child = el.firstElementChild as HTMLElement | null;
+    if (!child) return stepPx;
+    const gap = Number.parseFloat(getComputedStyle(el).gap || "0") || 0;
+    return child.getBoundingClientRect().width + gap;
+  }, [stepPx]);
+
   const scrollByDir = useCallback(
     (dir: -1 | 1) => {
       const el = scrollerRef.current;
       if (!el) return;
       pauseAuto();
       const max = el.scrollWidth - el.clientWidth;
-      let next = el.scrollLeft + dir * stepPx;
+      const step = itemStep();
+      let next = el.scrollLeft + dir * step;
       if (next < 0) next = max;
       if (next > max) next = 0;
       el.scrollTo({ left: next, behavior: "smooth" });
     },
-    [pauseAuto, stepPx],
+    [itemStep, pauseAuto],
   );
 
   useEffect(() => {
@@ -61,9 +76,12 @@ export function ChipRail({
     const onScroll = () => updateArrows();
     el.addEventListener("scroll", onScroll, { passive: true });
     window.addEventListener("resize", updateArrows);
+    const ro = typeof ResizeObserver !== "undefined" ? new ResizeObserver(updateArrows) : null;
+    ro?.observe(el);
     return () => {
       el.removeEventListener("scroll", onScroll);
       window.removeEventListener("resize", updateArrows);
+      ro?.disconnect();
     };
   }, [updateArrows, items.length]);
 
@@ -77,26 +95,29 @@ export function ChipRail({
       if (max <= 0) return;
       const atEnd = el.scrollLeft >= max - 8;
       el.scrollTo({
-        left: atEnd ? 0 : el.scrollLeft + stepPx,
+        left: atEnd ? 0 : el.scrollLeft + itemStep(),
         behavior: "smooth",
       });
     }, 3500);
     return () => window.clearInterval(id);
-  }, [autoplay, items.length, stepPx]);
+  }, [autoplay, itemStep, items.length]);
 
   if (items.length === 0) return null;
 
   return (
-    <div className={`relative ${className}`}>
+    <div className={cn("relative min-w-0 max-w-full overflow-hidden", className)}>
       <div
         ref={scrollerRef}
-        className="home-chip-scroller flex gap-4 overflow-x-auto scroll-smooth pb-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        className={cn(
+          "home-chip-scroller flex min-w-0 w-full gap-4 overflow-x-auto overscroll-x-contain scroll-smooth pb-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
+          scrollerClassName,
+        )}
         onPointerDown={() => pauseAuto()}
         onWheel={() => pauseAuto()}
         onTouchStart={() => pauseAuto()}
       >
         {items.map((child, i) => (
-          <div key={i} className="shrink-0 snap-start">
+          <div key={i} className={cn("shrink-0 snap-start", itemClassName)}>
             {child}
           </div>
         ))}

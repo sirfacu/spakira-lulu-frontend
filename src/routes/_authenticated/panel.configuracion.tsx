@@ -6,6 +6,7 @@ import { MapPin } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
 import { SectionCard } from "@/components/ui-kit";
 import { BrandMark } from "@/components/brand";
+import { ChipRail } from "@/components/home-chip-rail";
 import { IdentityStyledField } from "@/components/identity-style-bar";
 import { uploadBrandingPhoto, resolveMediaUrl } from "@/lib/api";
 import {
@@ -294,14 +295,18 @@ function Configuracion() {
 
       
       {tab === "general" ? (
-        <div className="grid gap-6">
+        <div className="grid min-w-0 gap-6">
           {isAdmin ? (
-            <SectionCard title="Tema visual">
+            <SectionCard title="Tema visual" className="min-w-0 overflow-hidden">
               <p className="mb-4 text-sm text-muted-foreground">
                 Tocá un tema para verlo en toda la app. Morado KIRA es el actual y no se reescribe: solo
                 cambia si guardás otro. La tipografía (Poppins / Playfair / Great Vibes) se mantiene.
               </p>
-              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              <ChipRail
+                autoplay={false}
+                scrollerClassName="gap-3 px-11"
+                itemClassName="w-[calc((100%-0.75rem)/2)] sm:w-[calc((100%-1.5rem)/3)] lg:w-[calc((100%-2.25rem)/4)]"
+              >
                 {BRAND_THEMES.map((theme) => {
                   const selected = selectedThemeId === theme.id;
                   return (
@@ -317,7 +322,7 @@ function Configuracion() {
                         setThemePreview(theme.id);
                         setPreviewThemeId(theme.id);
                       }}
-                      className={`rounded-2xl border p-3 text-left transition ${
+                      className={`w-full rounded-2xl border p-2.5 text-left transition ${
                         selected
                           ? "border-primary ring-2 ring-primary/30"
                           : "border-border hover:border-primary/40"
@@ -327,12 +332,12 @@ function Configuracion() {
                         {(["primary", "accent", "background", "surface"] as const).map((k) => (
                           <span
                             key={k}
-                            className="h-6 w-6 rounded-full border border-black/5"
+                            className="h-5 w-5 rounded-full border border-black/5"
                             style={{ background: theme.swatches[k] }}
                           />
                         ))}
                       </span>
-                      <span className="block text-sm font-medium">{theme.label}</span>
+                      <span className="block truncate text-sm font-medium">{theme.label}</span>
                       {theme.id === savedThemeId ? (
                         <span className="mt-1 block text-[11px] text-muted-foreground">Guardado</span>
                       ) : selected ? (
@@ -341,7 +346,7 @@ function Configuracion() {
                     </button>
                   );
                 })}
-              </div>
+              </ChipRail>
               <div className="mt-4 flex flex-wrap items-center gap-3">
                 <Button
                   type="button"

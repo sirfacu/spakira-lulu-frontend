@@ -3,6 +3,7 @@ import { Fragment, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Bath, Scissors, Sparkles, Heart, Smile, Clock, Instagram, Facebook } from "lucide-react";
 import { BrandMark, PawIcon, LOGO_SRC } from "@/components/brand";
+import { resolveMediaUrl } from "@/lib/api";
 import { ServiceDetailDialog } from "@/components/service-detail-dialog";
 import { ChipRail } from "@/components/home-chip-rail";
 import { SocialEmbed } from "@/components/social-embed";
@@ -32,6 +33,9 @@ import { fetchMe, logout, mayHaveSession } from "@/lib/api";
 import { sanitizePreviewHtml } from "@/lib/sanitize-html";
 import { homeForRole, permissionsFor } from "@/lib/roles";
 import { normalizeSectionOrder } from "@/lib/home-sections";
+import { normalizeHomeHero } from "@/lib/home-hero";
+import { identityLineColorStyle, identityToneClassName } from "@/lib/identity-styles";
+import { cn } from "@/lib/utils";
 
 const INSTAGRAM_URL = "https://www.instagram.com/spakiralu_";
 const FACEBOOK_URL = "https://www.facebook.com/spakiralulu";
@@ -105,6 +109,7 @@ function Landing() {
   const news = homeContent.data?.news ?? [];
   const videos = homeContent.data?.client_videos ?? [];
   const sectionOrder = normalizeSectionOrder(homeContent.data?.section_order);
+  const hero = normalizeHomeHero(homeContent.data?.hero);
   const [preview, setPreview] = useState<HomeNewsItem | null>(null);
   const [detailService, setDetailService] = useState<Service | null>(null);
 
@@ -126,11 +131,11 @@ function Landing() {
     <HomeLocationProvider>
     <div className="spa-canvas min-h-[calc(100svh-var(--env-banner-height,0px))] bg-background">
       <header className="sticky top-[var(--env-banner-height,0px)] z-30 border-b border-border/70 bg-card/80 backdrop-blur-md">
-        <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-5 py-3">
-          <Link to="/home" className="min-w-0">
+        <div className="mx-auto flex max-w-6xl items-center gap-3 px-5 py-2.5">
+          <Link to="/home" className="min-w-0 shrink-0">
             <BrandMark
               compact
-              tagline
+              tagline={false}
               tradeName={bizLegal?.trade_name}
               slogan={bizLegal?.slogan}
               shortName={bizLegal?.short_name}
@@ -140,12 +145,12 @@ function Landing() {
               identityStyles={bizLegal?.identity_styles}
             />
           </Link>
-          <div className="flex min-w-0 flex-1 flex-col items-end gap-2 sm:flex-row sm:items-center sm:justify-end">
+          <div className="flex min-w-0 flex-1 items-center justify-end gap-2 overflow-hidden sm:gap-3">
             <HomeBizStatusBar />
-            <div className="flex flex-wrap items-center justify-end gap-2">
+            <div className="flex shrink-0 items-center gap-2">
             {me.data ? (
               <>
-                <p className="hidden text-xs text-muted-foreground sm:block">
+                <p className="hidden max-w-[11rem] truncate text-xs text-muted-foreground lg:block">
                   {me.data.email}
                   {staff ? " · personal" : " · usuario"}
                 </p>
@@ -176,16 +181,42 @@ function Landing() {
           {id === "hero" ? (
       <section className="mx-auto grid max-w-6xl items-center gap-10 px-5 pb-12 pt-10 lg:grid-cols-[1.05fr_1fr]">
         <div>
-          <span className="inline-flex items-center gap-2 rounded-full bg-blush px-4 py-1.5 text-xs font-semibold uppercase tracking-[0.16em] text-blush-foreground">
-            <PawIcon className="h-3.5 w-3.5" /> Canina y felina
+          <span
+            className={cn(
+              "inline-flex items-center gap-2 rounded-full bg-blush px-4 py-1.5 text-xs tracking-[0.16em]",
+              identityToneClassName(hero.styles.kicker),
+            )}
+            style={identityLineColorStyle(hero.styles.kicker)}
+          >
+            <PawIcon className="h-3.5 w-3.5" /> {hero.kicker}
           </span>
-          <h1 className="mt-5 font-display text-4xl font-bold leading-[1.08] text-primary sm:text-6xl">
-            El spa donde tu mascota{" "}
-            <span className="font-script text-accent">se siente amada</span>
+          <h1 className="mt-5 text-4xl leading-[1.08] sm:text-6xl">
+            <span
+              className={identityToneClassName(hero.styles.title)}
+              style={identityLineColorStyle(hero.styles.title)}
+            >
+              {hero.title}
+            </span>
+            {hero.title_accent ? (
+              <>
+                {" "}
+                <span
+                  className={identityToneClassName(hero.styles.title_accent)}
+                  style={identityLineColorStyle(hero.styles.title_accent)}
+                >
+                  {hero.title_accent}
+                </span>
+              </>
+            ) : null}
           </h1>
-          <p className="mt-5 max-w-lg text-base leading-relaxed text-muted-foreground">
-            Grooming de lujo con productos hipoalergénicos, estilistas certificados y un trato
-            paciente. Cada visita termina con moño, perfume y una foto de antes y después.
+          <p
+            className={cn(
+              "mt-5 max-w-lg text-base leading-relaxed",
+              identityToneClassName(hero.styles.body),
+            )}
+            style={identityLineColorStyle(hero.styles.body)}
+          >
+            {hero.body}
           </p>
           {me.data && !staff ? (
             <p className="mt-4 max-w-lg text-sm text-muted-foreground">
@@ -209,8 +240,8 @@ function Landing() {
         <div className="relative">
           <div className="overflow-hidden rounded-[28px] border border-border bg-card shadow-lift">
             <img
-              src={LOGO_SRC}
-              alt="Logo de Spa Kira, grooming canino y felino de lujo"
+              src={resolveMediaUrl(hero.image_url) || LOGO_SRC}
+              alt={`${hero.title} ${hero.title_accent}`.trim()}
               className="h-auto w-full"
             />
           </div>

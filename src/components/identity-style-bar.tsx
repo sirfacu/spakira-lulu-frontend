@@ -1,6 +1,7 @@
 import { Bold, CaseUpper, Italic } from "lucide-react";
 import { Toggle } from "@/components/ui/toggle";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import {
   IDENTITY_COLOR_TOKENS,
@@ -28,6 +29,7 @@ type FieldProps = {
   maxLength: number;
   placeholder?: string;
   disabled?: boolean;
+  multiline?: boolean;
 };
 
 /** Barra de estilo solo visible mientras el campo (o la barra) tiene foco. */
@@ -41,22 +43,42 @@ export function IdentityStyledField({
   maxLength,
   placeholder,
   disabled,
+  multiline = false,
 }: FieldProps) {
   const fieldId = `identity-${label.toLowerCase().replace(/\s+/g, "-")}`;
+  const fieldClass = cn(
+    "rounded-xl",
+    multiline ? "min-h-28" : "h-11",
+    identityInputClassName(style),
+  );
+  const fieldStyle = identityLineColorStyle(style);
 
   return (
     <div className="group space-y-2">
       <Label htmlFor={fieldId}>{label}</Label>
-      <Input
-        id={fieldId}
-        value={value}
-        maxLength={maxLength}
-        onChange={(e) => onChange(e.target.value)}
-        className={`h-11 rounded-xl ${identityInputClassName(style)}`}
-        style={identityLineColorStyle(style)}
-        placeholder={placeholder}
-        disabled={disabled}
-      />
+      {multiline ? (
+        <Textarea
+          id={fieldId}
+          value={value}
+          maxLength={maxLength}
+          onChange={(e) => onChange(e.target.value)}
+          className={fieldClass}
+          style={fieldStyle}
+          placeholder={placeholder}
+          disabled={disabled}
+        />
+      ) : (
+        <Input
+          id={fieldId}
+          value={value}
+          maxLength={maxLength}
+          onChange={(e) => onChange(e.target.value)}
+          className={fieldClass}
+          style={fieldStyle}
+          placeholder={placeholder}
+          disabled={disabled}
+        />
+      )}
       <div
         className="hidden group-focus-within:block"
         onMouseDown={(e) => {

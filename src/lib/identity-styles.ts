@@ -12,6 +12,7 @@ export const IDENTITY_COLOR_TOKENS = [
   { id: "foreground", label: "Texto", swatch: "var(--foreground)" },
   { id: "muted", label: "Suave", swatch: "var(--muted-foreground)" },
   { id: "gold", label: "Dorado", swatch: "var(--gold)" },
+  { id: "blush", label: "Blush", swatch: "var(--blush-foreground)" },
 ] as const;
 
 export type IdentityColorTokenId = (typeof IDENTITY_COLOR_TOKENS)[number]["id"];
@@ -60,8 +61,14 @@ export function isIdentityColorToken(value: string): value is IdentityColorToken
   return COLOR_TOKEN_IDS.has(value);
 }
 
-export function normalizeLineStyle(value: unknown, lineId: IdentityLineId): IdentityLineStyle {
-  const base = { ...DEFAULT_IDENTITY_STYLES[lineId] };
+export function normalizeLineStyle(
+  value: unknown,
+  lineIdOrFallback: IdentityLineId | IdentityLineStyle,
+): IdentityLineStyle {
+  const base =
+    typeof lineIdOrFallback === "string"
+      ? { ...DEFAULT_IDENTITY_STYLES[lineIdOrFallback] }
+      : { ...lineIdOrFallback };
   if (!value || typeof value !== "object") return base;
   const blob = value as Record<string, unknown>;
   const font = String(blob.font || "").trim().toLowerCase();
@@ -88,6 +95,7 @@ const TOKEN_TEXT_CLASS: Record<IdentityColorTokenId, string> = {
   foreground: "text-foreground",
   muted: "text-muted-foreground",
   gold: "text-gold",
+  blush: "text-blush-foreground",
 };
 
 const FONT_CLASS: Record<IdentityFontId, string> = {
@@ -96,25 +104,27 @@ const FONT_CLASS: Record<IdentityFontId, string> = {
   sans: "font-sans",
 };
 
-export function identityLineClassName(style: IdentityLineStyle, role: IdentityLineId): string {
+export function identityToneClassName(style: IdentityLineStyle): string {
   const colorClass = isIdentityColorToken(style.color) ? TOKEN_TEXT_CLASS[style.color] : "";
+  return [
+    FONT_CLASS[style.font],
+    style.bold ? "font-bold" : "font-normal",
+    style.italic ? "italic" : "",
+    style.uppercase ? "uppercase" : "",
+    colorClass,
+  ]
+    .filter(Boolean)
+    .join(" ");
+}
+
+export function identityLineClassName(style: IdentityLineStyle, role: IdentityLineId): string {
   const size =
     role === "short_name"
       ? "text-lg"
       : role === "brand_name"
         ? "text-xl tracking-wide"
         : "mt-1 text-[10px] tracking-[0.14em]";
-  return [
-    "block truncate",
-    FONT_CLASS[style.font],
-    style.bold ? "font-bold" : "font-normal",
-    style.italic ? "italic" : "",
-    style.uppercase ? "uppercase" : "",
-    size,
-    colorClass,
-  ]
-    .filter(Boolean)
-    .join(" ");
+  return ["block truncate", identityToneClassName(style), size].filter(Boolean).join(" ");
 }
 
 export function identityLineColorStyle(style: IdentityLineStyle): { color: string } | undefined {

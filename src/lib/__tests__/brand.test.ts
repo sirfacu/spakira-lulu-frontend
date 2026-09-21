@@ -26,6 +26,7 @@ describe("normalizeThemeId", () => {
   it("keeps registered themes and falls back to KIRA default", () => {
     expect(normalizeThemeId("pink-pastel")).toBe("pink-pastel");
     expect(normalizeThemeId("navy")).toBe("navy");
+    expect(normalizeThemeId("rose")).toBe("rose");
     expect(normalizeThemeId("nope")).toBe(DEFAULT_THEME_ID);
     expect(normalizeThemeId(null)).toBe(DEFAULT_THEME_ID);
   });

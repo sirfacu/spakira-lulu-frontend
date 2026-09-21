@@ -57,7 +57,7 @@ function HoursDropdown({
     <div className="relative">
       <button
         type="button"
-        className="inline-flex max-w-full items-center gap-1.5 rounded-xl px-2 py-1 text-left text-xs text-muted-foreground transition-colors hover:bg-secondary/60 hover:text-foreground"
+        className="inline-flex max-w-full shrink-0 items-center gap-1.5 whitespace-nowrap rounded-xl px-2 py-1 text-left text-xs text-muted-foreground transition-colors hover:bg-secondary/60 hover:text-foreground"
         aria-expanded={open}
         onClick={() => setOpen((v) => !v)}
       >
@@ -191,7 +191,7 @@ function LocationListSelect({
         className={cn(
           "min-w-0 rounded-full border-border bg-secondary/80 font-medium shadow-none",
           compact
-            ? "h-8 w-[min(11rem,42vw)] px-2.5 text-[11px]"
+            ? "h-8 w-[min(9.5rem,28vw)] px-2.5 text-[11px]"
             : "h-10 w-full max-w-xs rounded-xl px-3 text-sm",
         )}
       >
@@ -236,10 +236,10 @@ export function HomeBizStatusBar() {
   if (!addressLabel && !hours && locations.length < 2) return null;
 
   return (
-    <div className="flex flex-wrap items-center justify-end gap-x-3 gap-y-1">
+    <div className="flex min-w-0 items-center justify-end gap-x-2 overflow-hidden sm:gap-x-3">
       <LocationListSelect compact />
       {addressLabel ? (
-        <span className="inline-flex max-w-[14rem] items-center gap-1.5 truncate text-xs text-muted-foreground sm:max-w-xs">
+        <span className="inline-flex min-w-0 max-w-[11rem] items-center gap-1.5 text-xs text-muted-foreground sm:max-w-[14rem]">
           <MapPin className="h-3.5 w-3.5 shrink-0 text-primary" aria-hidden />
           <span className="truncate" title={addressLabel}>
             {addressLabel}

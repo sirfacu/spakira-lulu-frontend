@@ -173,6 +173,37 @@ html[data-theme="pink-pastel"] {
   --sidebar-ring: oklch(0.62 0.12 350);
 }
 
+html[data-theme="rose"] {
+  --background: oklch(0.99 0.012 20);
+  --foreground: oklch(0.3 0.08 25);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.3 0.08 25);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.3 0.08 25);
+  --primary: oklch(0.48 0.16 25);
+  --primary-foreground: oklch(0.99 0.01 20);
+  --secondary: oklch(0.96 0.03 20);
+  --secondary-foreground: oklch(0.42 0.14 20);
+  --muted: oklch(0.97 0.02 20);
+  --muted-foreground: oklch(0.5 0.06 20);
+  --accent: oklch(0.62 0.18 15);
+  --accent-foreground: oklch(0.99 0.01 15);
+  --border: oklch(0.92 0.03 20);
+  --input: oklch(0.92 0.03 20);
+  --ring: oklch(0.55 0.14 25);
+  --lavender: oklch(0.78 0.08 15);
+  --blush: oklch(0.94 0.04 15);
+  --blush-foreground: oklch(0.45 0.16 20);
+  --sidebar: oklch(0.995 0.01 20);
+  --sidebar-foreground: oklch(0.34 0.08 25);
+  --sidebar-primary: oklch(0.48 0.16 25);
+  --sidebar-primary-foreground: oklch(0.99 0.01 20);
+  --sidebar-accent: oklch(0.96 0.03 20);
+  --sidebar-accent-foreground: oklch(0.42 0.14 20);
+  --sidebar-border: oklch(0.93 0.03 20);
+  --sidebar-ring: oklch(0.55 0.14 25);
+}
+
 html[data-theme="sky"] {
   --background: oklch(0.985 0.012 230);
   --foreground: oklch(0.28 0.06 240);

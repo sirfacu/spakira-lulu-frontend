@@ -5,6 +5,7 @@ export const DESCRIPTOR_MAX = 48;
 export const BRAND_THEME_IDS = [
   "kira-default",
   "pink-pastel",
+  "rose",
   "sky",
   "navy",
   "green-pastel",
@@ -48,6 +49,16 @@ export const BRAND_THEMES: BrandTheme[] = [
       primary: "oklch(0.55 0.16 350)",
       accent: "oklch(0.68 0.12 20)",
       background: "oklch(0.99 0.012 350)",
+      surface: "oklch(1 0 0)",
+    },
+  },
+  {
+    id: "rose",
+    label: "Rojo pastel",
+    swatches: {
+      primary: "oklch(0.48 0.16 25)",
+      accent: "oklch(0.62 0.18 15)",
+      background: "oklch(0.99 0.012 20)",
       surface: "oklch(1 0 0)",
     },
   },

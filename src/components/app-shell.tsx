@@ -96,7 +96,7 @@ export function AppShell({
   };
 
   return (
-    <div className="spa-canvas min-h-[calc(100svh-var(--env-banner-height,0px))] bg-background">
+    <div className="spa-canvas min-h-[calc(100svh-var(--env-banner-height,0px))] overflow-x-hidden bg-background">
       {open ? (
         <button
           aria-label="Cerrar menú"
@@ -206,7 +206,7 @@ export function AppShell({
         <EmacCredit className="mx-3 mb-4 px-1" />
       </aside>
 
-      <div className="lg:pl-[268px]">
+      <div className="min-w-0 lg:pl-[268px]">
         <header className="sticky top-[var(--env-banner-height,0px)] z-20 border-b border-border/70 bg-background/80 backdrop-blur-xl">
           <div className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 px-4 py-3.5 sm:px-6">
             <button
@@ -284,8 +284,8 @@ export function AppShell({
           </div>
         </header>
 
-        <main className="px-4 py-6 sm:px-6 sm:py-8">
-          <div className="mx-auto max-w-[1400px] animate-in fade-in duration-500">{children}</div>
+        <main className="min-w-0 px-4 py-6 sm:px-6 sm:py-8">
+          <div className="mx-auto min-w-0 max-w-[1400px] animate-in fade-in duration-500">{children}</div>
         </main>
       </div>
     </div>

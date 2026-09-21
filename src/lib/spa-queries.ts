@@ -1,6 +1,7 @@
 import { infiniteQueryOptions, queryOptions } from "@tanstack/react-query";
 import { api, ApiError, getApiBase, getToken } from "@/lib/api";
 import type { IdentityStyles } from "@/lib/identity-styles";
+import type { HomeHero } from "@/lib/home-hero";
 
 export type Owner = {
   id: string;
@@ -1108,6 +1109,7 @@ export type HomeContent = {
   news: HomeNewsItem[];
   client_videos: HomeVideoItem[];
   section_order?: string[];
+  hero?: HomeHero | null;
   updated_at?: string | null;
 };
 
@@ -1231,6 +1233,7 @@ export async function putHomeContent(input: {
   news?: HomeNewsItem[];
   client_videos?: HomeVideoItem[];
   section_order?: string[];
+  hero?: HomeHero;
 }) {
   return api<HomeContent>("/settings/home", { method: "PUT", body: input });
 }
