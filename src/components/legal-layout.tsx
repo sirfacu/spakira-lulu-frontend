@@ -101,14 +101,22 @@ export function LegalLayout({
   const showPdf = !!(pdfHref && pdfHref.trim());
 
   return (
-    <div className="spa-canvas relative min-h-screen overflow-hidden bg-background">
+    <div className="spa-canvas relative min-h-[calc(100svh-var(--env-banner-height,0px))] overflow-hidden bg-background">
       <SidePaws side="left" />
       <SidePaws side="right" />
 
       <header className="relative z-10 border-b border-border/60 bg-card/55 backdrop-blur-sm">
         <div className="mx-auto flex max-w-3xl items-center justify-between gap-4 px-5 py-4">
           <Link to="/" className="inline-flex items-center gap-2">
-            <BrandMark tradeName={trade} slogan={biz?.slogan} />
+            <BrandMark
+              tradeName={trade}
+              slogan={biz?.slogan}
+              shortName={biz?.short_name}
+              brandName={biz?.brand_name}
+              descriptor={biz?.descriptor}
+              logoUrl={biz?.logo_url}
+              identityStyles={biz?.identity_styles}
+            />
           </Link>
           {showPdf ? (
             <a

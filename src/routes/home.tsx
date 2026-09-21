@@ -124,15 +124,20 @@ function Landing() {
 
   return (
     <HomeLocationProvider>
-    <div className="spa-canvas min-h-screen bg-background">
-      <header className="sticky top-0 z-30 border-b border-border/70 bg-card/80 backdrop-blur-md">
+    <div className="spa-canvas min-h-[calc(100svh-var(--env-banner-height,0px))] bg-background">
+      <header className="sticky top-[var(--env-banner-height,0px)] z-30 border-b border-border/70 bg-card/80 backdrop-blur-md">
         <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-5 py-3">
           <Link to="/home" className="min-w-0">
             <BrandMark
               compact
-              tagline={false}
+              tagline
               tradeName={bizLegal?.trade_name}
               slogan={bizLegal?.slogan}
+              shortName={bizLegal?.short_name}
+              brandName={bizLegal?.brand_name}
+              descriptor={bizLegal?.descriptor}
+              logoUrl={bizLegal?.logo_url}
+              identityStyles={bizLegal?.identity_styles}
             />
           </Link>
           <div className="flex min-w-0 flex-1 flex-col items-end gap-2 sm:flex-row sm:items-center sm:justify-end">
@@ -421,7 +426,15 @@ function Landing() {
 
       <footer className="border-t border-border bg-card/60">
         <div className="mx-auto flex max-w-6xl flex-col items-center gap-3 px-5 py-10 text-center">
-          <BrandMark tradeName={bizLegal?.trade_name} slogan={bizLegal?.slogan} />
+          <BrandMark
+            tradeName={bizLegal?.trade_name}
+            slogan={bizLegal?.slogan}
+            shortName={bizLegal?.short_name}
+            brandName={bizLegal?.brand_name}
+            descriptor={bizLegal?.descriptor}
+            logoUrl={bizLegal?.logo_url}
+            identityStyles={bizLegal?.identity_styles}
+          />
           <p className="text-sm text-muted-foreground">
             {bizLegal?.slogan?.trim() || "Luxury pet grooming · Canina y felina"}
           </p>

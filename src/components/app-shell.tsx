@@ -96,7 +96,7 @@ export function AppShell({
   };
 
   return (
-    <div className="spa-canvas min-h-screen bg-background">
+    <div className="spa-canvas min-h-[calc(100svh-var(--env-banner-height,0px))] bg-background">
       {open ? (
         <button
           aria-label="Cerrar menú"
@@ -107,7 +107,7 @@ export function AppShell({
 
       <aside
         className={cn(
-          "fixed inset-y-0 left-0 z-40 flex w-[268px] flex-col border-r border-sidebar-border bg-sidebar transition-transform duration-300",
+          "fixed bottom-0 left-0 top-[var(--env-banner-height,0px)] z-40 flex w-[268px] flex-col border-r border-sidebar-border bg-sidebar transition-transform duration-300",
           open ? "translate-x-0" : "-translate-x-full",
           "lg:translate-x-0",
         )}
@@ -121,9 +121,14 @@ export function AppShell({
           >
             <BrandMark
               compact
-              tagline={false}
+              tagline
               tradeName={business.data?.trade_name ?? null}
               slogan={business.data?.slogan ?? null}
+              shortName={business.data?.short_name ?? null}
+              brandName={business.data?.brand_name ?? null}
+              descriptor={business.data?.descriptor ?? null}
+              logoUrl={business.data?.logo_url ?? null}
+              identityStyles={business.data?.identity_styles ?? null}
             />
           </Link>
           <button
@@ -202,7 +207,7 @@ export function AppShell({
       </aside>
 
       <div className="lg:pl-[268px]">
-        <header className="sticky top-0 z-20 border-b border-border/70 bg-background/80 backdrop-blur-xl">
+        <header className="sticky top-[var(--env-banner-height,0px)] z-20 border-b border-border/70 bg-background/80 backdrop-blur-xl">
           <div className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 px-4 py-3.5 sm:px-6">
             <button
               onClick={() => setOpen(true)}

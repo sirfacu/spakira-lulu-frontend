@@ -6,6 +6,22 @@ import { MapPin } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
 import { SectionCard } from "@/components/ui-kit";
 import { BrandMark } from "@/components/brand";
+import { IdentityStyledField } from "@/components/identity-style-bar";
+import { uploadBrandingPhoto, resolveMediaUrl } from "@/lib/api";
+import {
+  BRAND_THEMES,
+  BRAND_NAME_MAX,
+  DESCRIPTOR_MAX,
+  SHORT_NAME_MAX,
+  THEME_PREVIEW_EVENT,
+  clearThemePreview,
+  getThemePreview,
+  normalizeThemeId,
+  persistSavedTheme,
+  setThemePreview,
+  type BrandThemeId,
+} from "@/lib/brand-themes";
+import { DEFAULT_IDENTITY_STYLES, normalizeIdentityStyles, type IdentityStyles } from "@/lib/identity-styles";
 import { EmailTemplatesPanel, MailConfigPanel } from "@/components/config-email-panels";
 import { ConfigBusinessHoursPanel } from "@/components/config-business-hours-panel";
 import { ConfigHomePanel } from "@/components/config-home-panel";
@@ -53,8 +69,13 @@ function Configuracion() {
   const [correosSub, setCorreosSub] = useState<CorreosSub>("plantillas");
   const business = useQuery({ queryKey: ["business-settings"], queryFn: getBusinessSettings });
   const locations = useQuery({ queryKey: ["locations"], queryFn: getLocations });
-  const [tradeName, setTradeName] = useState("Spa Kira");
-  const [slogan, setSlogan] = useState("Luxury pet grooming · Canina y felina");
+  const [previewThemeId, setPreviewThemeId] = useState<BrandThemeId | null>(null);
+  const [shortName, setShortName] = useState("Spa");
+  const [brandName, setBrandName] = useState("KIRA");
+  const [descriptor, setDescriptor] = useState("Luxury pet grooming · Canina y felina");
+  const [identityStyles, setIdentityStyles] = useState<IdentityStyles>(DEFAULT_IDENTITY_STYLES);
+  const [logoUrl, setLogoUrl] = useState<string | null>(null);
+  const [logoBusy, setLogoBusy] = useState(false);
   const [address, setAddress] = useState("Bogotá, Colombia");
   const [whatsapp, setWhatsapp] = useState("+57 310 555 1234");
   const [contactEmail, setContactEmail] = useState("spakiraluxury@e-mac.co");
@@ -80,8 +101,11 @@ function Configuracion() {
 
   useEffect(() => {
     if (!business.data) return;
-    setTradeName(business.data.trade_name || "");
-    setSlogan(business.data.slogan || "");
+    setShortName(business.data.short_name || "Spa");
+    setBrandName(business.data.brand_name || "KIRA");
+    setDescriptor(business.data.descriptor || business.data.slogan || "");
+    setIdentityStyles(normalizeIdentityStyles(business.data.identity_styles));
+    setLogoUrl(business.data.logo_url?.trim() || null);
     setAddress(business.data.address || "");
     setWhatsapp(business.data.whatsapp || "");
     setContactEmail(business.data.contact_email || "");
@@ -103,6 +127,17 @@ function Configuracion() {
     setPhone(business.data.phone || "");
   }, [business.data]);
 
+  useEffect(() => {
+    const sync = () => setPreviewThemeId(getThemePreview());
+    sync();
+    window.addEventListener(THEME_PREVIEW_EVENT, sync);
+    return () => window.removeEventListener(THEME_PREVIEW_EVENT, sync);
+  }, []);
+
+  const savedThemeId = normalizeThemeId(business.data?.theme_id);
+  const selectedThemeId = previewThemeId ?? savedThemeId;
+  const themeDirty = selectedThemeId !== savedThemeId;
+
   const businessMut = useMutation({
     mutationFn: () => {
       if (!locationName.trim()) {
@@ -112,8 +147,13 @@ function Configuracion() {
         throw new Error("La sede necesita al menos dirección o ciudad.");
       }
       return patchBusinessSettings({
-        trade_name: tradeName.trim(),
-        slogan: slogan.trim(),
+        trade_name: `${shortName.trim()} ${brandName.trim()}`.trim(),
+        slogan: descriptor.trim(),
+        short_name: shortName.trim(),
+        brand_name: brandName.trim(),
+        descriptor: descriptor.trim(),
+        identity_styles: identityStyles,
+        logo_url: logoUrl,
         address: address.trim(),
         whatsapp: whatsapp.trim(),
         city: city.trim(),
@@ -130,6 +170,18 @@ function Configuracion() {
       await qc.invalidateQueries({ queryKey: ["business-settings"] });
       await qc.invalidateQueries({ queryKey: ["business-settings-public"] });
       await qc.invalidateQueries({ queryKey: ["locations"] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const themeSaveMut = useMutation({
+    mutationFn: () => patchBusinessSettings({ theme_id: selectedThemeId }),
+    onSuccess: async () => {
+      persistSavedTheme(selectedThemeId);
+      clearThemePreview(selectedThemeId);
+      toast.success("Tema guardado");
+      await qc.invalidateQueries({ queryKey: ["business-settings"] });
+      await qc.invalidateQueries({ queryKey: ["business-settings-public"] });
     },
     onError: (e: Error) => toast.error(e.message),
   });
@@ -243,21 +295,189 @@ function Configuracion() {
       
       {tab === "general" ? (
         <div className="grid gap-6">
+          {isAdmin ? (
+            <SectionCard title="Tema visual">
+              <p className="mb-4 text-sm text-muted-foreground">
+                Tocá un tema para verlo en toda la app. Morado KIRA es el actual y no se reescribe: solo
+                cambia si guardás otro. La tipografía (Poppins / Playfair / Great Vibes) se mantiene.
+              </p>
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                {BRAND_THEMES.map((theme) => {
+                  const selected = selectedThemeId === theme.id;
+                  return (
+                    <button
+                      key={theme.id}
+                      type="button"
+                      onClick={() => {
+                        if (theme.id === savedThemeId) {
+                          clearThemePreview(savedThemeId);
+                          setPreviewThemeId(null);
+                          return;
+                        }
+                        setThemePreview(theme.id);
+                        setPreviewThemeId(theme.id);
+                      }}
+                      className={`rounded-2xl border p-3 text-left transition ${
+                        selected
+                          ? "border-primary ring-2 ring-primary/30"
+                          : "border-border hover:border-primary/40"
+                      }`}
+                    >
+                      <span className="mb-2 flex gap-1">
+                        {(["primary", "accent", "background", "surface"] as const).map((k) => (
+                          <span
+                            key={k}
+                            className="h-6 w-6 rounded-full border border-black/5"
+                            style={{ background: theme.swatches[k] }}
+                          />
+                        ))}
+                      </span>
+                      <span className="block text-sm font-medium">{theme.label}</span>
+                      {theme.id === savedThemeId ? (
+                        <span className="mt-1 block text-[11px] text-muted-foreground">Guardado</span>
+                      ) : selected ? (
+                        <span className="mt-1 block text-[11px] text-primary">Vista previa</span>
+                      ) : null}
+                    </button>
+                  );
+                })}
+              </div>
+              <div className="mt-4 flex flex-wrap items-center gap-3">
+                <Button
+                  type="button"
+                  className="rounded-xl"
+                  disabled={!themeDirty || themeSaveMut.isPending}
+                  onClick={() => themeSaveMut.mutate()}
+                >
+                  {themeSaveMut.isPending ? "Guardando…" : "Guardar tema"}
+                </Button>
+                {themeDirty ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="rounded-xl"
+                    disabled={themeSaveMut.isPending}
+                    onClick={() => {
+                      clearThemePreview(savedThemeId);
+                      setPreviewThemeId(null);
+                    }}
+                  >
+                    Descartar
+                  </Button>
+                ) : (
+                  <p className="text-sm text-muted-foreground">Elegí otro tema, recorré el panel y después guardá.</p>
+                )}
+              </div>
+            </SectionCard>
+          ) : null}
+
           <div className="grid gap-6 lg:grid-cols-2">
             <SectionCard title="Identidad del negocio">
-              <BrandMark compact tagline tradeName={tradeName} slogan={slogan} />
+              <BrandMark
+                compact
+                tagline
+                shortName={shortName}
+                brandName={brandName}
+                descriptor={descriptor}
+                logoUrl={logoUrl}
+                identityStyles={identityStyles}
+              />
               <div className="mt-5 grid gap-4">
                 <div className="space-y-2">
-                  <Label>Nombre comercial</Label>
-                  <Input value={tradeName} onChange={(e) => setTradeName(e.target.value)} className="h-11 rounded-xl" />
+                  <Label>Logo principal</Label>
+                  <div className="flex flex-wrap items-center gap-3">
+                    <img
+                      src={resolveMediaUrl(logoUrl) || "/images/kira-face.png"}
+                      alt="Logo actual"
+                      className="h-16 w-16 rounded-2xl object-contain ring-1 ring-border"
+                    />
+                    <label className="inline-flex cursor-pointer items-center rounded-xl border border-border bg-card px-3 py-2 text-sm font-medium hover:bg-secondary">
+                      {logoBusy ? "Subiendo…" : "Cambiar logo"}
+                      <input
+                        type="file"
+                        accept="image/png,image/jpeg,image/webp,image/gif"
+                        className="hidden"
+                        disabled={logoBusy || !isAdmin}
+                        onChange={async (e) => {
+                          const file = e.target.files?.[0];
+                          e.target.value = "";
+                          if (!file) return;
+                          setLogoBusy(true);
+                          try {
+                            const up = await uploadBrandingPhoto(file);
+                            setLogoUrl(up.url);
+                            await patchBusinessSettings({ logo_url: up.url });
+                            toast.success("Logo actualizado");
+                            await qc.invalidateQueries({ queryKey: ["business-settings"] });
+                            await qc.invalidateQueries({ queryKey: ["business-settings-public"] });
+                          } catch (err) {
+                            toast.error(err instanceof Error ? err.message : "No se pudo subir el logo");
+                          } finally {
+                            setLogoBusy(false);
+                          }
+                        }}
+                      />
+                    </label>
+                    {logoUrl ? (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="rounded-xl"
+                        disabled={!isAdmin}
+                        onClick={async () => {
+                          setLogoUrl(null);
+                          try {
+                            await patchBusinessSettings({ logo_url: null });
+                            toast.success("Logo quitado; vuelve el de KIRA");
+                            await qc.invalidateQueries({ queryKey: ["business-settings"] });
+                            await qc.invalidateQueries({ queryKey: ["business-settings-public"] });
+                          } catch (err) {
+                            toast.error(err instanceof Error ? err.message : "No se pudo quitar el logo");
+                          }
+                        }}
+                      >
+                        Eliminar
+                      </Button>
+                    ) : null}
+                  </div>
                   <p className="text-[11px] text-muted-foreground">
-                    Se refleja en el menú izquierdo (primera palabra en script, el resto en mayúsculas).
+                    PNG, JPG, WEBP o GIF · máx. 5 MB. El marco del header es fijo; otra proporción no
+                    rompe el menú.
                   </p>
                 </div>
-                <div className="space-y-2">
-                  <Label>Eslogan</Label>
-                  <Input value={slogan} onChange={(e) => setSlogan(e.target.value)} className="h-11 rounded-xl" />
-                </div>
+                <IdentityStyledField
+                  label="Nombre corto"
+                  hint="Primera línea del menú."
+                  value={shortName}
+                  maxLength={SHORT_NAME_MAX}
+                  placeholder="Spa"
+                  disabled={!isAdmin}
+                  style={identityStyles.short_name}
+                  onChange={setShortName}
+                  onStyleChange={(next) => setIdentityStyles((s) => ({ ...s, short_name: next }))}
+                />
+                <IdentityStyledField
+                  label="Nombre principal"
+                  hint="Segunda línea del menú."
+                  value={brandName}
+                  maxLength={BRAND_NAME_MAX}
+                  placeholder="KIRA"
+                  disabled={!isAdmin}
+                  style={identityStyles.brand_name}
+                  onChange={setBrandName}
+                  onStyleChange={(next) => setIdentityStyles((s) => ({ ...s, brand_name: next }))}
+                />
+                <IdentityStyledField
+                  label="Descriptor"
+                  hint="Tercera línea del header."
+                  value={descriptor}
+                  maxLength={DESCRIPTOR_MAX}
+                  placeholder="Luxury pet grooming"
+                  disabled={!isAdmin}
+                  style={identityStyles.descriptor}
+                  onChange={setDescriptor}
+                  onStyleChange={(next) => setIdentityStyles((s) => ({ ...s, descriptor: next }))}
+                />
                 <div className="space-y-2">
                   <Label>WhatsApp de contacto</Label>
                   <Input value={whatsapp} onChange={(e) => setWhatsapp(e.target.value)} className="h-11 rounded-xl" />
@@ -340,7 +560,7 @@ function Configuracion() {
                 {isAdmin ? (
                   <Button
                     className="rounded-xl"
-                    disabled={businessMut.isPending || !tradeName.trim()}
+                    disabled={businessMut.isPending || !shortName.trim() || !brandName.trim()}
                     onClick={() => businessMut.mutate()}
                   >
                     Guardar identidad y ubicación

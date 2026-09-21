@@ -1,5 +1,6 @@
 import { infiniteQueryOptions, queryOptions } from "@tanstack/react-query";
 import { api, ApiError, getApiBase, getToken } from "@/lib/api";
+import type { IdentityStyles } from "@/lib/identity-styles";
 
 export type Owner = {
   id: string;
@@ -1067,6 +1068,11 @@ export type BusinessSettings = {
   location_code?: string | null;
   locations_count?: number;
   logo_url?: string | null;
+  theme_id?: string | null;
+  short_name?: string | null;
+  brand_name?: string | null;
+  descriptor?: string | null;
+  identity_styles?: IdentityStyles | null;
   barcode_scanner_enabled?: boolean;
   barcode_scanner_mode?: string;
   barcode_suffix?: string;
@@ -1134,6 +1140,11 @@ export type PublicBusinessSettings = Pick<
   | "phone"
   | "location_name"
   | "logo_url"
+  | "theme_id"
+  | "short_name"
+  | "brand_name"
+  | "descriptor"
+  | "identity_styles"
   | "contact_email"
   | "site_url"
   | "legal_effective_from"

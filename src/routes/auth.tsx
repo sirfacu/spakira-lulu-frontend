@@ -337,7 +337,7 @@ function AuthPage() {
   const showGoogle = mode !== "activate" || canJoinGoogle;
 
   return (
-    <div className="spa-canvas flex min-h-screen items-center justify-center bg-background px-4 py-12">
+    <div className="spa-canvas flex min-h-[calc(100svh-var(--env-banner-height,0px))] items-center justify-center bg-background px-4 py-12">
       {ticketBusy ? <KiraLoader variant="fullscreen" label="cargando tu experiencia" /> : null}
       {splashTo && !ticketBusy ? (
         <LoginSplash onDone={finishSplash} label="Ingreso correcto · cargando tu panel" />
@@ -352,7 +352,16 @@ function AuthPage() {
 
         <div className="card-soft paw-pattern overflow-hidden p-8">
           <div className="relative">
-            <BrandMark size="auth" />
+            <BrandMark
+              size="auth"
+              tradeName={bizLegal?.trade_name}
+              slogan={bizLegal?.slogan}
+              shortName={bizLegal?.short_name}
+              brandName={bizLegal?.brand_name}
+              descriptor={bizLegal?.descriptor}
+              logoUrl={bizLegal?.logo_url}
+              identityStyles={bizLegal?.identity_styles}
+            />
             <div className="gold-rule mx-auto my-6 max-w-[12rem]" />
             <h2 className="text-center font-display text-2xl font-bold text-primary">{title}</h2>
             <p className="mt-1 text-center text-sm text-muted-foreground">

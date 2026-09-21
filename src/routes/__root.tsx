@@ -15,6 +15,9 @@ import { GlobalKiraLoading } from "@/components/global-kira-loading";
 import { KiraLoader } from "@/components/kira-loader";
 import { PublicWhatsAppFab } from "@/components/whatsapp-fab";
 import { EnvBanner } from "@/components/env-banner";
+import { BrandThemeApplier } from "@/components/brand-theme-applier";
+import { ThemePreviewBar } from "@/components/theme-preview-bar";
+import { THEME_BOOT_SCRIPT } from "@/lib/brand-themes";
 import { installLocalClientLogging, logError } from "@/lib/local-client-logging";
 
 function NotFoundComponent() {
@@ -46,7 +49,7 @@ function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
   }, [error]);
 
   return (
-    <div className="spa-canvas flex min-h-screen items-center justify-center bg-background px-4">
+    <div className="spa-canvas flex min-h-[calc(100svh-var(--env-banner-height,0px))] items-center justify-center bg-background px-4">
       <div className="max-w-md text-center">
         <h1 className="text-xl font-semibold tracking-tight text-foreground">
           Esta página no cargó
@@ -105,7 +108,7 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { rel: "preconnect", href: "https://fonts.gstatic.com", crossOrigin: "anonymous" },
       {
         rel: "stylesheet",
-        href: "https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&family=Playfair+Display:wght@500;600;700&family=Great+Vibes&display=swap",
+        href: "https://fonts.googleapis.com/css2?family=Poppins:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400;1,700&family=Playfair+Display:ital,wght@0,500;0,600;0,700;1,500;1,700&family=Great+Vibes&display=swap",
       },
       { rel: "icon", href: "/icons/favicon.ico?v=2", sizes: "any" },
       { rel: "icon", type: "image/png", sizes: "32x32", href: "/icons/favicon-32.png?v=2" },
@@ -124,6 +127,7 @@ function RootShell({ children }: { children: ReactNode }) {
   return (
     <html lang="es">
       <head>
+        <script dangerouslySetInnerHTML={{ __html: THEME_BOOT_SCRIPT }} />
         <HeadContent />
       </head>
       <body>
@@ -142,7 +146,9 @@ function RootComponent() {
 
   return (
     <QueryClientProvider client={queryClient}>
+      <BrandThemeApplier />
       <EnvBanner />
+      <ThemePreviewBar />
       {/* Required: nested routes render here. Removing <Outlet /> breaks all child routes. */}
       <Outlet />
       <PublicWhatsAppFab />

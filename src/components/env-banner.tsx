@@ -6,8 +6,9 @@ type HealthEnv = {
 };
 
 /**
- * Cinta fija solo en local (APP_ENV=local).
- * En AWS (dev/staging/production) no se muestra.
+ * Cinta solo en local (APP_ENV=local). En AWS no se muestra.
+ * Altura fija h-9 + [data-env-banner] → --env-banner-height para que
+ * sidebar/headers empiecen debajo y no tapen el logo.
  */
 export function EnvBanner() {
   const q = useQuery({
@@ -22,8 +23,9 @@ export function EnvBanner() {
 
   return (
     <div
+      data-env-banner=""
       role="status"
-      className="sticky top-0 z-[100] w-full bg-[#c9190b] px-3 py-1.5 text-center text-xs font-semibold tracking-wide text-white shadow-sm sm:text-sm"
+      className="sticky top-0 z-[100] flex h-9 w-full items-center justify-center bg-[#c9190b] px-3 text-center text-xs font-semibold tracking-wide text-white shadow-sm sm:text-sm"
     >
       Ambiente: DESARROLLO (local)
     </div>
