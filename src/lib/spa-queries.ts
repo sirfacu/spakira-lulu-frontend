@@ -117,6 +117,8 @@ export type Staff = {
   hired_at?: string | null;
   skills?: string[];
   user_id?: string | null;
+  location_ids?: string[];
+  home_location_id?: string | null;
 };
 
 export type StaffPayTerm = {
@@ -370,6 +372,8 @@ export type AppUser = {
   modules?: string[];
   modules_custom?: boolean;
   modules_inherited?: string[];
+  location_ids?: string[];
+  locations_all?: boolean;
 };
 
 /** Landing (sin auth). */
@@ -1046,6 +1050,7 @@ export async function inviteAppUser(input: {
   email: string;
   full_name: string;
   role: string;
+  location_ids?: string[];
 }) {
   return api<{ ok: boolean; message: string; email?: string }>("/auth/users", {
     method: "POST",
@@ -1284,7 +1289,7 @@ export async function sendMailTest(input?: { to?: string; template_key?: string 
 
 export async function patchAppUser(
   id: string,
-  input: { role?: string; active?: boolean; full_name?: string },
+  input: { role?: string; active?: boolean; full_name?: string; location_ids?: string[] },
 ) {
   return api<AppUser>(`/auth/users/${id}`, { method: "PATCH", body: input });
 }

@@ -31,6 +31,7 @@ import {
   getStaffWorkHoursHistory,
   saveStaffWorkHours,
   getStaffSkillCatalog,
+  getLocations,
   type Staff,
   type PayrollPreview,
 } from "@/lib/spa-queries";
@@ -76,6 +77,7 @@ const emptyForm = {
   hired_at: "",
   photo_url: "",
   skills: ["groomer"] as string[],
+  location_ids: [] as string[],
 };
 
 const WEEKDAYS = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"];
@@ -90,6 +92,8 @@ function Personal() {
   const isAdmin = permissionsFor(user?.role).isAdmin;
   const qc = useQueryClient();
   const staff = useQuery(staffQuery);
+  const locationsQ = useQuery({ queryKey: ["locations"], queryFn: getLocations, enabled: isAdmin });
+  const activeLocations = (locationsQ.data?.items ?? []).filter((x) => x.active);
   const catalog = useQuery({
     queryKey: ["staff-skill-catalog"],
     queryFn: getStaffSkillCatalog,
@@ -142,11 +146,13 @@ function Personal() {
 
   const openCreate = () => {
     setEditing(null);
-    setForm(emptyForm);
+    const primary = activeLocations.find((x) => x.is_primary) ?? activeLocations[0];
+    setForm({ ...emptyForm, location_ids: primary ? [primary.id] : [] });
     setFormOpen(true);
   };
   const openEdit = (s: Staff) => {
     setEditing(s);
+    const primaryLocation = activeLocations.find((x) => x.is_primary) ?? activeLocations[0];
     setForm({
       full_name: s.full_name,
       role_title: canonicalizeStaffRole(s.role_title) || canonicalizeStaffRole(s.skills?.[0]) || "groomer",
@@ -166,6 +172,11 @@ function Personal() {
       skills: (s.skills?.length ? s.skills : [s.role_title])
         .map((x) => canonicalizeStaffRole(x) || x)
         .filter((x, i, arr) => x && arr.indexOf(x) === i),
+      location_ids: s.location_ids?.length
+        ? s.location_ids
+        : primaryLocation
+          ? [primaryLocation.id]
+          : [],
     });
     setFormOpen(true);
   };
@@ -225,6 +236,7 @@ function Personal() {
         hired_at: form.hired_at || null,
         photo_url: form.photo_url.trim() || null,
         skills: [display],
+        location_ids: form.location_ids,
         open_new_pay_term: true,
       };
       if (editing) return updateStaff(editing.id, payload);
@@ -860,6 +872,36 @@ function Personal() {
                 )}
               </select>
             </div>
+            {activeLocations.length > 1 ? (
+              <div className="space-y-1.5 sm:col-span-2">
+                <Label>Sedes donde trabaja</Label>
+                <div className="flex flex-wrap gap-2">
+                  {activeLocations.map((loc) => {
+                    const on = form.location_ids.includes(loc.id);
+                    return (
+                      <button
+                        key={loc.id}
+                        type="button"
+                        className={`rounded-full px-3 py-1 text-sm ${
+                          on ? "bg-primary text-primary-foreground" : "bg-secondary"
+                        }`}
+                        onClick={() =>
+                          setForm((f) => {
+                            const next = on
+                              ? f.location_ids.filter((id) => id !== loc.id)
+                              : [...f.location_ids, loc.id];
+                            return { ...f, location_ids: next.length ? next : [loc.id] };
+                          })
+                        }
+                      >
+                        {loc.name}
+                        {loc.is_primary ? " · principal" : ""}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : null}
             <div className="space-y-1.5 sm:col-span-2">
               <Label>Cómo se calcula el fijo</Label>
               <select
