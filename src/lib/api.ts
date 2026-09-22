@@ -365,6 +365,8 @@ export function fetchMe() {
     needs_pet?: boolean;
     modules?: string[];
     modules_custom?: boolean;
+    location_ids?: string[];
+    locations_all?: boolean;
   }>("/auth/me").then(
     (user) => {
       meCache = { at: Date.now(), user };

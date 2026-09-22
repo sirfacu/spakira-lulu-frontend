@@ -24,6 +24,7 @@ import {
   resetAppUserPassword,
   forceActivateAppUser,
   deleteAppUser,
+  getLocations,
   type AppUser,
 } from "@/lib/spa-queries";
 import { displayRole, normalizeRole, type AppRole } from "@/lib/roles";
@@ -80,9 +81,16 @@ export function ConfigUsersPanel({
 }) {
   const qc = useQueryClient();
   const users = useQuery(appUsersQuery);
+  const locationsQ = useQuery({
+    queryKey: ["locations"],
+    queryFn: getLocations,
+    enabled: canManageRoles,
+  });
+  const activeLocations = (locationsQ.data?.items ?? []).filter((x) => x.active);
   const [email, setEmail] = useState("");
   const [fullName, setFullName] = useState("");
   const [role, setRole] = useState<AppRole>(canManageRoles ? "colaborador" : "cliente");
+  const [inviteLocationIds, setInviteLocationIds] = useState<string[]>([]);
   const [q, setQ] = useState("");
   const [rolePending, setRolePending] = useState<RolePending | null>(null);
   const [deletePending, setDeletePending] = useState<AppUser | null>(null);
@@ -120,6 +128,10 @@ export function ConfigUsersPanel({
         email: email.trim(),
         full_name: fullName.trim() || "Usuario Spa Kira",
         role: canManageRoles ? role : "cliente",
+        location_ids:
+          (canManageRoles ? role : "cliente") === "colaborador" && inviteLocationIds.length
+            ? inviteLocationIds
+            : undefined,
       }),
     onSuccess: async (res) => {
       toast.success(res.message);
@@ -258,6 +270,41 @@ export function ConfigUsersPanel({
             </div>
             ) : null}
           </div>
+          {canManageRoles && role === "colaborador" && activeLocations.length > 1 ? (
+            <div className="mt-3 space-y-1.5">
+              <Label>Sedes de este Staff</Label>
+              <div className="flex flex-wrap gap-2">
+                {activeLocations.map((loc) => {
+                  const on = inviteLocationIds.includes(loc.id) || (
+                    inviteLocationIds.length === 0 && loc.is_primary
+                  );
+                  return (
+                    <button
+                      key={loc.id}
+                      type="button"
+                      className={`rounded-full px-3 py-1 text-sm ${
+                        on ? "bg-primary text-primary-foreground" : "bg-secondary"
+                      }`}
+                      onClick={() =>
+                        setInviteLocationIds((prev) => {
+                          const current = prev.length
+                            ? prev
+                            : activeLocations.filter((x) => x.is_primary).map((x) => x.id);
+                          const has = current.includes(loc.id);
+                          const next = has
+                            ? current.filter((id) => id !== loc.id)
+                            : [...current, loc.id];
+                          return next.length ? next : [loc.id];
+                        })
+                      }
+                    >
+                      {loc.name}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          ) : null}
           <Button
             className="mt-4 rounded-xl"
             disabled={!email.trim() || inviteMut.isPending}
@@ -349,6 +396,17 @@ export function ConfigUsersPanel({
                       {displayRole(u.role)}
                     </span>
                   )}
+                  {normalizeRole(u.role) === "colaborador" && activeLocations.length > 1 ? (
+                    <span className="text-xs text-muted-foreground">
+                      {(u.location_ids ?? [])
+                        .map((id) => activeLocations.find((l) => l.id === id)?.name)
+                        .filter(Boolean)
+                        .join(" · ") || "Sede principal"}
+                    </span>
+                  ) : null}
+                  {normalizeRole(u.role) === "admin" && u.locations_all ? (
+                    <span className="text-xs text-muted-foreground">Todas las sedes</span>
+                  ) : null}
                   <span
                     className={`rounded-full px-2.5 py-0.5 text-[11px] font-medium ${
                       u.active
