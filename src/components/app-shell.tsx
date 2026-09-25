@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useRouterState, useNavigate, useRouteContext } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -16,7 +16,6 @@ import {
   Menu,
   X,
   LogOut,
-  Search,
   Bell,
   Shield,
 } from "lucide-react";
@@ -56,6 +55,7 @@ export function AppShell({
 }) {
   const [open, setOpen] = useState(false);
   const [notifOpen, setNotifOpen] = useState(false);
+  const notifRef = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const { user } = useRouteContext({ from: "/_authenticated" });
@@ -89,6 +89,22 @@ export function AppShell({
       await qc.invalidateQueries({ queryKey: ["notifications"] });
     },
   });
+
+  useEffect(() => {
+    if (!notifOpen) return;
+    const onPointerDown = (event: MouseEvent) => {
+      if (!notifRef.current?.contains(event.target as Node)) setNotifOpen(false);
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setNotifOpen(false);
+    };
+    document.addEventListener("mousedown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [notifOpen]);
 
   const signOut = async () => {
     apiLogout();
@@ -208,7 +224,7 @@ export function AppShell({
 
       <div className="min-w-0 lg:pl-[268px]">
         <header className="sticky top-[var(--env-banner-height,0px)] z-20 border-b border-border/70 bg-background/80 backdrop-blur-xl">
-          <div className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 px-4 py-3.5 sm:px-6">
+          <div className="flex items-center gap-3 px-4 py-3.5 sm:px-6">
             <button
               onClick={() => setOpen(true)}
               className="rounded-xl border border-border bg-card p-2.5 text-primary shadow-soft lg:hidden"
@@ -216,7 +232,7 @@ export function AppShell({
             >
               <Menu className="h-4 w-4" />
             </button>
-            <div className="min-w-0">
+            <div className="min-w-0 flex-1">
               <h1 className="truncate font-display text-xl font-bold text-primary sm:text-2xl">
                 {title}
               </h1>
@@ -224,62 +240,62 @@ export function AppShell({
                 <p className="truncate text-xs text-muted-foreground sm:text-sm">{subtitle}</p>
               ) : null}
             </div>
-            <div className="relative flex shrink-0 items-center gap-2">
+            <div className="flex shrink-0 items-center gap-2">
               {actions}
-              <button
-                type="button"
-                className="relative hidden h-10 w-10 place-items-center rounded-xl border border-border bg-card text-muted-foreground shadow-soft sm:grid"
-                aria-label="Notificaciones"
-                onClick={() => {
-                  setNotifOpen((v) => !v);
-                  if (!notifOpen && unread > 0) readMut.mutate();
-                }}
-              >
-                <Bell className="h-4 w-4" />
-                {unread > 0 ? (
-                  <span className="absolute -right-1 -top-1 grid h-5 min-w-5 place-items-center rounded-full bg-accent px-1 text-[10px] font-bold text-accent-foreground">
-                    {unread > 9 ? "9+" : unread}
-                  </span>
+              <div ref={notifRef} className="relative">
+                <button
+                  type="button"
+                  className="relative grid h-10 w-10 place-items-center rounded-xl border border-border bg-card text-muted-foreground shadow-soft"
+                  aria-label="Notificaciones"
+                  aria-expanded={notifOpen}
+                  onClick={() => {
+                    setNotifOpen((v) => !v);
+                    if (!notifOpen && unread > 0) readMut.mutate();
+                  }}
+                >
+                  <Bell className="h-4 w-4" />
+                  {unread > 0 ? (
+                    <span className="absolute -right-1 -top-1 grid h-5 min-w-5 place-items-center rounded-full bg-accent px-1 text-[10px] font-bold text-accent-foreground">
+                      {unread > 9 ? "9+" : unread}
+                    </span>
+                  ) : null}
+                </button>
+                {notifOpen ? (
+                  <div className="absolute right-0 top-full z-30 mt-2 w-80 max-w-[calc(100vw-2rem)] overflow-hidden rounded-2xl border border-border bg-card p-3 shadow-lift">
+                    <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                      Notificaciones
+                    </p>
+                    <ul className="max-h-72 space-y-2 overflow-y-auto">
+                      {(notifs.data?.items ?? []).slice(0, 12).map((n) => (
+                        <li key={n.id} className="rounded-xl bg-secondary/50 p-2.5 text-xs">
+                          <button
+                            type="button"
+                            className="w-full min-w-0 text-left"
+                            onClick={() => {
+                              setNotifOpen(false);
+                              if (
+                                n.kind === "reschedule_request" ||
+                                n.kind === "reschedule_result"
+                              ) {
+                                navigate({ to: "/panel/agenda" });
+                              }
+                            }}
+                          >
+                            <p className="break-words font-medium text-foreground">{n.title}</p>
+                            <p className="mt-0.5 break-words text-muted-foreground">{n.body}</p>
+                            <p className="mt-1 text-[10px] text-muted-foreground">
+                              {n.created_at ? `${shortDate(n.created_at)} ${time(n.created_at)}` : ""}
+                            </p>
+                          </button>
+                        </li>
+                      ))}
+                      {!notifs.data?.items?.length ? (
+                        <li className="p-2 text-xs text-muted-foreground">Sin avisos.</li>
+                      ) : null}
+                    </ul>
+                  </div>
                 ) : null}
-              </button>
-              {notifOpen ? (
-                <div className="absolute right-12 top-12 z-50 w-80 rounded-2xl border border-border bg-card p-3 shadow-lift">
-                  <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                    Notificaciones
-                  </p>
-                  <ul className="max-h-72 space-y-2 overflow-y-auto">
-                    {(notifs.data?.items ?? []).slice(0, 12).map((n) => (
-                      <li key={n.id} className="rounded-xl bg-secondary/50 p-2.5 text-xs">
-                        <button
-                          type="button"
-                          className="w-full text-left"
-                          onClick={() => {
-                            setNotifOpen(false);
-                            if (
-                              n.kind === "reschedule_request" ||
-                              n.kind === "reschedule_result"
-                            ) {
-                              navigate({ to: "/panel/agenda" });
-                            }
-                          }}
-                        >
-                        <p className="font-medium text-foreground">{n.title}</p>
-                        <p className="mt-0.5 text-muted-foreground">{n.body}</p>
-                        <p className="mt-1 text-[10px] text-muted-foreground">
-                          {n.created_at ? `${shortDate(n.created_at)} ${time(n.created_at)}` : ""}
-                        </p>
-                        </button>
-                      </li>
-                    ))}
-                    {!notifs.data?.items?.length ? (
-                      <li className="p-2 text-xs text-muted-foreground">Sin avisos.</li>
-                    ) : null}
-                  </ul>
-                </div>
-              ) : null}
-              <span className="hidden h-10 w-10 place-items-center rounded-xl bg-accent text-accent-foreground shadow-soft sm:grid">
-                <Search className="h-4 w-4" />
-              </span>
+              </div>
             </div>
           </div>
         </header>
