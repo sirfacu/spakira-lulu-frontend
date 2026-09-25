@@ -2,11 +2,12 @@ import { useMemo, useState } from "react";
 import { createFileRoute, useRouteContext } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { Percent, Wallet, Star, Plus, Pencil, Trash2 } from "lucide-react";
+import { Percent, Wallet, Star, Plus } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
 import { Empty, SectionCard } from "@/components/ui-kit";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { ConfirmDialog } from "@/components/confirm-dialog";
+import { StaffFichaDialog } from "@/components/staff-ficha-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -18,7 +19,6 @@ import {
   updateStaff,
   updateMyStaffDisplay,
   deleteStaff,
-  listStaffPayTerms,
   getPayrollSettings,
   savePayrollSettings,
   previewPayroll,
@@ -27,19 +27,17 @@ import {
   listCalendarRequests,
   reviewCalendarRequest,
   deleteStaffCalendarDay,
-  getStaffWorkHours,
-  getStaffWorkHoursHistory,
-  saveStaffWorkHours,
   getStaffSkillCatalog,
   getLocations,
   type Staff,
   type PayrollPreview,
 } from "@/lib/spa-queries";
 import { uploadPhoto } from "@/lib/api";
-import { canonicalizeStaffRole, staffRoleLabel, staffRolesLine, STAFF_ROLE_OPTS, isAdminStaffJob } from "@/lib/staff-roles";
-import { cop, dayKey, initials, shortDate, time } from "@/lib/format";
+import { canonicalizeStaffRole, staffRolesLine, STAFF_ROLE_OPTS, isAdminStaffJob } from "@/lib/staff-roles";
+import { cop, dayKey, initials } from "@/lib/format";
 import { requirePathAccess } from "@/lib/route-access";
 import { isActiveSale, permissionsFor } from "@/lib/roles";
+import { payFieldsChanged } from "@/lib/staff-ficha";
 
 export const Route = createFileRoute("/_authenticated/panel/personal")({
   beforeLoad: requirePathAccess("/panel/personal"),
@@ -80,19 +78,12 @@ const emptyForm = {
   location_ids: [] as string[],
 };
 
-const WEEKDAYS = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"];
-
-function todayIso() {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-}
-
 function Personal() {
   const { user } = useRouteContext({ from: "/_authenticated" });
   const isAdmin = permissionsFor(user?.role).isAdmin;
   const qc = useQueryClient();
   const staff = useQuery(staffQuery);
-  const locationsQ = useQuery({ queryKey: ["locations"], queryFn: getLocations, enabled: isAdmin });
+  const locationsQ = useQuery({ queryKey: ["locations"], queryFn: getLocations });
   const activeLocations = (locationsQ.data?.items ?? []).filter((x) => x.active);
   const catalog = useQuery({
     queryKey: ["staff-skill-catalog"],
@@ -118,19 +109,6 @@ function Personal() {
   const [payFrom, setPayFrom] = useState("");
   const [payTo, setPayTo] = useState("");
   const [preview, setPreview] = useState<PayrollPreview | null>(null);
-  const [terms, setTerms] = useState<{ id: string; effective_from: string; effective_to: string | null; payment_mode: string; shift_rate: number; commission_pct: number }[]>([]);
-  const [workHours, setWorkHours] = useState<
-    {
-      weekday: number;
-      start_time: string;
-      end_time: string;
-      valid_from?: string;
-      valid_to?: string;
-    }[]
-  >([]);
-  const [hoursFrom, setHoursFrom] = useState("");
-  const [hoursTo, setHoursTo] = useState("");
-  const [hoursMode, setHoursMode] = useState<"base" | "ranged">("base");
   const adminJob = isAdminStaffJob(form.role_title);
 
   const servicesOf = (id: string) =>
@@ -237,7 +215,14 @@ function Personal() {
         photo_url: form.photo_url.trim() || null,
         skills: [display],
         location_ids: form.location_ids,
-        open_new_pay_term: true,
+        open_new_pay_term: !editing
+          ? true
+          : payFieldsChanged(editing, {
+              shift_rate: shift,
+              payment_mode: mode,
+              commission_pct: pct,
+              fixed_pay_basis: basis,
+            }),
       };
       if (editing) return updateStaff(editing.id, payload);
       return createStaff(payload);
@@ -252,15 +237,8 @@ function Personal() {
       setFormOpen(false);
       await qc.invalidateQueries({ queryKey: ["staff"] });
       await qc.invalidateQueries({ queryKey: ["app-users"] });
-      if (isAdmin && selected) {
-        try {
-          setTerms(await listStaffPayTerms(selected.id));
-        } catch {
-          /* ignore */
-        }
-        if (editing && selected.id === editing.id && res && typeof res === "object") {
-          setSelected({ ...selected, ...(res as Staff) });
-        }
+      if (editing && selected && selected.id === editing.id && res && typeof res === "object") {
+        setSelected({ ...selected, ...(res as Staff) });
       }
     },
     onError: (e: Error) => toast.error(e.message),
@@ -411,52 +389,10 @@ function Personal() {
                   ? (total * Number(s.commission_pct)) / 100
                   : 0;
           return (
-            <button
+              <button
               key={s.id}
                   type="button"
-                  onClick={async () => {
-                    setSelected(s);
-                    setHoursMode("base");
-                    setHoursFrom("");
-                    setHoursTo("");
-                    if (isAdmin) {
-                      try {
-                        setTerms(await listStaffPayTerms(s.id));
-                      } catch {
-                        setTerms([]);
-                      }
-                      try {
-                        const hrs = await getStaffWorkHoursHistory(s.id);
-                        setWorkHours(
-                          hrs.map((h) => ({
-                            weekday: h.weekday,
-                            start_time: h.start_time,
-                            end_time: h.end_time,
-                            valid_from: h.valid_from ?? undefined,
-                            valid_to: h.valid_to ?? undefined,
-                          })),
-                        );
-                      } catch {
-                        setWorkHours([]);
-                      }
-                    } else {
-                      setTerms([]);
-                      try {
-                        const hrs = await getStaffWorkHours(s.id);
-                        setWorkHours(
-                          hrs.map((h) => ({
-                            weekday: h.weekday,
-                            start_time: h.start_time,
-                            end_time: h.end_time,
-                            valid_from: h.valid_from ?? undefined,
-                            valid_to: h.valid_to ?? undefined,
-                          })),
-                        );
-                      } catch {
-                        setWorkHours([]);
-                      }
-                    }
-                  }}
+                  onClick={() => setSelected(s)}
               className="card-soft group p-5 text-left transition-all duration-300 hover:-translate-y-1.5 hover:shadow-lift"
             >
               <div className="flex items-start gap-4">
@@ -1039,373 +975,24 @@ function Personal() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={!!selected} onOpenChange={(o) => !o && setSelected(null)}>
-        <DialogContent className="max-h-[88vh] max-w-2xl overflow-y-auto rounded-3xl p-6">
-          {selected ? (
-            <div>
-              <div className="flex flex-wrap items-start justify-between gap-3 pr-8">
-                <div>
-                  <h2 className="font-display text-2xl font-bold text-primary">
-                    {selected.full_name}
-                  </h2>
-                  <p className="text-sm text-muted-foreground">
-                    {staffRolesLine(selected.skills, selected.role_title)} · {selected.specialty || "—"}
-                  </p>
-                  {selected.id === user?.id && (selected.skills?.length ?? 0) > 0 ? (
-                    <div className="mt-3">
-                      <p className="text-xs text-muted-foreground">Mostrarme como</p>
-                      <div className="mt-1.5 flex flex-wrap gap-2">
-                        {(selected.skills ?? []).map((id) => (
-                          <button
-                            key={id}
-                            type="button"
-                            className={`rounded-full border px-3 py-1 text-xs ${
-                              selected.role_title === id
-                                ? "border-primary bg-primary/10 text-primary"
-                                : "border-border text-muted-foreground"
-                            }`}
-                            disabled={displayMut.isPending}
-                            onClick={() => displayMut.mutate(id)}
-                          >
-                            {staffRoleLabel(id)}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  ) : null}
-                </div>
-                {isAdmin ? (
-                <div className="flex gap-2">
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="rounded-xl"
-                    onClick={() => openEdit(selected)}
-                  >
-                    <Pencil className="mr-1 h-3.5 w-3.5" /> Editar
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="rounded-xl text-destructive"
-                    onClick={() => {
-                      setPendingDelete({ name: selected.full_name, id: selected.id });
-                    }}
-                  >
-                    <Trash2 className="mr-1 h-3.5 w-3.5" /> Eliminar
-                  </Button>
-                </div>
-                ) : null}
-              </div>
+      <StaffFichaDialog
+        staff={selected}
+        open={!!selected}
+        onOpenChange={(o) => {
+          if (!o) setSelected(null);
+        }}
+        isAdmin={isAdmin}
+        currentUserId={user?.id}
+        locations={activeLocations}
+        services={selected ? servicesOf(selected.id) : []}
+        shiftDays={selected ? [...shiftsOf(selected.id)] : []}
+        onEdit={openEdit}
+        onDelete={(s) => setPendingDelete({ name: s.full_name, id: s.id })}
+        onReleaseDay={(staffId, day) => releaseDayMut.mutate({ staffId, day })}
+        onDisplayRole={(role) => displayMut.mutate(role)}
+        displayPending={displayMut.isPending}
+      />
 
-              <h3 className="mt-6 font-display text-lg font-bold text-primary">
-                Horarios libres
-              </h3>
-              <p className="mt-1 text-xs text-muted-foreground">
-                Horario base (siempre) o un bloque temporal: “esta semana / hasta el día X”.
-              </p>
-              <div className="mt-2 flex flex-wrap gap-2 text-xs">
-                <button
-                  type="button"
-                  className={`rounded-full px-3 py-1 ${
-                    hoursMode === "base" ? "bg-primary text-primary-foreground" : "bg-secondary"
-                  }`}
-                  onClick={() => {
-                    setHoursMode("base");
-                    setHoursFrom("");
-                    setHoursTo("");
-                  }}
-                >
-                  Horario base
-                </button>
-                <button
-                  type="button"
-                  className={`rounded-full px-3 py-1 ${
-                    hoursMode === "ranged" ? "bg-primary text-primary-foreground" : "bg-secondary"
-                  }`}
-                  onClick={() => setHoursMode("ranged")}
-                >
-                  Temporal (desde / hasta)
-                </button>
-              </div>
-              {hoursMode === "ranged" ? (
-                <div className="mt-2 space-y-2">
-                  <div className="grid gap-2 sm:grid-cols-2">
-                    <div className="space-y-1">
-                      <Label className="text-xs">Desde</Label>
-                      <Input
-                        type="date"
-                        className="h-9 rounded-xl"
-                        value={hoursFrom}
-                        onChange={(e) => setHoursFrom(e.target.value)}
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <Label className="text-xs">Hasta (opcional)</Label>
-                      <Input
-                        type="date"
-                        className="h-9 rounded-xl"
-                        value={hoursTo}
-                        onChange={(e) => setHoursTo(e.target.value)}
-                      />
-                      </div>
-                  </div>
-                  {isAdmin ? (
-                    <div className="flex flex-wrap gap-1.5">
-                      {Array.from(
-                        new Map(
-                          workHours
-                            .filter((h) => h.valid_from)
-                            .map((h) => [
-                              `${h.valid_from}|${h.valid_to ?? ""}`,
-                              { from: h.valid_from!, to: h.valid_to ?? "" },
-                            ]),
-                        ).values(),
-                      ).map((p) => (
-                        <button
-                          key={`${p.from}|${p.to}`}
-                          type="button"
-                          className={`rounded-full px-2.5 py-0.5 text-[11px] ${
-                            hoursFrom === p.from && hoursTo === p.to
-                              ? "bg-primary text-primary-foreground"
-                              : "bg-secondary text-muted-foreground"
-                          }`}
-                          onClick={() => {
-                            setHoursFrom(p.from);
-                            setHoursTo(p.to);
-                          }}
-                        >
-                          {p.from} → {p.to || "∞"}
-                        </button>
-                      ))}
-                    </div>
-                  ) : null}
-                </div>
-              ) : null}
-              <ul className="mt-2 space-y-2">
-                {workHours
-                  .filter((h) => {
-                    if (hoursMode === "base") return !h.valid_from && !h.valid_to;
-                    if (hoursFrom) {
-                      return (
-                        h.valid_from === hoursFrom && (h.valid_to ?? "") === (hoursTo || "")
-                      );
-                    }
-                    return !!(h.valid_from || h.valid_to);
-                  })
-                  .map((h, idx) => (
-                  <li key={`${h.weekday}-${idx}-${h.valid_from ?? "b"}`} className="flex flex-wrap items-center gap-2 text-sm">
-                    <span className="w-10 font-medium">{WEEKDAYS[h.weekday] ?? h.weekday}</span>
-                    <Input
-                      type="time"
-                      className="h-9 w-28 rounded-xl"
-                      value={h.start_time}
-                      onChange={(e) =>
-                        setWorkHours((rows) =>
-                          rows.map((r) =>
-                            r === h ? { ...r, start_time: e.target.value } : r,
-                          ),
-                        )
-                      }
-                    />
-                    <span>—</span>
-                    <Input
-                      type="time"
-                      className="h-9 w-28 rounded-xl"
-                      value={h.end_time}
-                      onChange={(e) =>
-                        setWorkHours((rows) =>
-                          rows.map((r) => (r === h ? { ...r, end_time: e.target.value } : r)),
-                        )
-                      }
-                    />
-                    {h.valid_from || h.valid_to ? (
-                      <span className="text-[11px] text-muted-foreground">
-                        {h.valid_from ?? "…"} → {h.valid_to ?? "∞"}
-                      </span>
-                    ) : (
-                      <span className="text-[11px] text-muted-foreground">base</span>
-                    )}
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => setWorkHours((rows) => rows.filter((r) => r !== h))}
-                    >
-                      Quitar
-                    </Button>
-                  </li>
-                ))}
-              </ul>
-              <div className="mt-2 flex flex-wrap gap-2">
-                <select
-                  id="add-weekday"
-                  className="h-9 rounded-xl border border-input bg-background px-2 text-sm"
-                  defaultValue="0"
-                >
-                  {WEEKDAYS.map((d, i) => (
-                    <option key={d} value={i}>
-                      {d}
-                    </option>
-                  ))}
-                </select>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="rounded-xl"
-                  onClick={() => {
-                    const sel = document.getElementById("add-weekday") as HTMLSelectElement | null;
-                    const wd = Number(sel?.value ?? 0);
-                    setWorkHours((rows) => [
-                      ...rows,
-                      {
-                        weekday: wd,
-                        start_time: "09:00",
-                        end_time: "18:00",
-                        valid_from: hoursMode === "ranged" ? hoursFrom || undefined : undefined,
-                        valid_to: hoursMode === "ranged" ? hoursTo || undefined : undefined,
-                      },
-                    ]);
-                  }}
-                >
-                  Agregar franja
-                </Button>
-                <Button
-                  size="sm"
-                  className="rounded-xl"
-                  onClick={async () => {
-                    if (!selected) return;
-                    if (hoursMode === "ranged" && !hoursFrom) {
-                      toast.error("Indicá la fecha desde para el horario temporal");
-                      return;
-                    }
-                    const payload =
-                      hoursMode === "base"
-                        ? workHours
-                            .filter((h) => !h.valid_from && !h.valid_to)
-                            .map((h) => ({
-                              weekday: h.weekday,
-                              start_time: h.start_time,
-                              end_time: h.end_time,
-                              valid_from: null,
-                              valid_to: null,
-                            }))
-                        : workHours
-                            .filter((h) => h.valid_from || hoursFrom)
-                            .map((h) => ({
-                              weekday: h.weekday,
-                              start_time: h.start_time,
-                              end_time: h.end_time,
-                              valid_from: hoursFrom || h.valid_from || null,
-                              valid_to: hoursTo || h.valid_to || null,
-                            }));
-                    try {
-                      await saveStaffWorkHours(selected.id, payload);
-                      toast.success(
-                        hoursMode === "base"
-                          ? "Horario base guardado"
-                          : `Horario temporal ${hoursFrom} → ${hoursTo || "sin fin"}`,
-                      );
-                      if (isAdmin) {
-                        const hrs = await getStaffWorkHoursHistory(selected.id);
-                        setWorkHours(
-                          hrs.map((h) => ({
-                            weekday: h.weekday,
-                            start_time: h.start_time,
-                            end_time: h.end_time,
-                            valid_from: h.valid_from ?? undefined,
-                            valid_to: h.valid_to ?? undefined,
-                          })),
-                        );
-                      } else {
-                        const hrs = await getStaffWorkHours(selected.id);
-                        setWorkHours(
-                          hrs.map((h) => ({
-                            weekday: h.weekday,
-                            start_time: h.start_time,
-                            end_time: h.end_time,
-                            valid_from: h.valid_from ?? undefined,
-                            valid_to: h.valid_to ?? undefined,
-                          })),
-                        );
-                      }
-                    } catch (e) {
-                      toast.error(e instanceof Error ? e.message : "Error");
-                    }
-                  }}
-                >
-                  Guardar horarios
-                </Button>
-              </div>
-
-              {isAdmin ? (
-                <>
-                  <h3 className="mt-6 font-display text-lg font-bold text-primary">
-                    Condiciones por periodo (histórico admin)
-                  </h3>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    Los cambios de fijo/comisión entran el <strong>próximo lunes</strong> y duran mínimo{" "}
-                    <strong>2 semanas</strong>. No se puede cambiar día a día.
-                  </p>
-                  <ul className="mt-2 space-y-2 text-sm">
-                    {terms.map((t) => (
-                      <li key={t.id} className="rounded-xl border border-border px-3 py-2">
-                        <span className="capitalize">{t.payment_mode}</span> ·{" "}
-                        {t.fixed_pay_basis === "mensual" ? "sueldo" : "turno"} {cop(t.shift_rate)} ·{" "}
-                        {t.commission_pct}% · {t.effective_from.slice(0, 10)} →{" "}
-                        {t.effective_to ? t.effective_to.slice(0, 10) : "vigente"}
-                      </li>
-                    ))}
-                    {!terms.length ? <Empty message="Sin términos históricos." /> : null}
-                  </ul>
-                </>
-              ) : null}
-
-              <h3 className="mt-6 font-display text-lg font-bold text-primary">
-                Calendario de turnos
-              </h3>
-              <div className="mt-3 flex flex-wrap gap-2">
-                {[...shiftsOf(selected.id)].sort().map((d) => (
-                  <button
-                    key={d}
-                    type="button"
-                    title="Liberar día (si hay citas pide aprobación)"
-                    className="rounded-xl bg-blush px-3 py-1.5 text-xs font-medium text-blush-foreground hover:opacity-80"
-                    onClick={() => releaseDayMut.mutate({ staffId: selected.id, day: d })}
-                  >
-                    {shortDate(new Date(`${d}T12:00:00`).toISOString())} ×
-                  </button>
-                ))}
-                {!shiftsOf(selected.id).size ? <Empty message="Sin turnos asignados." /> : null}
-              </div>
-
-              <h3 className="mt-6 font-display text-lg font-bold text-primary">
-                Servicios realizados
-              </h3>
-              <ul className="mt-3 space-y-2">
-                {servicesOf(selected.id).map((a) => (
-                  <li
-                    key={a.id}
-                    className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 rounded-2xl border border-border p-3"
-                  >
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-medium">
-                        {a.pets?.name} · {a.services?.name}
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        {shortDate(a.starts_at)} {time(a.starts_at)}
-                      </p>
-                    </div>
-                    <p className="text-sm font-semibold">{cop(a.price)}</p>
-                  </li>
-                ))}
-                {!servicesOf(selected.id).length ? (
-                  <Empty message="Sin servicios finalizados." />
-                ) : null}
-              </ul>
-            </div>
-          ) : null}
-        </DialogContent>
-      </Dialog>
       <ConfirmDialog
         open={!!pendingDelete}
         title={

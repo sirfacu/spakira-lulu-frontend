@@ -585,8 +585,11 @@ export async function markNotificationsRead(ids?: string[]) {
   });
 }
 
-export async function getStaffWorkHours(staffId: string, onDate?: string) {
-  const q = onDate ? `?on_date=${encodeURIComponent(onDate)}` : "";
+export async function getStaffWorkHours(staffId: string, onDate?: string, locationId?: string) {
+  const q = new URLSearchParams();
+  if (onDate) q.set("on_date", onDate);
+  if (locationId) q.set("location_id", locationId);
+  const qs = q.toString();
   return api<
     {
       id: string;
@@ -596,11 +599,13 @@ export async function getStaffWorkHours(staffId: string, onDate?: string) {
       note?: string | null;
       valid_from?: string | null;
       valid_to?: string | null;
+      location_id?: string | null;
     }[]
-  >(`/staff/${staffId}/work-hours${q}`);
+  >(`/staff/${staffId}/work-hours${qs ? `?${qs}` : ""}`);
 }
 
-export async function getStaffWorkHoursHistory(staffId: string) {
+export async function getStaffWorkHoursHistory(staffId: string, locationId?: string) {
+  const q = locationId ? `?location_id=${encodeURIComponent(locationId)}` : "";
   return api<
     {
       id: string;
@@ -611,8 +616,9 @@ export async function getStaffWorkHoursHistory(staffId: string) {
       valid_from?: string | null;
       valid_to?: string | null;
       created_at?: string;
+      location_id?: string | null;
     }[]
-  >(`/staff/${staffId}/work-hours/history`);
+  >(`/staff/${staffId}/work-hours/history${q}`);
 }
 
 export async function saveStaffWorkHours(
@@ -625,8 +631,12 @@ export async function saveStaffWorkHours(
     valid_from?: string | null;
     valid_to?: string | null;
   }[],
+  locationId?: string,
 ) {
-  return api(`/staff/${staffId}/work-hours`, { method: "PUT", body: { hours } });
+  return api(`/staff/${staffId}/work-hours`, {
+    method: "PUT",
+    body: { hours, location_id: locationId || undefined },
+  });
 }
 
 export async function eligibleStaffForService(serviceId: string) {
