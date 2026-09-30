@@ -2475,6 +2475,7 @@ export type FixedCostEntry = {
   amount: number;
   notes?: string | null;
   template_id?: string | null;
+  location_id?: string | null;
 };
 
 export type FixedCostTemplate = {
