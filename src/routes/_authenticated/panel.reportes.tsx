@@ -166,7 +166,13 @@ function Reportes() {
           ) : null}
         </TabsContent>
         <TabsContent value="fijos" className="space-y-6">
-          {canFinance ? <FijosTab yearMonth={yearMonth} scoped={Boolean(scopedLocationId)} /> : null}
+          {canFinance ? (
+            <FijosTab
+              yearMonth={yearMonth}
+              locationId={scopedLocationId}
+              locations={activeLocations.map((x) => ({ id: x.id, name: x.name }))}
+            />
+          ) : null}
         </TabsContent>
         <TabsContent value="mes" className="space-y-6">
           {canFinance ? <MesTab yearMonth={yearMonth} locationId={scopedLocationId} /> : null}
@@ -565,7 +571,15 @@ function AppointmentCostDialog({
   );
 }
 
-function FijosTab({ yearMonth, scoped }: { yearMonth: string; scoped: boolean }) {
+function FijosTab({
+  yearMonth,
+  locationId,
+  locations,
+}: {
+  yearMonth: string;
+  locationId: string | null;
+  locations: { id: string; name: string }[];
+}) {
   const qc = useQueryClient();
   const q = useQuery(fixedCostsQuery(yearMonth));
   const staffQ = useQuery(staffQuery);
@@ -579,6 +593,7 @@ function FijosTab({ yearMonth, scoped }: { yearMonth: string; scoped: boolean })
         label: entry.label,
         amount: entry.amount,
         notes: entry.notes ?? null,
+        location_id: entry.location_id || null,
       }),
     onSuccess: async () => {
       await qc.invalidateQueries({ queryKey: ["finance-fixed-costs", yearMonth] });
@@ -596,6 +611,7 @@ function FijosTab({ yearMonth, scoped }: { yearMonth: string; scoped: boolean })
         label: draft.label.trim(),
         amount: Math.max(0, Number(draft.amount) || 0),
         notes: null,
+        location_id: locationId,
       }),
     onSuccess: async () => {
       setDraft({ label: "", amount: "" });
@@ -616,8 +632,14 @@ function FijosTab({ yearMonth, scoped }: { yearMonth: string; scoped: boolean })
     onError: (e: Error) => toast.error(e.message || "No se pudo eliminar"),
   });
 
-  const total = (q.data ?? []).reduce((a, e) => a + Number(e.amount || 0), 0);
-  const hasNomina = (q.data ?? []).some((e) => {
+  const visible = (q.data ?? []).filter((e) => {
+    if (!locationId) return true;
+    return e.location_id === locationId || !e.location_id;
+  });
+  const total = visible
+    .filter((e) => !locationId || e.location_id === locationId)
+    .reduce((a, e) => a + Number(e.amount || 0), 0);
+  const hasNomina = visible.some((e) => {
     if (e.category === "nomina") return true;
     return /n[oó]mina|sueldo|payroll/i.test(`${e.category} ${e.label}`);
   });
@@ -628,12 +650,13 @@ function FijosTab({ yearMonth, scoped }: { yearMonth: string; scoped: boolean })
   return (
     <>
       <p className="text-xs text-muted-foreground">
-        Nombre y monto de los gastos del mes. El total entra en Resultado del mes
-        {scoped ? " solo en la vista Todas las sedes" : ""}.
+        Cada gasto es de una sede o de toda la instalación. En un local, el resultado
+        resta solo los de esa sede.
       </p>
-      {scoped ? (
+      {locationId ? (
         <p className="rounded-2xl border border-border bg-secondary/40 px-4 py-3 text-sm text-muted-foreground">
-          Los gastos fijos no se parten por sede: arriendo y servicios son de toda la instalación.
+          Los que dicen «Toda la instalación» no entran en este local. Asignalos a la sede
+          para que el arriendo cuente acá.
         </p>
       ) : null}
       {hasNomina && staffOnPayroll ? (
@@ -646,16 +669,17 @@ function FijosTab({ yearMonth, scoped }: { yearMonth: string; scoped: boolean })
 
       <SectionCard title="Gastos del mes">
         <div className="space-y-3">
-          {(q.data ?? []).map((entry) => (
+          {visible.map((entry) => (
             <FixedCostRow
               key={entry.id}
               entry={entry}
+              locations={locations}
               onSave={(next) => saveMut.mutate(next)}
               onDelete={() => delMut.mutate(entry.id)}
               busy={saveMut.isPending || delMut.isPending}
             />
           ))}
-          {!q.data?.length && !q.isLoading ? (
+          {!visible.length && !q.isLoading ? (
             <p className="text-sm text-muted-foreground">Todavía no hay gastos en este mes.</p>
           ) : null}
         </div>
@@ -692,11 +716,13 @@ function FijosTab({ yearMonth, scoped }: { yearMonth: string; scoped: boolean })
 
 function FixedCostRow({
   entry,
+  locations,
   onSave,
   onDelete,
   busy,
 }: {
   entry: FixedCostEntry;
+  locations: { id: string; name: string }[];
   onSave: (e: FixedCostEntry) => void;
   onDelete: () => void;
   busy: boolean;
@@ -727,6 +753,20 @@ function FixedCostRow({
           if (n !== entry.amount) onSave({ ...entry, amount: n });
         }}
       />
+      <select
+        className="h-9 max-w-[11rem] rounded-lg border border-input bg-background px-2 text-sm"
+        value={entry.location_id || ""}
+        disabled={busy}
+        aria-label="Sede del gasto"
+        onChange={(e) => onSave({ ...entry, label: label.trim() || entry.label, location_id: e.target.value || null })}
+      >
+        <option value="">Toda la instalación</option>
+        {locations.map((loc) => (
+          <option key={loc.id} value={loc.id}>
+            {loc.name}
+          </option>
+        ))}
+      </select>
       <Button
         type="button"
         size="icon"
@@ -801,7 +841,7 @@ function MesTab({ yearMonth, locationId }: { yearMonth: string; locationId: stri
   const d = q.data;
   const sm = d?.service_margins;
   const costs = d?.cost_breakdown;
-  const includeFixed = !locationId && d?.fixed_costs.included_in_operating !== false;
+  const includeFixed = d?.fixed_costs.included_in_operating !== false;
   const insumos = costs?.insumos ?? sm?.materials_cost ?? 0;
   const profesionales = costs?.profesionales ?? sm?.labor_cost ?? 0;
   const fijos = includeFixed ? (costs?.fijos ?? d?.fixed_costs.total ?? 0) : 0;
@@ -834,7 +874,7 @@ function MesTab({ yearMonth, locationId }: { yearMonth: string; locationId: stri
       {locationId ? (
         <p className="rounded-2xl border border-border bg-secondary/40 px-4 py-3 text-sm text-muted-foreground">
           {d?.indicators.note ||
-            "Vista de una sede: el resultado no resta arriendo ni servicios (son de toda la instalación)."}
+            "Vista de una sede: el resultado resta solo los gastos de este local."}
         </p>
       ) : null}
       {q.isLoading ? <p className="text-sm text-muted-foreground">Cargando…</p> : null}
