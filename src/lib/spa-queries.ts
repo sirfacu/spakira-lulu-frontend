@@ -148,6 +148,7 @@ export type PayrollPreview = {
     shift_pay: number;
     sales_base: number;
     commission: number;
+    commission_source?: string;
     subtotal: number;
     commission_pct?: number;
     shift_rate?: number;
@@ -242,6 +243,9 @@ export type Appointment = {
   notes: string | null;
   ready_at?: string | null;
   paid_at?: string | null;
+  closed_at?: string | null;
+  labor_cost?: number | null;
+  staff_commission_pct?: number | null;
   photo_before_url: string | null;
   photo_after_url: string | null;
   pets?: (Pet & { owners?: Owner | null }) | null;
@@ -2430,6 +2434,7 @@ export type ServiceMarginLine = {
   revenue: number;
   materials_cost: number;
   labor_cost: number;
+  staff_commission_pct?: number | null;
   variable_cost: number;
   contribution_margin: number;
   margin_pct: number | null;
@@ -2523,6 +2528,8 @@ export type AppointmentCostDetail = {
   pet_name: string | null;
   staff_id: string | null;
   staff_name: string | null;
+  staff_commission_pct?: number | null;
+  pay_term_id?: string | null;
   revenue: number;
   materials_cost: number;
   labor_cost: number;

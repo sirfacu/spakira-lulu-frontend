@@ -14,7 +14,6 @@ import { Label } from "@/components/ui/label";
 import {
   staffQuery,
   appointmentsQuery,
-  salesQuery,
   createStaff,
   updateStaff,
   updateMyStaffDisplay,
@@ -36,7 +35,7 @@ import { uploadPhoto } from "@/lib/api";
 import { canonicalizeStaffRole, staffRolesLine, STAFF_ROLE_OPTS, isAdminStaffJob } from "@/lib/staff-roles";
 import { cop, dayKey, initials } from "@/lib/format";
 import { requirePathAccess } from "@/lib/route-access";
-import { isActiveSale, permissionsFor } from "@/lib/roles";
+import { permissionsFor } from "@/lib/roles";
 import { payFieldsChanged } from "@/lib/staff-ficha";
 
 export const Route = createFileRoute("/_authenticated/panel/personal")({
@@ -90,7 +89,6 @@ function Personal() {
     queryFn: getStaffSkillCatalog,
   });
   const appts = useQuery(appointmentsQuery);
-  const sales = useQuery({ ...salesQuery, enabled: isAdmin });
   const settings = useQuery({ queryKey: ["payroll-settings"], queryFn: getPayrollSettings });
   const runs = useQuery({ queryKey: ["payroll-runs"], queryFn: () => listPayrollRuns() });
   const requests = useQuery({
@@ -115,10 +113,10 @@ function Personal() {
     (appts.data ?? [])
       .filter((a) => a.staff_id === id && a.status === "finalizada")
       .sort((a, b) => +new Date(b.starts_at) - +new Date(a.starts_at));
-  const soldBy = (id: string) =>
-    (sales.data ?? [])
-      .filter((s) => s.staff_id === id && isActiveSale(s.status))
-      .reduce((a, s) => a + Number(s.total), 0);
+  const frozenCommission = (id: string) =>
+    (appts.data ?? [])
+      .filter((a) => a.staff_id === id && a.status === "finalizada")
+      .reduce((sum, a) => sum + Number(a.labor_cost ?? 0), 0);
   const shiftsOf = (id: string) =>
     new Set((appts.data ?? []).filter((a) => a.staff_id === id).map((a) => dayKey(new Date(a.starts_at))));
 
@@ -383,11 +381,7 @@ function Personal() {
         <>
       <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
         {(staff.data ?? []).map((s) => {
-          const total = soldBy(s.id);
-              const commission =
-                s.payment_mode === "porcentaje" || s.payment_mode === "mixto"
-                  ? (total * Number(s.commission_pct)) / 100
-                  : 0;
+          const commission = frozenCommission(s.id);
           return (
               <button
               key={s.id}
@@ -455,7 +449,7 @@ function Personal() {
                 </div>
               </div>
               <div className="mt-3 rounded-2xl bg-secondary/60 px-4 py-3 text-xs">
-                    <p className="text-muted-foreground">Comisión (ventas históricas)</p>
+                    <p className="text-muted-foreground">Comisión congelada</p>
                 <p className="font-display text-lg font-bold text-accent">{cop(commission)}</p>
               </div>
             </button>
@@ -470,8 +464,8 @@ function Personal() {
         <div className="grid gap-6 lg:grid-cols-2">
           <SectionCard title="Liquidar colaborador">
             <p className="mb-3 text-sm text-muted-foreground">
-              Elegí a quién pagar y el rango de fechas. El desglose lista citas y extras; la
-              comisión se calcula solo sobre el servicio.
+              Elegí a quién pagar y el rango de fechas. La comisión es la que quedó
+              guardada al cerrar cada cita, por la fecha de la agenda.
             </p>
             <div className="space-y-2">
               <Label>Colaborador</Label>
@@ -630,7 +624,11 @@ function Personal() {
                       <p className="text-muted-foreground">
                         Turnos {seg.worked_days} ·{" "}
                         {seg.fixed_pay_basis === "mensual" ? "sueldo" : "fijo"} {cop(seg.shift_pay)}{" "}
-                        · comisión {cop(seg.commission)} (base servicio {cop(seg.sales_base)}) ·
+                        · comisión {cop(seg.commission)}
+                        {seg.commission_source === "frozen"
+                          ? " · congelada al cierre"
+                          : ` (base servicio ${cop(seg.sales_base)})`}{" "}
+                        ·
                         subtotal {cop(seg.subtotal)}
                       </p>
                     </li>
