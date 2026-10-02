@@ -380,7 +380,7 @@ function MargenTab({
           <table className="w-full min-w-[40rem] text-left text-sm">
             <thead className="text-xs text-muted-foreground">
               <tr>
-                <th className="py-2 pr-3 font-medium">Cierre</th>
+                <th className="py-2 pr-3 font-medium">Agenda</th>
                 <th className="py-2 pr-3 font-medium">Servicio</th>
                 <th className="py-2 pr-3 font-medium">Mascota</th>
                 <th className="py-2 pr-3 font-medium">Groomer</th>
@@ -403,7 +403,10 @@ function MargenTab({
                   onClick={() => setSelected(line)}
                 >
                   <td className="py-2 pr-3 whitespace-nowrap text-xs text-muted-foreground">
-                    {line.closed_at ? shortDate(line.closed_at) : "—"}
+                    {line.starts_at ? shortDate(line.starts_at) : "—"}
+                    {line.closed_at ? (
+                      <span className="block text-[10px]">cierre {shortDate(line.closed_at)}</span>
+                    ) : null}
                   </td>
                   <td className="py-2 pr-3">{line.service_name}</td>
                   <td className="py-2 pr-3">{line.pet_name ?? "—"}</td>
@@ -480,7 +483,9 @@ function AppointmentCostDialog({
               </p>
               <p>
                 Groomer: {d.staff_name ?? "—"}
+                {d.starts_at ? ` · agenda ${shortDate(d.starts_at)}` : ""}
                 {d.closed_at ? ` · cierre ${shortDate(d.closed_at)}` : ""}
+                {d.staff_commission_pct != null ? ` · ${d.staff_commission_pct}%` : ""}
               </p>
             </div>
 
