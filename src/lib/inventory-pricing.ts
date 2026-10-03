@@ -31,6 +31,7 @@ export type InventoryValueLine = {
 export function purchaseCostNoun(unitKind?: string | null): string {
   const k = (unitKind || "unidad").toLowerCase();
   if (k === "ml" || k === "g" || k === "l") return "envase";
+  if (k === "uso") return "presentación";
   if (k === "pack") return "pack";
   return "unidad";
 }
@@ -43,7 +44,7 @@ export function inventoryLineValue(item: InventoryValueLine): number {
   const kind = (item.unit_kind || "unidad").toLowerCase();
 
   // g/ml/l/pack: quantity = contenido total; purchase_price = costo de UN envase/pack
-  if (kind === "g" || kind === "ml" || kind === "l" || kind === "pack") {
+  if (kind === "g" || kind === "ml" || kind === "l" || kind === "pack" || kind === "uso") {
     return Math.round(cost * (qty / (pack || 1)));
   }
   // Gemas/bandas: qty >= pack → unidades sueltas; qty < pack → cantidad de presentaciones

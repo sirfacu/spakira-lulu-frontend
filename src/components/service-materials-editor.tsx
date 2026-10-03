@@ -23,6 +23,9 @@ export type ServiceMaterialDraft = {
   material_role: string;
   inventory_item_id: string;
   reference_qty: string;
+  consumption_mode: string;
+  profile_curve: string;
+  is_optional: boolean;
 };
 
 type Props = {
@@ -55,6 +58,9 @@ function collapsePanoletaDrafts(
         ...d,
         material_role: "accessory",
         reference_qty: d.reference_qty || "1",
+        consumption_mode: "application",
+        profile_curve: "",
+        is_optional: d.is_optional,
       });
       continue;
     }
@@ -73,6 +79,9 @@ function savedToDrafts(
     inventory_item_id: s.inventory_item_id ?? "",
     reference_qty:
       s.reference_qty != null && s.reference_qty > 0 ? String(s.reference_qty) : "",
+    consumption_mode: s.consumption_mode || s.item_consumption_mode || "",
+    profile_curve: s.profile_curve || "",
+    is_optional: Boolean(s.is_optional),
   }));
   return collapsePanoletaDrafts(raw, itemsById);
 }
@@ -295,9 +304,9 @@ export function ServiceMaterialsEditor({ serviceId, onChange }: Props) {
             Insumos de trabajo
           </h3>
           <p className="mt-1 text-xs text-muted-foreground">
-            Shampoo, acondicionador y accesorios. Medicado y tinte se marcan arriba
-            y se eligen en la cita. Perfume y salud se descuentan solos al cerrar;
-            las herramientas suman 1 uso sin listarse.
+            Perfil de raza (ml), cantidad fija o aplicación (usos). El costo es interno
+            y no cambia el precio. Perfume y salud se descuentan solos al cerrar;
+            las herramientas suman desgaste sin listarse.
           </p>
         </div>
         <Button
@@ -315,6 +324,9 @@ export function ServiceMaterialsEditor({ serviceId, onChange }: Props) {
                 material_role: "shampoo",
                 inventory_item_id: "",
                 reference_qty: "",
+                consumption_mode: "",
+                profile_curve: "",
+                is_optional: false,
               },
             ]);
           }}
@@ -372,6 +384,9 @@ export function ServiceMaterialsEditor({ serviceId, onChange }: Props) {
                               inventory_item_id: picked.id,
                               material_role: "accessory",
                               reference_qty: "1",
+                              consumption_mode: "application",
+                              profile_curve: "",
+                              is_optional: false,
                             },
                           ]);
                           return;
@@ -382,8 +397,24 @@ export function ServiceMaterialsEditor({ serviceId, onChange }: Props) {
                               ? {
                                   ...r,
                                   inventory_item_id: picked.id,
-                                  material_role: role,
-                                  reference_qty: isPieceAccessory(role) ? r.reference_qty || "1" : "",
+                                  material_role:
+                                    picked.consumption_mode === "application" && role !== "accessory"
+                                      ? "consumo"
+                                      : role,
+                                  consumption_mode: picked.consumption_mode || "",
+                                  profile_curve:
+                                    picked.consumption_mode === "profile"
+                                      ? (picked.category || "").toLowerCase().includes("acondicion")
+                                        ? "conditioner"
+                                        : "shampoo"
+                                      : "",
+                                  reference_qty:
+                                    picked.consumption_mode === "fixed"
+                                      ? r.reference_qty
+                                      : picked.consumption_mode === "application" || isPieceAccessory(role)
+                                        ? r.reference_qty || "1"
+                                        : "",
+                                  is_optional: false,
                                 }
                               : r,
                           ),
@@ -412,7 +443,61 @@ export function ServiceMaterialsEditor({ serviceId, onChange }: Props) {
                           Dilución {item.dilution_product ?? 1}/{item.dilution_water ?? 1}
                         </p>
                       ) : null}
-                      {isPieceAccessory(row.material_role) ? (
+                      {row.consumption_mode === "profile" ? (
+                        <label className="block pt-1 text-xs text-muted-foreground">
+                          Curva
+                          <select
+                            className="mt-1 h-8 w-full rounded-lg border border-input bg-background px-2 text-sm text-foreground"
+                            value={row.profile_curve || "shampoo"}
+                            onChange={(e) =>
+                              pushRows(
+                                rows.map((r) =>
+                                  r.key === row.key ? { ...r, profile_curve: e.target.value } : r,
+                                ),
+                              )
+                            }
+                          >
+                            <option value="shampoo">Shampoo</option>
+                            <option value="conditioner">Acondicionador</option>
+                          </select>
+                        </label>
+                      ) : null}
+                      {row.consumption_mode === "fixed" ? (
+                        <label className="block pt-1 text-xs text-muted-foreground">
+                          Cantidad fija
+                          <Input
+                            type="number"
+                            min={0}
+                            step="any"
+                            className="mt-1 h-8 w-24"
+                            value={row.reference_qty}
+                            onChange={(e) =>
+                              pushRows(
+                                rows.map((r) =>
+                                  r.key === row.key ? { ...r, reference_qty: e.target.value } : r,
+                                ),
+                              )
+                            }
+                          />
+                        </label>
+                      ) : null}
+                      {row.consumption_mode === "application" ? (
+                        <label className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
+                          <input
+                            type="checkbox"
+                            checked={!row.is_optional}
+                            onChange={(e) =>
+                              pushRows(
+                                rows.map((r) =>
+                                  r.key === row.key ? { ...r, is_optional: !e.target.checked } : r,
+                                ),
+                              )
+                            }
+                          />
+                          Obligatorio (si no, el bañador lo marca en la cita)
+                        </label>
+                      ) : null}
+                      {isPieceAccessory(row.material_role) && row.consumption_mode !== "application" ? (
                         <div className="pt-1">
                           <QtyStepper
                             value={Math.max(1, Number(row.reference_qty) || 1)}
@@ -460,13 +545,21 @@ export function draftsToApiPayload(drafts: ServiceMaterialDraft[]): Partial<Serv
     .filter((d) => d.inventory_item_id && d.material_role)
     .map((d, idx) => {
       const isAccessory = d.material_role === "accessory";
-      const qty = Math.max(1, Number(d.reference_qty) || 1);
+      const mode = d.consumption_mode || "";
+      const qty = Number(d.reference_qty);
       return {
         material_role: isAccessory ? "accessory" : d.material_role,
         inventory_item_id: d.inventory_item_id,
-        is_required: true,
-        is_optional: false,
-        reference_qty: isAccessory ? qty : null,
+        is_required: !d.is_optional,
+        is_optional: d.is_optional,
+        consumption_mode: mode || null,
+        profile_curve: mode === "profile" ? d.profile_curve || null : null,
+        reference_qty:
+          mode === "fixed" || mode === "application" || isAccessory
+            ? Number.isFinite(qty) && qty > 0
+              ? qty
+              : 1
+            : null,
         sort_order: (idx + 1) * 10,
       };
     });

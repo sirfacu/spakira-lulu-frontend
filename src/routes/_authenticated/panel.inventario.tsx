@@ -122,6 +122,7 @@ type ItemForm = {
   dilution_product: string;
   dilution_water: string;
   wear_every_n_uses: string;
+  consumption_mode: string;
 };
 
 const emptyForm = (): ItemForm => ({
@@ -141,6 +142,7 @@ const emptyForm = (): ItemForm => ({
   dilution_product: "1",
   dilution_water: "10",
   wear_every_n_uses: "",
+  consumption_mode: "",
 });
 
 /** Cantidad de presentación (envases / packs / piezas) según unit_kind. */
@@ -224,6 +226,14 @@ function measureFieldCopy(unitKind: string): {
       qtyHelp: "Cuántos envases tenés en stock",
     };
   }
+  if (unitKind.toLowerCase() === "uso") {
+    return {
+      packLabel: "Usos por presentación",
+      packHelp: "Cuántas aplicaciones rinde una barra o envase",
+      qtyLabel: "Cantidad de presentaciones",
+      qtyHelp: "Cada presentación suma esa cantidad de usos al inventario",
+    };
+  }
   if (isPackUnit(unitKind)) {
     return {
       packLabel: "Piezas por pack",
@@ -255,6 +265,7 @@ function toForm(i: InventoryItem): ItemForm {
     pack_size: String(i.pack_size ?? 1),
     channel: i.channel ?? "interno",
     dilution_enabled: Boolean(i.dilution_enabled),
+    consumption_mode: i.consumption_mode ?? "",
     dilution_product: i.dilution_product != null ? String(i.dilution_product) : "1",
     dilution_water: i.dilution_water != null ? String(i.dilution_water) : "10",
     wear_every_n_uses:
@@ -457,6 +468,7 @@ function Inventario() {
         pack_size: packSize,
         pack_label: null,
         channel: form.channel,
+        consumption_mode: form.consumption_mode || null,
         dilution_enabled: form.dilution_enabled,
         dilution_product:
           form.dilution_enabled && Number(form.dilution_product) > 0
@@ -993,6 +1005,7 @@ function Inventario() {
                     <option value="ml">Mililitros (ml)</option>
                     <option value="g">Gramos (g)</option>
                     <option value="l">Litros (l)</option>
+                    <option value="uso">Usos (aplicación)</option>
                   </select>
                 </div>
                 <div className="space-y-1">
@@ -1038,6 +1051,34 @@ function Inventario() {
                   {Number(form.units_qty) * Number(form.pack_size)} piezas
                 </p>
               ) : null}
+
+              <div className="space-y-1">
+                <Label>Forma de consumo</Label>
+                <select
+                  className="h-11 w-full rounded-xl border border-input bg-background px-3 text-sm"
+                  value={form.consumption_mode}
+                  onChange={(e) => {
+                    const mode = e.target.value;
+                    setForm((f) => ({
+                      ...f,
+                      consumption_mode: mode,
+                      unit_kind: mode === "application" && f.unit_kind === "unidad" ? "uso" : f.unit_kind,
+                    }));
+                  }}
+                >
+                  <option value="">Según la categoría</option>
+                  <option value="profile">Perfil de raza (ml)</option>
+                  <option value="fixed">Cantidad fija</option>
+                  <option value="application">Aplicación (usos)</option>
+                </select>
+                {form.consumption_mode === "application" && Number(form.pack_size) > 0 ? (
+                  <p className="text-xs text-muted-foreground">
+                    Costo por aplicación:{" "}
+                    {cop((Number(form.purchase_price) || 0) / (Number(form.pack_size) || 1))}
+                    . El inventario guarda usos, no fracciones de barra.
+                  </p>
+                ) : null}
+              </div>
 
               {showDosificacion ? (
                 <div className="space-y-2 rounded-xl border border-border/80 bg-secondary/20 p-4">
