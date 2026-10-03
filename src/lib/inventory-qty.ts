@@ -5,12 +5,16 @@ export function isVolumeUnit(unitKind: string): boolean {
   return k === "ml" || k === "g" || k === "l";
 }
 
+export function isUseUnit(unitKind: string): boolean {
+  return unitKind.toLowerCase() === "uso";
+}
+
 export function isPackUnit(unitKind: string): boolean {
   return unitKind.toLowerCase() === "pack";
 }
 
 export function storesTotalContent(unitKind: string): boolean {
-  return isVolumeUnit(unitKind) || isPackUnit(unitKind);
+  return isVolumeUnit(unitKind) || isPackUnit(unitKind) || isUseUnit(unitKind);
 }
 
 export function presentationToStored(
@@ -56,12 +60,14 @@ export function doseUnitLabel(unitKind: string): string {
   if (k === "ml") return "ml";
   if (k === "g") return "g";
   if (k === "l") return "l";
+  if (k === "uso") return "usos";
   if (k === "pack") return "piezas";
   return "unidades";
 }
 
 export function presentationWord(unitKind: string, n: number): string {
   const k = unitKind.toLowerCase();
+  if (k === "uso") return n === 1 ? "presentación" : "presentaciones";
   if (k === "pack") return n === 1 ? "pack" : "packs";
   if (isVolumeUnit(k)) return n === 1 ? "envase" : "envases";
   return n === 1 ? "pieza" : "piezas";
@@ -83,6 +89,7 @@ export function formatContentQty(qty: number, unitKind: string): string {
   if (k === "ml") return `${n} ml`;
   if (k === "g") return `${n} g`;
   if (k === "l") return `${n} L`;
+  if (k === "uso") return `${n} usos`;
   return String(n);
 }
 

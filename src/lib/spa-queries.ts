@@ -299,6 +299,7 @@ export type InventoryItem = {
   wear_use_count?: number | null;
   wear_action?: string | null;
   wear_alert_pending?: boolean | null;
+  consumption_mode?: string | null;
   expires_at: string | null;
   next_expires_at?: string | null;
   cost_value?: number;
@@ -1516,6 +1517,9 @@ export type AppointmentExtra = {
   line_kind?: string | null;
   material_role?: string | null;
   shoot_ml?: number | null;
+  price_status?: string | null;
+  request_address?: string | null;
+  request_note?: string | null;
 };
 
 export async function fetchAppointmentWhatsAppLinks(appointmentId: string) {
@@ -1738,6 +1742,9 @@ export type ServiceMaterial = {
   unit_kind?: string | null;
   pack_size?: number | null;
   purchase_price?: number | null;
+  consumption_mode?: string | null;
+  item_consumption_mode?: string | null;
+  profile_curve?: string | null;
 };
 
 export type BreedBathProfile = {
@@ -1780,6 +1787,12 @@ export type MaterialEstimateLine = {
   mix_quantity?: number | null;
   dilution_product?: number | null;
   dilution_water?: number | null;
+  consumption_mode?: string;
+  profile_curve?: string | null;
+  estimated_qty?: number;
+  actual_qty?: number;
+  used?: boolean;
+  stock_qty?: number;
 };
 
 export type MaterialEstimate = {
@@ -1793,6 +1806,7 @@ export type MaterialEstimate = {
   total_shoot_charge?: number;
   warnings: string[];
   selections?: Record<string, boolean>;
+  appointment_status?: string;
   pet_name?: string;
 };
 
@@ -1964,6 +1978,57 @@ export async function fetchMaterialEstimatePreview(serviceId: string, petId: str
 
 export async function fetchAppointmentMaterialEstimate(appointmentId: string) {
   return api<MaterialEstimate>(`/appointments/${appointmentId}/material-estimate`);
+}
+
+export async function saveAppointmentConsumption(
+  appointmentId: string,
+  lines: {
+    material_role: string;
+    inventory_item_id: string;
+    estimated_qty?: number | null;
+    actual_qty?: number | null;
+    used: boolean;
+    consumption_mode?: string | null;
+  }[],
+) {
+  return api<MaterialEstimate>(`/appointments/${appointmentId}/consumption`, {
+    method: "PUT",
+    body: { lines },
+  });
+}
+
+export type CommercialAddon = {
+  id: string;
+  name: string;
+  description?: string | null;
+  price?: number | null;
+  price_mode: string;
+  kind?: string | null;
+};
+
+export async function fetchCommercialAddons() {
+  return api<CommercialAddon[]>("/commercial-addons");
+}
+
+export async function requestCommercialAddon(
+  appointmentId: string,
+  body: { addon_id: string; address?: string; note?: string; price?: number | null },
+) {
+  return api<{ id: string; price_status: string; item_name: string; total: number }>(
+    `/appointments/${appointmentId}/addons`,
+    { method: "POST", body },
+  );
+}
+
+export async function confirmCommercialAddonPrice(
+  appointmentId: string,
+  extraId: string,
+  price: number,
+) {
+  return api<{ id: string; total: number; price_status: string }>(
+    `/appointments/${appointmentId}/addons/${extraId}`,
+    { method: "PATCH", body: { price } },
+  );
 }
 
 export async function patchAppointmentMaterialSelections(

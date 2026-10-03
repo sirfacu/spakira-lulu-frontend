@@ -42,6 +42,7 @@ import {
   updateAppointment,
   createAppointment,
   listAppointmentExtras,
+  confirmCommercialAddonPrice,
   addAppointmentExtra,
   updateAppointmentExtra,
   deleteAppointmentExtra,
@@ -91,6 +92,7 @@ import { canonicalizeStaffRole, isAdminStaffJob } from "@/lib/staff-roles";
 import { ClientAgenda } from "@/components/client-agenda";
 import { FinishAppointmentDialog } from "@/components/finish-appointment-dialog";
 import { MaterialEstimatePanel } from "@/components/material-estimate-panel";
+import { CommercialAddonRequest } from "@/components/commercial-addon-request";
 import { CouponApplyFields } from "@/components/coupon-apply-fields";
 import { ConfirmServicePriceDialog, type VisitStartPayload } from "@/components/confirm-service-price-dialog";
 import { AppointmentWhatsAppBar } from "@/components/appointment-whatsapp-bar";
@@ -2048,6 +2050,7 @@ function StaffAgenda() {
                       appointmentId={selected.id}
                       serviceId={selected.service_id}
                       petId={selected.pet_id}
+                      showInternalCosts={!perms.isCliente}
                       onBillableChange={() =>
                         void loadExtras(selected.id, { keepLocal: true, syncBaseline: false })
                       }
@@ -2061,7 +2064,7 @@ function StaffAgenda() {
                       browseOnly
                       subtotal={
                         Number(selected.price || 0) +
-                        extras.reduce((s, ex) => s + Number(ex.total || 0), 0)
+                        extras.filter((ex) => ex.price_status !== "pending").reduce((s, ex) => s + Number(ex.total || 0), 0)
                       }
                       customerId={selected.pets?.owners?.id ?? selected.pets?.owner_id}
                       petId={selected.pet_id}
@@ -2123,6 +2126,11 @@ function StaffAgenda() {
                         extrasStatus !== "cancelada");
                     return (
                       <>
+                  <CommercialAddonRequest
+                    appointmentId={selected.id}
+                    canRequest={canEditExtras}
+                    onChanged={() => void loadExtras(selected.id, { keepLocal: true })}
+                  />
                   {canEditExtras ? (
                     <div className="relative mt-3">
                     <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -2247,6 +2255,38 @@ function StaffAgenda() {
                               <Trash2 className="h-4 w-4" />
                             </Button>
                           </div>
+                          {ex.price_status === "pending" ? (
+                            <p className="mt-1 text-xs text-amber-700">
+                              Precio por confirmar
+                              {ex.request_address ? ` · ${ex.request_address}` : ""}
+                            </p>
+                          ) : null}
+                          {ex.price_status === "pending" && perms.isAdmin ? (
+                            <form
+                              className="mt-2 flex gap-2"
+                              onSubmit={(e) => {
+                                e.preventDefault();
+                                const price = Number(new FormData(e.currentTarget).get("price"));
+                                if (!Number.isFinite(price) || price < 0) {
+                                  toast.error("Indicá un precio");
+                                  return;
+                                }
+                                void confirmCommercialAddonPrice(selected.id, ex.id, price)
+                                  .then(() => {
+                                    toast.success("Precio confirmado");
+                                    void loadExtras(selected.id, { keepLocal: true });
+                                  })
+                                  .catch((err: unknown) =>
+                                    toast.error(err instanceof Error ? err.message : "No se pudo confirmar"),
+                                  );
+                              }}
+                            >
+                              <Input name="price" type="number" min={0} className="h-8 w-28" placeholder="Precio" />
+                              <Button type="submit" size="sm">
+                                Confirmar
+                              </Button>
+                            </form>
+                          ) : null}
                           <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
                             <div className="flex items-center gap-1.5">
                               <Button
@@ -2348,7 +2388,11 @@ function StaffAgenda() {
                     <div className="flex justify-between text-muted-foreground">
                       <span>Insumos cobrados</span>
                       <span>
-                        {cop(extras.reduce((s, ex) => s + Number(ex.total || 0), 0))}
+                        {cop(
+                          extras
+                            .filter((ex) => ex.price_status !== "pending")
+                            .reduce((s, ex) => s + Number(ex.total || 0), 0),
+                        )}
                       </span>
                     </div>
                     {citaPromo?.valid && Number(citaPromo.discount_amount || 0) > 0 ? (
@@ -2372,7 +2416,7 @@ function StaffAgenda() {
                               Math.max(
                                 0,
                                 Number(selected.price || 0) +
-                                  extras.reduce((s, ex) => s + Number(ex.total || 0), 0) -
+                                  extras.filter((ex) => ex.price_status !== "pending").reduce((s, ex) => s + Number(ex.total || 0), 0) -
                                   (citaPromo?.valid ? Number(citaPromo.discount_amount || 0) : 0),
                               ),
                             )

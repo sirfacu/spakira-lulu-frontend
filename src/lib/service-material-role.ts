@@ -98,11 +98,21 @@ export function isWearCategory(category: string | null | undefined): boolean {
   return normalizeCategory(category) === "herramienta de trabajo";
 }
 
-/** Líneas de herramienta: no se muestran en estimado ni en el cierre. */
+/** Líneas de herramienta: no se muestran en estimado ni en el cierre.
+ *  Un uso de aplicación (Asuntol) también usa la unidad «uso» y sí se muestra.
+ */
 export function isWearEstimateLine(line: {
   material_role?: string | null;
   quantity_unit?: string | null;
+  consumption_mode?: string | null;
 }): boolean {
+  if (
+    line.consumption_mode === "application" ||
+    line.consumption_mode === "profile" ||
+    line.consumption_mode === "fixed"
+  ) {
+    return false;
+  }
   return line.material_role === "tool" || line.quantity_unit === "uso";
 }
 
@@ -111,10 +121,14 @@ type InferItem = {
   sku?: string | null;
   category?: string | null;
   staff_description?: string | null;
+  consumption_mode?: string | null;
 };
 
 export function isServiceAttachableItem(item: InferItem): boolean {
   const cat = normalizeCategory(item.category);
+  if (item.consumption_mode === "fixed" || item.consumption_mode === "application" || item.consumption_mode === "profile") {
+    return !isAutoConsumeCategory(cat);
+  }
   if (isAutoConsumeCategory(cat)) return false;
   if (isVisitOnlyCategory(cat)) return false;
   if (cat === "alimentos" || cat === "barf") return false;

@@ -47,6 +47,13 @@ describe("service-material-role", () => {
   it("hides tool estimate lines", () => {
     expect(isWearEstimateLine({ material_role: "tool", quantity_unit: "uso" })).toBe(true);
     expect(isWearEstimateLine({ material_role: "perfume", quantity_unit: "ml" })).toBe(false);
+    expect(
+      isWearEstimateLine({
+        material_role: "consumo",
+        quantity_unit: "uso",
+        consumption_mode: "application",
+      }),
+    ).toBe(false);
   });
 
   it("groups pañoleta sizes under same family key", () => {

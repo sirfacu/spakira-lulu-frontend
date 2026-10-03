@@ -1,16 +1,20 @@
 import { useEffect, useMemo, useState } from "react";
+import { toast } from "sonner";
 import { useQuery } from "@tanstack/react-query";
 import { ChevronDown } from "lucide-react";
 import {
   fetchAppointmentMaterialEstimate,
   fetchMaterialEstimatePreview,
   patchAppointmentMaterialSelections,
+  saveAppointmentConsumption,
   type MaterialEstimate,
+  type MaterialEstimateLine,
 } from "@/lib/spa-queries";
 import { cop } from "@/lib/format";
 import { formatMaterialQtyParts } from "@/lib/material-qty-label";
 import { isWearEstimateLine } from "@/lib/service-material-role";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 
 type Props = {
@@ -143,6 +147,47 @@ export function MaterialEstimatePanel({
 
   const includedTotal =
     data?.total_included_cost ?? data?.total_material_cost ?? 0;
+
+  const editable =
+    Boolean(appointmentId) &&
+    (data?.appointment_status || "").replace(/\s/g, "").toLowerCase() === "enproceso";
+
+  const consumptionLines = useMemo(
+    () =>
+      (data?.lines ?? []).filter(
+        (l) =>
+          l.consumption_mode &&
+          l.consumption_mode !== "auto" &&
+          !l.offers_shoot &&
+          !isWearEstimateLine(l),
+      ),
+    [data?.lines],
+  );
+
+  const persistConsumption = async (next: MaterialEstimateLine[]) => {
+    if (!appointmentId) return;
+    setSaving(true);
+    try {
+      const updated = await saveAppointmentConsumption(
+        appointmentId,
+        next
+          .filter((l) => l.inventory_item_id && l.consumption_mode && l.consumption_mode !== "auto")
+          .map((l) => ({
+            material_role: l.material_role,
+            inventory_item_id: l.inventory_item_id as string,
+            estimated_qty: l.estimated_qty ?? l.mix_quantity ?? l.quantity,
+            actual_qty: l.actual_qty ?? l.estimated_qty ?? l.mix_quantity ?? l.quantity,
+            used: l.used !== false,
+            consumption_mode: l.consumption_mode,
+          })),
+      );
+      setEst(updated);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "No se pudo guardar el consumo");
+    } finally {
+      setSaving(false);
+    }
+  };
 
   if (!serviceId || (!petId && !appointmentId)) return null;
 
@@ -289,7 +334,7 @@ export function MaterialEstimatePanel({
     >
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h4 className="text-sm font-semibold text-primary">
-          {addonOffers.length ? "Insumos y adicionales" : "Insumos estimados"}
+          {editable ? "Consumo del servicio" : addonOffers.length ? "Insumos y adicionales" : "Insumos estimados"}
         </h4>
         {data.price_hint?.price_min != null ? (
           <span className="text-xs text-muted-foreground">
@@ -302,7 +347,7 @@ export function MaterialEstimatePanel({
         ) : null}
       </div>
 
-      {!data.has_profile ? (
+      {!data.has_profile && consumptionLines.some((l) => l.consumption_mode === "profile") ? (
         <p className="text-xs text-amber-700">
           Esta raza aún no tiene perfil de consumo: no podemos estimar ml ni el rango sugerido.
         </p>
@@ -310,7 +355,86 @@ export function MaterialEstimatePanel({
 
       {addonsBlock}
 
-      {includedLines.length > 0 ? (
+      {editable && consumptionLines.length > 0 ? (
+        <div className="space-y-2">
+          <p className="text-xs text-muted-foreground">
+            Costo interno. No se suma al precio del servicio. El inventario se mueve al cerrar la cita.
+          </p>
+          {consumptionLines.map((l) => {
+            const mode = l.consumption_mode;
+            const estimated = l.estimated_qty ?? l.mix_quantity ?? l.quantity;
+            const actual = l.actual_qty ?? estimated;
+            const used = l.used !== false;
+            return (
+              <div key={lineKey(l)} className="rounded-lg border border-border/80 px-3 py-2 text-sm">
+                <div className="flex items-start justify-between gap-2">
+                  <span className="font-medium">{l.display_label || l.material_label}</span>
+                  {showInternalCosts ? (
+                    <span className="tabular-nums text-muted-foreground">{used ? cop(l.line_cost) : cop(0)}</span>
+                  ) : null}
+                </div>
+                {mode === "application" ? (
+                  <label className="mt-1 flex items-center gap-2 text-xs">
+                    <input
+                      type="checkbox"
+                      checked={used}
+                      disabled={saving}
+                      onChange={(e) => {
+                        const usedNext = e.target.checked;
+                        void persistConsumption(
+                          consumptionLines.map((row) =>
+                            lineKey(row) === lineKey(l) ? { ...row, used: usedNext } : row,
+                          ),
+                        );
+                      }}
+                    />
+                    Utilizado · estimado {estimated} {l.quantity_unit}
+                  </label>
+                ) : (
+                  <label className="mt-1 block text-xs text-muted-foreground">
+                    Estimado {estimated} {l.quantity_unit}
+                    <Input
+                      type="number"
+                      min={0}
+                      step="any"
+                      className="mt-1 h-8 w-24"
+                      key={`${lineKey(l)}-${actual}`}
+                      defaultValue={actual}
+                      disabled={saving}
+                      onBlur={(e) => {
+                        const n = Number(e.target.value);
+                        if (!Number.isFinite(n)) return;
+                        void persistConsumption(
+                          consumptionLines.map((row) =>
+                            lineKey(row) === lineKey(l)
+                              ? { ...row, actual_qty: n, used: n > 0 }
+                              : row,
+                          ),
+                        );
+                      }}
+                    />
+                  </label>
+                )}
+              </div>
+            );
+          })}
+          {showInternalCosts ? (
+            <div className="flex justify-between border-t border-border/60 pt-2 text-sm">
+              <span>Costo real</span>
+              <span className="tabular-nums">
+                {cop(
+                  consumptionLines.reduce(
+                    (sum, row) => sum + (row.used === false ? 0 : Number(row.line_cost) || 0),
+                    0,
+                  ),
+                )}
+              </span>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+
+      {!editable && includedLines.length > 0 ? (
         <>
           <p className="text-xs text-muted-foreground">
             {showInternalCosts
