@@ -248,7 +248,7 @@ function ResumenTab({
       </div>
 
       <div className="grid gap-6 lg:grid-cols-[1.5fr_1fr]">
-        <SectionCard title="Tendencia de ingresos (14 días)">
+        <SectionCard title="Ingresos por fecha de cierre (14 días)">
           <div className="h-64">
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={trend}>
@@ -298,7 +298,8 @@ function MargenTab({
     <>
       <p className="text-xs text-muted-foreground">
         Por cada cita finalizada: lo cobrado menos insumos y menos la comisión del groomer (si su
-        pago es % o mixto en Personal). Tocá una fila del detalle para ver el desglose. Arriendo y
+        pago es % o mixto en Personal). El rango usa el día en que se cerró el servicio (Bogotá);
+        la agenda queda abajo, en chico. Tocá una fila del detalle para ver el desglose. Arriendo y
         luz van en Gastos fijos, no acá.
       </p>
       {q.isLoading ? <p className="text-sm text-muted-foreground">Cargando…</p> : null}
@@ -380,7 +381,7 @@ function MargenTab({
           <table className="w-full min-w-[40rem] text-left text-sm">
             <thead className="text-xs text-muted-foreground">
               <tr>
-                <th className="py-2 pr-3 font-medium">Agenda</th>
+                <th className="py-2 pr-3 font-medium">Cierre</th>
                 <th className="py-2 pr-3 font-medium">Servicio</th>
                 <th className="py-2 pr-3 font-medium">Mascota</th>
                 <th className="py-2 pr-3 font-medium">Groomer</th>
@@ -403,9 +404,9 @@ function MargenTab({
                   onClick={() => setSelected(line)}
                 >
                   <td className="py-2 pr-3 whitespace-nowrap text-xs text-muted-foreground">
-                    {line.starts_at ? shortDate(line.starts_at) : "—"}
-                    {line.closed_at ? (
-                      <span className="block text-[10px]">cierre {shortDate(line.closed_at)}</span>
+                    {line.closed_at ? shortDate(line.closed_at) : line.starts_at ? shortDate(line.starts_at) : "—"}
+                    {line.starts_at ? (
+                      <span className="block text-[10px]">agenda {shortDate(line.starts_at)}</span>
                     ) : null}
                   </td>
                   <td className="py-2 pr-3">{line.service_name}</td>

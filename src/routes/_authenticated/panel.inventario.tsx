@@ -469,7 +469,11 @@ function Inventario() {
         pack_label: null,
         channel: form.channel,
         consumption_mode: form.consumption_mode || null,
-        dilution_enabled: form.dilution_enabled,
+        dilution_enabled:
+          form.unit_kind !== "uso" &&
+          form.consumption_mode !== "application" &&
+          !isWearCategory(form.category) &&
+          form.dilution_enabled,
         dilution_product:
           form.dilution_enabled && Number(form.dilution_product) > 0
             ? Number(form.dilution_product)
@@ -479,8 +483,11 @@ function Inventario() {
             ? Number(form.dilution_water)
             : null,
         accessory_type: null,
-        wear_every_n_uses:
-          Number(form.wear_every_n_uses) > 0 ? Number(form.wear_every_n_uses) : null,
+        wear_every_n_uses: isWearCategory(form.category)
+          ? Number(form.wear_every_n_uses) > 0
+            ? Number(form.wear_every_n_uses)
+            : null
+          : null,
         wear_action: "alert",
       };
 
@@ -1098,6 +1105,7 @@ function Inventario() {
                 </div>
               ) : null}
 
+              {form.unit_kind !== "uso" && form.consumption_mode !== "application" && !isWearCategory(form.category) ? (
               <div className="space-y-2 rounded-xl border border-border/80 bg-secondary/20 p-4">
                 <label className="flex cursor-pointer items-center gap-3">
                   <Checkbox
@@ -1140,13 +1148,12 @@ function Inventario() {
                   </div>
                 ) : null}
               </div>
+              ) : null}
 
+              {isWearCategory(form.category) ? (
               <div className="space-y-2 rounded-xl border border-border/80 bg-secondary/20 p-4">
                 <div className="space-y-1">
-                  <Label>
-                    Cantidad de usos
-                    {isWearCategory(form.category) ? " (obligatorio)" : ""}
-                  </Label>
+                  <Label>Cantidad de usos (obligatorio)</Label>
                   <Input
                     type="number"
                     min={0}
@@ -1155,12 +1162,10 @@ function Inventario() {
                     value={form.wear_every_n_uses}
                     onChange={(e) => setForm((f) => ({ ...f, wear_every_n_uses: e.target.value }))}
                   />
-                  {isWearCategory(form.category) ? (
-                    <p className="text-xs text-muted-foreground">
-                      Cada cierre de agenda suma 1 uso. Al llegar a este número se avisa o se da de
-                      baja 1 unidad.
-                    </p>
-                  ) : null}
+                  <p className="text-xs text-muted-foreground">
+                    Cada cierre de agenda suma 1 uso. Al llegar a este número se avisa o se da de
+                    baja 1 unidad.
+                  </p>
                 </div>
                 {liveItem && Number(liveItem.wear_every_n_uses) > 0 ? (
                   <p className="text-xs text-muted-foreground">
@@ -1187,6 +1192,7 @@ function Inventario() {
                   </Button>
                 ) : null}
               </div>
+              ) : null}
 
               <div className="space-y-2">
                 <Label>Destino del artículo</Label>
