@@ -5,7 +5,7 @@ import { Minus, Plus, Search, Trash2, FileText, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { completeAppointment, listAppointmentExtras, inventoryShopQuery, inventoryQuery, inventoryShopAtLocationQuery, inventoryAtLocationQuery, paymentMethodsQuery, getLoyaltyCustomer, type Appointment, type PromoValidate } from "@/lib/spa-queries";
+import { completeAppointment, listAppointmentExtras, inventoryShopQuery, inventoryQuery, inventoryShopAtLocationQuery, inventoryAtLocationQuery, paymentMethodsQuery, getLoyaltyCustomer, validatePromotion, type Appointment, type PromoValidate } from "@/lib/spa-queries";
 import { CouponApplyFields } from "@/components/coupon-apply-fields";
 import { MaterialEstimatePanel } from "@/components/material-estimate-panel";
 import { ApiError } from "@/lib/api";
@@ -58,6 +58,7 @@ export function FinishAppointmentDialog({
   const [evidenceUrl, setEvidenceUrl] = useState("");
   const [markPaid, setMarkPaid] = useState(true);
   const [promo, setPromo] = useState<PromoValidate | null>(null);
+  const [autoPromo, setAutoPromo] = useState<PromoValidate | null>(null);
   const [priceHint, setPriceHint] = useState<{
     price_min?: number;
     price_max?: number;
@@ -160,8 +161,49 @@ export function FinishAppointmentDialog({
   const serviceTotal =
     includeService && Number.isFinite(parsedService) && parsedService >= 0 ? parsedService : 0;
   const grandTotal = serviceTotal + miscTotal;
-  const discount = promo?.valid ? Number(promo.discount_amount || 0) : 0;
+  const manualPromo = Boolean(
+    promo?.valid && (promo.code || promo.loyalty_reward_id || promo.promotion_id),
+  );
+  const shownPromo = manualPromo ? promo : autoPromo;
+  const discount = shownPromo?.valid ? Number(shownPromo.discount_amount || 0) : 0;
   const netTotal = Math.max(0, grandTotal - discount);
+
+  useEffect(() => {
+    if (!open || !ownerId || grandTotal <= 0 || manualPromo) {
+      if (!manualPromo) setAutoPromo(null);
+      return;
+    }
+    let cancel = false;
+    const serviceId = appointment?.service_id;
+    validatePromotion({
+      customer_id: ownerId,
+      pet_id: appointment?.pet_id,
+      appointment_id: appointment?.id,
+      service_ids: serviceId ? [serviceId] : [],
+      service_amounts: serviceId && serviceTotal > 0 ? { [serviceId]: serviceTotal } : {},
+      store_subtotal: miscTotal,
+      subtotal: grandTotal,
+    })
+      .then((res) => {
+        if (!cancel) setAutoPromo(res.valid ? res : null);
+      })
+      .catch(() => {
+        if (!cancel) setAutoPromo(null);
+      });
+    return () => {
+      cancel = true;
+    };
+  }, [
+    open,
+    ownerId,
+    appointment?.id,
+    appointment?.pet_id,
+    appointment?.service_id,
+    grandTotal,
+    serviceTotal,
+    miscTotal,
+    manualPromo,
+  ]);
 
   const addCatalogItem = (item: CatalogItem) => {
     setLines((prev) => [
@@ -530,7 +572,13 @@ export function FinishAppointmentDialog({
                 <p className="text-xs text-muted-foreground">Total a cobrar</p>
                 <p className="font-display text-xl font-bold text-primary">{cop(netTotal)}</p>
                 {discount > 0 ? (
-                  <p className="text-xs text-muted-foreground">Antes {cop(grandTotal)}</p>
+                  <p className="text-xs text-muted-foreground">
+                    Antes {cop(grandTotal)}
+                    {shownPromo?.name ? ` · ${shownPromo.name}` : ""}
+                    {shownPromo?.applies_to === "services" ? " · solo el servicio" : ""}
+                    {shownPromo?.applies_to === "store" ? " · solo cosas sueltas" : ""}
+                    {shownPromo?.applies_to === "both" ? " · servicio y cosas sueltas" : ""}
+                  </p>
                 ) : null}
               </div>
               <div className="flex gap-2">

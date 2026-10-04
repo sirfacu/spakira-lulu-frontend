@@ -324,14 +324,29 @@ function PromocionesPage() {
         <SectionCard title="Usos">
           {(usage.data ?? []).length ? (
             <ul className="space-y-2 text-sm">
-              {(usage.data ?? []).map((u) => (
-                <li key={String(u.id)} className="flex justify-between gap-2 rounded-xl border border-border p-3">
-                  <span>
-                    {String(u.promotion_name || u.kind)} · {String(u.customer_name || "—")}
-                  </span>
-                  <span>{cop(Number(u.discount_amount || 0))}</span>
-                </li>
-              ))}
+              {(usage.data ?? []).map((u) => {
+                const when = String(u.appointment_at || u.created_at || "");
+                const loose = String(u.loose_items || "").trim();
+                return (
+                  <li key={String(u.id)} className="rounded-xl border border-border p-3">
+                    <div className="flex justify-between gap-2">
+                      <span className="font-medium">
+                        {String(u.promotion_name || u.kind)} · {String(u.customer_name || "—")}
+                      </span>
+                      <span>{cop(Number(u.discount_amount || 0))}</span>
+                    </div>
+                    <p className="mt-1 text-muted-foreground">
+                      {when ? shortDate(when) : "Sin fecha"}
+                      {u.service_name ? ` · ${String(u.service_name)}` : ""}
+                      {u.pet_name ? ` · ${String(u.pet_name)}` : ""}
+                    </p>
+                    <p className="text-muted-foreground">Afectó: {scopeLabel(u.applies_to)}</p>
+                    {loose ? (
+                      <p className="text-muted-foreground">Cosas sueltas en la cuenta: {loose}</p>
+                    ) : null}
+                  </li>
+                );
+              })}
             </ul>
           ) : (
             <Empty message="Todavía no hay usos registrados." />
@@ -342,6 +357,13 @@ function PromocionesPage() {
   );
 }
 
+function scopeLabel(value: unknown) {
+  if (value === "services") return "solo el servicio";
+  if (value === "store") return "solo cosas sueltas";
+  if (value === "both") return "el servicio y las cosas sueltas";
+  return "el total de la cuenta";
+}
+
 function CampaignIntro() {
   return (
     <div className="rounded-2xl border border-primary/15 bg-gradient-to-br from-primary/5 via-background to-secondary/30 p-4 sm:p-5">
@@ -349,7 +371,7 @@ function CampaignIntro() {
       <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
         Todas las campañas viven acá. Si llevan <strong>código</strong>, el cliente o el mostrador lo escriben al
         cobrar (el cupón no se acumula con otras). Si son <strong>automáticas</strong>, se aplican solas y se
-        acumulan entre sí (día, raza, cumpleaños, nivel de fidelización, etc.), hasta el tope del subtotal.
+        acumulan entre sí (día, raza, cumpleaños). El nivel de fidelización entra una sola vez por nivel.
       </p>
       <div className="mt-4 grid gap-3 sm:grid-cols-2">
         <div className="rounded-xl border border-border/80 bg-background/80 p-3 text-sm">
@@ -362,7 +384,8 @@ function CampaignIntro() {
         <div className="rounded-xl border border-border/80 bg-background/80 p-3 text-sm">
           <p className="font-semibold text-primary">Ejemplo automática</p>
           <p className="mt-1 text-muted-foreground">
-            <strong>Martes de Baño</strong> → 20% en baños los martes, sin escribir nada.
+            <strong>Martes de Baño</strong> → 20% en baños los martes, sin escribir nada. El nivel de
+            fidelización también entra solo, pero una sola vez por nivel.
           </p>
         </div>
       </div>
