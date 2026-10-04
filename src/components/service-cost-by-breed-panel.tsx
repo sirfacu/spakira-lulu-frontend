@@ -37,9 +37,15 @@ type Props = {
   serviceId: string | null;
   /** Borrador actual del editor (sin guardar aún). */
   materialDrafts?: ServiceMaterialDraft[];
+  /** Tilde Shampoo Antipulgas del formulario, aunque no esté guardado. */
+  includeAntipulgas?: boolean;
 };
 
-export function ServiceCostByBreedPanel({ serviceId, materialDrafts = [] }: Props) {
+export function ServiceCostByBreedPanel({
+  serviceId,
+  materialDrafts = [],
+  includeAntipulgas = false,
+}: Props) {
   const breeds = useQuery(breedsQuery);
   const profiles = useQuery({
     ...breedBathProfilesQuery,
@@ -73,12 +79,13 @@ export function ServiceCostByBreedPanel({ serviceId, materialDrafts = [] }: Prop
   const draftKey = useMemo(() => JSON.stringify(draftPayload), [draftPayload]);
 
   const estimate = useQuery({
-    queryKey: ["service-cost-estimate", serviceId, breedId, petSex, draftKey],
+    queryKey: ["service-cost-estimate", serviceId, breedId, petSex, draftKey, includeAntipulgas],
     queryFn: () =>
       previewServiceCostEstimate(serviceId!, {
         breed_id: breedId,
         pet_sex: petSex,
         materials: draftPayload,
+        include_antipulgas: includeAntipulgas,
       }),
     enabled: Boolean(serviceId && breedId),
   });

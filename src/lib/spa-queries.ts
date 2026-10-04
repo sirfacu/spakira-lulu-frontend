@@ -1605,6 +1605,77 @@ export type SaleItem = {
   item_id?: string | null;
 };
 
+export type AntipulgasCoat = {
+  code: string;
+  name: string;
+  multiplier: number;
+};
+
+export type AntipulgasBand = {
+  weight_from_kg: number;
+  weight_to_kg: number | null;
+  base_price: number;
+  uses: number;
+};
+
+export type AntipulgasOffer = {
+  name: string;
+  inventory_item_id: string | null;
+  inventory_item_name: string | null;
+  pet_name: string | null;
+  weight_kg: number | null;
+  coat_code: string | null;
+  coats: AntipulgasCoat[];
+  bands: AntipulgasBand[];
+  applied: boolean;
+  charge: number | null;
+  uses: number | null;
+  unit_cost: number;
+  unit_kind?: string | null;
+};
+
+export type AntipulgasConfig = {
+  inventory_item_id: string | null;
+  inventory_item_name: string | null;
+  unit_kind: string;
+  bands: AntipulgasBand[];
+  coats: AntipulgasCoat[];
+};
+
+export async function fetchAntipulgasConfig() {
+  return api<AntipulgasConfig>("/inventory/antipulgas");
+}
+
+export async function saveAntipulgasConfig(input: {
+  inventory_item_id: string;
+  bands: { weight_from_kg: number; base_price: number; uses: number }[];
+  coats: { code: string; multiplier: number }[];
+}) {
+  return api<AntipulgasConfig>("/inventory/antipulgas", { method: "PUT", body: input });
+}
+
+export async function fetchAntipulgas(appointmentId: string) {
+  return api<AntipulgasOffer>(`/appointments/${appointmentId}/antipulgas`);
+}
+
+export async function applyAntipulgas(
+  appointmentId: string,
+  input: { weight_kg: number; coat_code: string },
+) {
+  return api<{
+    charge: number;
+    uses: number;
+    base_price: number;
+    multiplier: number;
+    internal_cost: number;
+    label: string;
+  }>(`/appointments/${appointmentId}/antipulgas`, { method: "PUT", body: input });
+}
+
+export async function clearAntipulgas(appointmentId: string) {
+  await api(`/appointments/${appointmentId}/antipulgas`, { method: "DELETE" });
+}
+
 export async function addAppointmentExtra(
   appointmentId: string,
   input: { item_name: string; quantity?: number; unit_price?: number },
@@ -1864,6 +1935,7 @@ export type ServiceCostEstimate = {
     unit_cost: number;
     line_cost: number;
     is_accessory?: boolean;
+    consumption_mode?: string | null;
     mix_quantity?: number | null;
     dilution_product?: number | null;
     dilution_water?: number | null;
@@ -1887,6 +1959,7 @@ export async function previewServiceCostEstimate(
     breed_id: string;
     pet_sex?: "hembra" | "macho";
     materials: Partial<ServiceMaterial>[];
+    include_antipulgas?: boolean;
   },
 ) {
   return api<ServiceCostEstimate>(`/services/${serviceId}/cost-estimate`, {
@@ -1895,6 +1968,7 @@ export async function previewServiceCostEstimate(
       breed_id: body.breed_id,
       pet_sex: body.pet_sex ?? "hembra",
       materials: body.materials,
+      include_antipulgas: body.include_antipulgas ?? false,
     },
   });
 }

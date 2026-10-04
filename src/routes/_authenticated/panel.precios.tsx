@@ -35,8 +35,11 @@ import {
   type ServiceMaterialDraft,
 } from "@/components/service-materials-editor";
 import { ServiceCostByBreedPanel } from "@/components/service-cost-by-breed-panel";
+import { AntipulgasSettings } from "@/components/antipulgas-settings";
 import {
   breedPriceHintQuery,
+  fetchAntipulgasConfig,
+  inventoryQuery,
   panelServicesQuery,
   petsQuery,
   serviceActivityCatalogQuery,
@@ -172,6 +175,7 @@ function Servicios() {
   const { user } = useRouteContext({ from: "/_authenticated" });
   const perms = permissionsFor(user?.role);
   const canManage = perms.canManagePrices;
+  const inventoryForRule = useQuery({ ...inventoryQuery, enabled: canManage });
   const qc = useQueryClient();
   const [editing, setEditing] = useState<Service | null | "new">(null);
   const [form, setForm] = useState<ServiceForm>(emptyForm());
@@ -179,6 +183,12 @@ function Servicios() {
   const [pendingDelete, setPendingDelete] = useState<{ name: string; id: string } | null>(null);
   const [materialDrafts, setMaterialDrafts] = useState<ServiceMaterialDraft[]>([]);
   const [clientPetId, setClientPetId] = useState("");
+  const includeAntipulgas = form.activities.includes("pulgas");
+  const antipulgasRule = useQuery({
+    queryKey: ["antipulgas-config"],
+    queryFn: fetchAntipulgasConfig,
+    enabled: canManage && includeAntipulgas,
+  });
 
   const clientPets = pets.data ?? [];
   useEffect(() => {
@@ -602,11 +612,17 @@ function Servicios() {
                 <ServiceMaterialsEditor
                   serviceId={editing && typeof editing === "object" ? editing.id : null}
                   onChange={setMaterialDrafts}
+                  includedAntipulgasName={
+                    includeAntipulgas
+                      ? antipulgasRule.data?.inventory_item_name || "Antipulgas"
+                      : null
+                  }
                 />
 
                 <ServiceCostByBreedPanel
                   serviceId={editing && typeof editing === "object" ? editing.id : null}
                   materialDrafts={materialDrafts}
+                  includeAntipulgas={includeAntipulgas}
                 />
               </div>
             </div>
@@ -660,6 +676,8 @@ function Servicios() {
               )}
             </div>
           ) : null}
+
+          {canManage ? <AntipulgasSettings items={inventoryForRule.data ?? []} /> : null}
 
           <ReorderList
         items={list}
