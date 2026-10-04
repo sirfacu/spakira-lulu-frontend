@@ -2333,6 +2333,7 @@ export type PromoValidate = {
   discount_amount?: number;
   code?: string | null;
   name?: string;
+  applies_to?: string | null;
 };
 
 export const promotionsQuery = queryOptions({
@@ -2449,9 +2450,13 @@ export async function patchLoyaltyReward(id: string, status: "cancelled" | "expi
 export async function validatePromotion(input: {
   code?: string;
   loyalty_reward_id?: string;
+  promotion_id?: string;
   customer_id?: string | null;
   pet_id?: string | null;
+  appointment_id?: string | null;
   service_ids?: string[];
+  service_amounts?: Record<string, number>;
+  store_subtotal?: number;
   subtotal: number;
 }) {
   return api<PromoValidate>("/promotions/validate", { method: "POST", body: input });

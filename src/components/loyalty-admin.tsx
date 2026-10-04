@@ -152,8 +152,9 @@ export function LoyaltyTiersPanel({
   return (
     <SectionCard title="Niveles">
       <p className="mb-3 text-sm text-muted-foreground">
-        El nivel se calcula por visitas (y meses). El % del nivel se aplica automáticamente al cobrar
-        (por defecto solo servicios; podés cambiar el alcance). No se apila con cupón/cumpleaños: gana el mayor.
+        Cada nivel entrega su porcentaje una sola vez, en el cobro en que se alcanza. Después no vuelve a
+        descontar hasta el nivel siguiente. Sin cupón, se suma con las promociones automáticas. El alcance
+        dice si baja el servicio, las cosas sueltas, o los dos.
       </p>
       <ul className="space-y-2 text-sm">
         {tiers.map((raw) => {

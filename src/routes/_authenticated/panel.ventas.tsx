@@ -40,6 +40,7 @@ import {
   getMyStaff,
   getLoyaltyCustomer,
   getLocations,
+  validatePromotion,
   type InventoryItem,
   type PromoValidate,
 } from "@/lib/spa-queries";
@@ -123,6 +124,7 @@ function Ventas() {
   const [productId, setProductId] = useState("");
   const [cart, setCart] = useState<CartLine[]>([]);
   const [promo, setPromo] = useState<PromoValidate | null>(null);
+  const [autoPromo, setAutoPromo] = useState<PromoValidate | null>(null);
   const [detailSaleId, setDetailSaleId] = useState<string | null>(null);
   const saleDetailQ = useQuery({
     queryKey: ["sale", detailSaleId],
@@ -142,8 +144,36 @@ function Ventas() {
   const serviceTotal = Number(service?.price ?? 0);
   const productsTotal = cart.reduce((a, l) => a + l.unit_price * l.quantity, 0);
   const grandTotal = serviceTotal + productsTotal;
-  const discount = promo?.valid ? Number(promo.discount_amount || 0) : 0;
+  const manualPromo = Boolean(
+    promo?.valid && (promo.code || promo.loyalty_reward_id || promo.promotion_id),
+  );
+  const shownPromo = manualPromo ? promo : autoPromo;
+  const discount = shownPromo?.valid ? Number(shownPromo.discount_amount || 0) : 0;
   const netTotal = Math.max(0, grandTotal - discount);
+
+  useEffect(() => {
+    if (!ownerId || grandTotal <= 0 || manualPromo) {
+      if (!manualPromo) setAutoPromo(null);
+      return;
+    }
+    let cancel = false;
+    validatePromotion({
+      customer_id: ownerId,
+      service_ids: serviceId ? [serviceId] : [],
+      service_amounts: serviceId && serviceTotal > 0 ? { [serviceId]: serviceTotal } : {},
+      store_subtotal: productsTotal,
+      subtotal: grandTotal,
+    })
+      .then((res) => {
+        if (!cancel) setAutoPromo(res.valid ? res : null);
+      })
+      .catch(() => {
+        if (!cancel) setAutoPromo(null);
+      });
+    return () => {
+      cancel = true;
+    };
+  }, [ownerId, serviceId, grandTotal, serviceTotal, productsTotal, manualPromo]);
 
   useEffect(() => {
     if (!ownerId && mostrador?.id) setOwnerId(mostrador.id);
@@ -447,7 +477,13 @@ function Ventas() {
                 <p className="text-xs uppercase tracking-wider text-muted-foreground">Total</p>
                 <p className="font-display text-3xl font-bold text-accent">{cop(netTotal)}</p>
                 {discount > 0 ? (
-                  <p className="text-xs text-muted-foreground">Antes {cop(grandTotal)}</p>
+                  <p className="text-xs text-muted-foreground">
+                    Antes {cop(grandTotal)}
+                    {shownPromo?.name ? ` · ${shownPromo.name}` : ""}
+                    {shownPromo?.applies_to === "services" ? " · solo el servicio" : ""}
+                    {shownPromo?.applies_to === "store" ? " · solo cosas sueltas" : ""}
+                    {shownPromo?.applies_to === "both" ? " · servicio y cosas sueltas" : ""}
+                  </p>
                 ) : null}
               </div>
               <Button
