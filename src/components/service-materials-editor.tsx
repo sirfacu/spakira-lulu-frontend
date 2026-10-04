@@ -31,6 +31,8 @@ export type ServiceMaterialDraft = {
 type Props = {
   serviceId: string | null;
   onChange: (materials: ServiceMaterialDraft[]) => void;
+  /** Producto que entra solo por la actividad Shampoo Antipulgas. */
+  includedAntipulgasName?: string | null;
 };
 
 function newKey() {
@@ -247,7 +249,11 @@ function ProductSearch({
   );
 }
 
-export function ServiceMaterialsEditor({ serviceId, onChange }: Props) {
+export function ServiceMaterialsEditor({
+  serviceId,
+  onChange,
+  includedAntipulgasName,
+}: Props) {
   const inventory = useQuery(inventoryQuery);
   const [rows, setRows] = useState<ServiceMaterialDraft[]>([]);
   const [adding, setAdding] = useState(false);
@@ -335,11 +341,21 @@ export function ServiceMaterialsEditor({ serviceId, onChange }: Props) {
         </Button>
       </div>
 
-      {rows.length === 0 ? (
+      {includedAntipulgasName ? (
+        <div className="rounded-xl border border-border px-3 py-3">
+          <p className="text-sm font-medium text-foreground">{includedAntipulgasName}</p>
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            Entra por Shampoo Antipulgas. En la cita se descuentan los usos según el peso
+            y no se cobra aparte.
+          </p>
+        </div>
+      ) : null}
+
+      {rows.length === 0 && !includedAntipulgasName ? (
         <p className="rounded-lg border border-dashed border-border px-3 py-4 text-center text-xs text-muted-foreground">
           Todavía no hay insumos. Usá + para agregar.
         </p>
-      ) : (
+      ) : rows.length === 0 ? null : (
         <div className="space-y-2">
           {rows.map((row) => {
             const item = row.inventory_item_id

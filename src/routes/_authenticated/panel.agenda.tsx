@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createFileRoute, useNavigate, useRouteContext, useSearch } from "@tanstack/react-router";
 import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -93,6 +93,7 @@ import { ClientAgenda } from "@/components/client-agenda";
 import { FinishAppointmentDialog } from "@/components/finish-appointment-dialog";
 import { MaterialEstimatePanel } from "@/components/material-estimate-panel";
 import { CommercialAddonRequest } from "@/components/commercial-addon-request";
+import { AntipulgasBox } from "@/components/antipulgas-box";
 import { CouponApplyFields } from "@/components/coupon-apply-fields";
 import { ConfirmServicePriceDialog, type VisitStartPayload } from "@/components/confirm-service-price-dialog";
 import { AppointmentWhatsAppBar } from "@/components/appointment-whatsapp-bar";
@@ -139,6 +140,13 @@ const DRAFT_EXTRA_PREFIX = "draft-";
 
 function isDraftExtraId(id: string) {
   return id.startsWith(DRAFT_EXTRA_PREFIX);
+}
+
+function queryMatchesAntipulgas(query: string, itemName: string | null) {
+  const q = query.trim().toLowerCase();
+  const name = (itemName || "").trim().toLowerCase();
+  if (!q || !name) return false;
+  return name.includes(q) || q.includes(name);
 }
 
 function newDraftExtraId() {
@@ -404,12 +412,18 @@ function StaffAgenda() {
     ...(stockLocationId ? inventoryAtLocationQuery(stockLocationId) : inventoryQuery),
     enabled: perms.isStaff,
   });
+  const [antipulgasItemId, setAntipulgasItemId] = useState<string | null>(null);
+  const [antipulgasItemName, setAntipulgasItemName] = useState<string | null>(null);
+  const hideAntipulgasItem = useCallback((id: string | null, name: string | null) => {
+    setAntipulgasItemId(id);
+    setAntipulgasItemName(name);
+  }, []);
   const productCatalog = useMemo(
     () =>
       appointmentProductCatalog(inventoryAll.data ?? [], shop.data ?? [], {
         shopOnly: perms.isCliente,
-      }),
-    [shop.data, inventoryAll.data, perms.isCliente],
+      }).filter((item) => item.id !== antipulgasItemId),
+    [shop.data, inventoryAll.data, perms.isCliente, antipulgasItemId],
   );
   const [confirmAction, setConfirmAction] = useState<{
     title: string;
@@ -2109,6 +2123,94 @@ function StaffAgenda() {
                 ) : null}
 
                 {perms.isStaff || perms.isCliente ? (
+                <>
+                {(() => {
+                  const extrasStatus = normalizeStatus(selected.status);
+                  const canEditExtras =
+                    (perms.isCliente && extrasStatus === "pendiente") ||
+                    (perms.isStaff &&
+                      extrasStatus !== "finalizada" &&
+                      extrasStatus !== "cancelada");
+                  const chargeExtras = extras.filter((ex) => ex.line_kind === "addon");
+                  const supplyExtras = extras.filter((ex) => ex.line_kind !== "addon");
+                  return (
+                <>
+                <div className="mt-4 rounded-2xl border border-border p-4">
+                  <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                    Cargos
+                  </p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Domicilio y otros cobros. No descuentan inventario.
+                  </p>
+                  <CommercialAddonRequest
+                    appointmentId={selected.id}
+                    canRequest={canEditExtras}
+                    onChanged={() => void loadExtras(selected.id, { keepLocal: true })}
+                  />
+                  {chargeExtras.length ? (
+                    <ul className="mt-3 space-y-2">
+                      {chargeExtras.map((ex) => (
+                        <li key={ex.id} className="rounded-xl bg-secondary/40 px-3 py-2.5 text-sm">
+                          <div className="flex items-start justify-between gap-2">
+                            <p className="min-w-0 flex-1 font-medium text-foreground">{ex.item_name}</p>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8 shrink-0 text-destructive"
+                              aria-label={`Quitar ${ex.item_name}`}
+                              disabled={!canEditExtras || deleteExtraMut.isPending}
+                              onClick={() => {
+                                setConfirmAction({
+                                  title: "Quitar cargo",
+                                  description: `¿Quitar “${ex.item_name}” de esta cita?`,
+                                  actionLabel: "Quitar",
+                                  onConfirm: () => deleteExtraMut.mutate(ex.id),
+                                });
+                              }}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
+                          {ex.price_status === "pending" ? (
+                            <p className="mt-1 text-xs text-amber-700">
+                              Precio por confirmar
+                              {ex.request_address ? ` · ${ex.request_address}` : ""}
+                            </p>
+                          ) : (
+                            <p className="mt-1 text-sm font-semibold text-accent">{cop(Number(ex.total) || 0)}</p>
+                          )}
+                          {ex.price_status === "pending" && perms.isAdmin ? (
+                            <form
+                              className="mt-2 flex gap-2"
+                              onSubmit={(e) => {
+                                e.preventDefault();
+                                const price = Number(new FormData(e.currentTarget).get("price"));
+                                if (!Number.isFinite(price) || price < 0) {
+                                  toast.error("Indicá un precio");
+                                  return;
+                                }
+                                void confirmCommercialAddonPrice(selected.id, ex.id, price)
+                                  .then(() => {
+                                    toast.success("Precio confirmado");
+                                    void loadExtras(selected.id, { keepLocal: true });
+                                  })
+                                  .catch((err: unknown) =>
+                                    toast.error(err instanceof Error ? err.message : "No se pudo confirmar"),
+                                  );
+                              }}
+                            >
+                              <Input name="price" type="number" min={0} className="h-8 w-28" placeholder="Precio" />
+                              <Button type="submit" size="sm">
+                                Confirmar
+                              </Button>
+                            </form>
+                          ) : null}
+                        </li>
+                      ))}
+                    </ul>
+                  ) : null}
+                </div>
                 <div className="mt-4 rounded-2xl border border-border p-4">
                   <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                     Insumos y productos
@@ -2117,20 +2219,24 @@ function StaffAgenda() {
                     Cualquier producto de esta sede (medicado, tinte, vitrina u otro). Si no está,
                     escribí el nombre y un precio. Hasta Guardar cambios no se reserva inventario.
                   </p>
-                  {(() => {
-                    const extrasStatus = normalizeStatus(selected.status);
-                    const canEditExtras =
-                      (perms.isCliente && extrasStatus === "pendiente") ||
-                      (perms.isStaff &&
-                        extrasStatus !== "finalizada" &&
-                        extrasStatus !== "cancelada");
-                    return (
-                      <>
-                  <CommercialAddonRequest
-                    appointmentId={selected.id}
-                    canRequest={canEditExtras}
-                    onChanged={() => void loadExtras(selected.id, { keepLocal: true })}
-                  />
+                  {(services.data ?? []).some(
+                    (svc) =>
+                      svc.id === selected.service_id &&
+                      (svc.activities ?? []).includes("pulgas"),
+                  ) ? (
+                    <p className="mt-2 text-xs text-muted-foreground">
+                      Este baño ya incluye el antipulgas. Se descuenta en los insumos del
+                      servicio, según el peso, y no se suma como adicional.
+                    </p>
+                  ) : (
+                    <AntipulgasBox
+                      appointmentId={selected.id}
+                      canEdit={canEditExtras && perms.isStaff}
+                      revision={extras.map((row) => row.id).join(",")}
+                      onChanged={() => void loadExtras(selected.id, { keepLocal: true })}
+                      onInventoryItem={hideAntipulgasItem}
+                    />
+                  )}
                   {canEditExtras ? (
                     <div className="relative mt-3">
                     <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -2175,7 +2281,9 @@ function StaffAgenda() {
                             </button>
                           </li>
                         ))}
-                      {perms.isStaff && extraSearchAllowsCustom(extraQuery, productCatalog) ? (
+                      {perms.isStaff &&
+                      extraSearchAllowsCustom(extraQuery, productCatalog) &&
+                      !queryMatchesAntipulgas(extraQuery, antipulgasItemName) ? (
                         <li className="border-t border-border p-2">
                           <div className="flex gap-2">
                             <Input
@@ -2210,7 +2318,7 @@ function StaffAgenda() {
                   ) : null}
 
                   <ul className="mt-3 space-y-2">
-                    {extras.map((ex) => {
+                    {supplyExtras.map((ex) => {
                       const visitCare =
                         ex.material_role === "medicated" || ex.material_role === "dye";
                       const qty = visitCare
@@ -2218,6 +2326,7 @@ function StaffAgenda() {
                         : Math.max(1, Number(ex.quantity) || 1);
                       const unit = Number(ex.unit_price) || 0;
                       const total = Number(ex.total) || qty * unit;
+                      const treatment = ex.line_kind === "treatment";
                       return (
                         <li
                           key={ex.id}
@@ -2255,39 +2364,10 @@ function StaffAgenda() {
                               <Trash2 className="h-4 w-4" />
                             </Button>
                           </div>
-                          {ex.price_status === "pending" ? (
-                            <p className="mt-1 text-xs text-amber-700">
-                              Precio por confirmar
-                              {ex.request_address ? ` · ${ex.request_address}` : ""}
-                            </p>
-                          ) : null}
-                          {ex.price_status === "pending" && perms.isAdmin ? (
-                            <form
-                              className="mt-2 flex gap-2"
-                              onSubmit={(e) => {
-                                e.preventDefault();
-                                const price = Number(new FormData(e.currentTarget).get("price"));
-                                if (!Number.isFinite(price) || price < 0) {
-                                  toast.error("Indicá un precio");
-                                  return;
-                                }
-                                void confirmCommercialAddonPrice(selected.id, ex.id, price)
-                                  .then(() => {
-                                    toast.success("Precio confirmado");
-                                    void loadExtras(selected.id, { keepLocal: true });
-                                  })
-                                  .catch((err: unknown) =>
-                                    toast.error(err instanceof Error ? err.message : "No se pudo confirmar"),
-                                  );
-                              }}
-                            >
-                              <Input name="price" type="number" min={0} className="h-8 w-28" placeholder="Precio" />
-                              <Button type="submit" size="sm">
-                                Confirmar
-                              </Button>
-                            </form>
-                          ) : null}
                           <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+                            {treatment ? (
+                              <p className="text-xs text-muted-foreground">Cantidad fija</p>
+                            ) : (
                             <div className="flex items-center gap-1.5">
                               <Button
                                 type="button"
@@ -2360,6 +2440,7 @@ function StaffAgenda() {
                                 <Plus className="h-3.5 w-3.5" />
                               </Button>
                             </div>
+                            )}
                             <div className="text-right text-xs leading-snug">
                               <p className="text-muted-foreground">
                                 Unitario {cop(unit)}
@@ -2370,13 +2451,14 @@ function StaffAgenda() {
                         </li>
                       );
                     })}
-                    {!extras.length ? (
+                    {!supplyExtras.length ? (
                       <li className="rounded-2xl border border-dashed border-border px-4 py-6 text-center text-sm text-muted-foreground">
                         Sin productos en insumos. Buscá arriba para agregar.
                       </li>
                     ) : null}
                   </ul>
-                  <div className="mt-3 space-y-1 border-t border-border pt-3 text-sm">
+                </div>
+                <div className="mt-4 space-y-1 rounded-2xl border border-border p-4 text-sm">
                     <div className="flex justify-between text-muted-foreground">
                       <span>Servicio</span>
                       <span>
@@ -2385,11 +2467,19 @@ function StaffAgenda() {
                           : PENDING_SERVICE_PRICE_LABEL}
                       </span>
                     </div>
+                    {chargeExtras.map((ex) => (
+                      <div key={ex.id} className="flex justify-between text-muted-foreground">
+                        <span>{ex.item_name}</span>
+                        <span>
+                          {ex.price_status === "pending" ? "Por confirmar" : cop(Number(ex.total) || 0)}
+                        </span>
+                      </div>
+                    ))}
                     <div className="flex justify-between text-muted-foreground">
                       <span>Insumos cobrados</span>
                       <span>
                         {cop(
-                          extras
+                          supplyExtras
                             .filter((ex) => ex.price_status !== "pending")
                             .reduce((s, ex) => s + Number(ex.total || 0), 0),
                         )}
@@ -2441,10 +2531,10 @@ function StaffAgenda() {
                       </p>
                     ) : null}
                   </div>
-                      </>
-                    );
-                  })()}
-                </div>
+                </>
+                  );
+                })()}
+                </>
                 ) : null}
 
               </div>
