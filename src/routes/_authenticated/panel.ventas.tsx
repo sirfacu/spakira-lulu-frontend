@@ -623,6 +623,12 @@ function Ventas() {
                   <span className="text-muted-foreground">Pago · </span>
                   {saleDetail.payment_method_label || saleDetail.payment_method}
                 </p>
+                {(saleDetail.payment_commission ?? 0) > 0 ? (
+                  <p>
+                    <span className="text-muted-foreground">Comisión del medio · </span>
+                    {cop(saleDetail.payment_commission ?? 0)}
+                  </p>
+                ) : null}
                 {saleDetail.invoice_number ? (
                   <p>
                     <span className="text-muted-foreground">Factura · </span>

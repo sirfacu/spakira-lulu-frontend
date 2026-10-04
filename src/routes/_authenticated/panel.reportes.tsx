@@ -851,6 +851,8 @@ function MesTab({ yearMonth, locationId }: { yearMonth: string; locationId: stri
   const insumos = costs?.insumos ?? sm?.materials_cost ?? 0;
   const profesionales = costs?.profesionales ?? sm?.labor_cost ?? 0;
   const fijos = includeFixed ? (costs?.fijos ?? d?.fixed_costs.total ?? 0) : 0;
+  const medios = costs?.medios ?? d?.payment_commissions?.total ?? 0;
+  const medioLines = d?.payment_commissions?.by_method ?? [];
   const extrasCost = costs?.adicionales_cost ?? sm?.extras_cost ?? 0;
   const extrasRev = sm?.extras_revenue ?? 0;
   const extrasMargin = sm?.extras_margin ?? 0;
@@ -859,6 +861,7 @@ function MesTab({ yearMonth, locationId }: { yearMonth: string; locationId: stri
     { name: "Insumos", value: insumos, fill: "var(--chart-1)" },
     { name: "Profesionales", value: profesionales, fill: "var(--chart-2)" },
     { name: "Gastos fijos", value: fijos, fill: "var(--chart-3)" },
+    { name: "Comisión de medios", value: medios, fill: "var(--chart-4)" },
   ].filter((s) => s.value > 0);
   const pieTotal = pie.reduce((a, s) => a + s.value, 0);
 
@@ -874,8 +877,8 @@ function MesTab({ yearMonth, locationId }: { yearMonth: string; locationId: stri
     <>
       <p className="text-xs text-muted-foreground">
         Cómo cierra el mes: cobrado en servicios − insumos − comisión de groomer = margen de citas.
-        Luego extras de vitrina, mostrador y gastos fijos (arriendo, día a día, servicios). El
-        prorrateo de fijos por cita es solo un indicador.
+        Luego extras de vitrina, mostrador, gastos fijos y la comisión que cobra el medio de pago.
+        El prorrateo de fijos por cita es solo un indicador.
       </p>
       {locationId ? (
         <p className="rounded-2xl border border-border bg-secondary/40 px-4 py-3 text-sm text-muted-foreground">
@@ -991,6 +994,25 @@ function MesTab({ yearMonth, locationId }: { yearMonth: string; locationId: stri
                   </ul>
                 </div>
               ) : null}
+              {medioLines.length ? (
+                <div className="mt-4 border-t border-border/60 pt-3">
+                  <p className="mb-2 text-xs font-medium text-foreground">
+                    Comisión por medio de pago
+                  </p>
+                  <ul className="space-y-2">
+                    {medioLines.map((ln) => (
+                      <li key={ln.code} className="flex justify-between gap-2 text-xs">
+                        <span className="truncate text-muted-foreground">
+                          {ln.label} · {ln.sales_count} cobro{ln.sales_count === 1 ? "" : "s"}
+                        </span>
+                        <span className="shrink-0 tabular-nums text-foreground">
+                          {cop(ln.commission)}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
             </SectionCard>
 
             <SectionCard title="Cuenta del mes">
@@ -1023,6 +1045,10 @@ function MesTab({ yearMonth, locationId }: { yearMonth: string; locationId: stri
               <PnlLine label="Gastos fijos" amount={fijos} kind="cost" />
               {fijoLines.map((ln) => (
                 <PnlLine key={ln.id} label={ln.label} amount={ln.amount} kind="cost" indent />
+              ))}
+              <PnlLine label="Comisión de medios" amount={medios} kind="cost" />
+              {medioLines.map((ln) => (
+                <PnlLine key={ln.code} label={ln.label} amount={ln.commission} kind="cost" indent />
               ))}
               <PnlLine label="Resultado operativo" amount={d.operating_result} kind="total" />
             </SectionCard>

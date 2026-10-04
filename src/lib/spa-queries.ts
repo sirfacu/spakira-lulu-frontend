@@ -351,6 +351,7 @@ export type Sale = {
   service_name?: string | null;
   payment_method_label?: string | null;
   payment_evidence_url?: string | null;
+  payment_commission?: number;
   owners?: Owner | null;
   staff?: Staff | null;
 };
@@ -360,6 +361,9 @@ export type PaymentMethod = {
   code: string;
   label: string;
   require_evidence: boolean;
+  charges_commission: boolean;
+  commission_percent: number;
+  commission_fixed: number;
   active: boolean;
   sort_order: number;
 };
@@ -756,6 +760,9 @@ export async function createPaymentMethod(input: {
   label: string;
   code?: string;
   require_evidence?: boolean;
+  charges_commission?: boolean;
+  commission_percent?: number;
+  commission_fixed?: number;
   active?: boolean;
   sort_order?: number;
 }) {
@@ -767,6 +774,9 @@ export async function patchPaymentMethod(
   input: {
     label?: string;
     require_evidence?: boolean;
+    charges_commission?: boolean;
+    commission_percent?: number;
+    commission_fixed?: number;
     active?: boolean;
     sort_order?: number;
   },
@@ -2648,6 +2658,16 @@ export type MonthFinanceSummary = {
     included_in_operating?: boolean;
   };
   operating_result: number;
+  payment_commissions?: {
+    total: number;
+    by_method: {
+      code: string;
+      label: string;
+      sales_count: number;
+      charged: number;
+      commission: number;
+    }[];
+  };
   indicators: {
     proration_fixed_per_appointment: number | null;
     breakeven_appointments: number | null;
@@ -2659,6 +2679,7 @@ export type MonthFinanceSummary = {
     profesionales: number;
     adicionales_cost: number;
     fijos: number;
+    medios?: number;
   };
 };
 
