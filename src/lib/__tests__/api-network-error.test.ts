@@ -17,6 +17,10 @@ describe("networkErrorMessage", () => {
     expect(networkErrorMessage("Failed to fetch", "localhost")).not.toMatch(/túnel/);
   });
 
+  it("trata el host de un cliente de prueba como local", () => {
+    expect(networkErrorMessage("Failed to fetch", "caribe.dev.spakira.co")).toMatch(/9001/);
+  });
+
   it("does not mention the tunnel on production", () => {
     const msg = networkErrorMessage("Failed to fetch", "spakira.e-mac.co");
     expect(msg).toMatch(/Recargá/);

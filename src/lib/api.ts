@@ -151,7 +151,11 @@ export function isLocalishHostname(hostname: string): boolean {
 
 /** Dev local con nombre bonito (Apache :80 o Vite :9000). Sigue usando JWT en localStorage. */
 export function isLocalDevHostname(hostname: string): boolean {
-  return isLocalishHostname(hostname) || hostname === "dev.spakira.co";
+  return (
+    isLocalishHostname(hostname) ||
+    hostname === "dev.spakira.co" ||
+    hostname.endsWith(".dev.spakira.co")
+  );
 }
 
 function usesSameHostApiPath(hostname: string, port: string): boolean {
@@ -178,7 +182,7 @@ export function networkErrorMessage(raw: string, hostname?: string): string {
   if (isTunnelHostname(host)) {
     return "No se pudo contactar la API. El cierre no debe ir por el túnel de Cloudflare; usá localhost:9000 en esta PC.";
   }
-  if (isLocalishHostname(host) || host === "dev.spakira.co") {
+  if (isLocalDevHostname(host)) {
     return "No se pudo contactar la API. ¿Está corriendo en el puerto 9001? Recargá e intentá de nuevo.";
   }
   return "No se pudo contactar la API. Recargá e intentá de nuevo. Si el servicio ya se cerró, revisá la agenda.";
