@@ -2,6 +2,7 @@ import { CalendarPlus, Clock } from "lucide-react";
 import { useNavigate } from "@tanstack/react-router";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
+import { BreedChargeQuote } from "@/components/breed-charge-quote";
 import { ServiceActivitiesList } from "@/components/service-activities-list";
 import {
   breedPriceDetailLabel,
@@ -27,6 +28,8 @@ type ServiceDetailDialogProps = {
   showAgendar?: boolean;
   breedHint?: BreedPriceHint | null;
   petSelected?: boolean;
+  /** Staff: tarifa de la raza, el mismo monto que sale en el correo al agendar. */
+  staffQuote?: boolean;
 };
 
 export function ServiceDetailDialog({
@@ -36,6 +39,7 @@ export function ServiceDetailDialog({
   showAgendar = false,
   breedHint = null,
   petSelected = false,
+  staffQuote = false,
 }: ServiceDetailDialogProps) {
   const navigate = useNavigate();
   if (!service) return null;
@@ -102,6 +106,12 @@ export function ServiceDetailDialog({
               <p className="mt-2 text-xs leading-relaxed text-muted-foreground">{note}</p>
             ) : null}
           </div>
+
+          {staffQuote ? (
+            <div className="mt-5">
+              <BreedChargeQuote />
+            </div>
+          ) : null}
 
           {service.activities?.length ? (
             <div className="mt-6">

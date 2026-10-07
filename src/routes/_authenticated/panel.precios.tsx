@@ -34,6 +34,7 @@ import {
   draftsToApiPayload,
   type ServiceMaterialDraft,
 } from "@/components/service-materials-editor";
+import { BreedChargeQuote } from "@/components/breed-charge-quote";
 import { ServiceCostByBreedPanel } from "@/components/service-cost-by-breed-panel";
 import { AntipulgasSettings } from "@/components/antipulgas-settings";
 import {
@@ -624,6 +625,8 @@ function Servicios() {
                   materialDrafts={materialDrafts}
                   includeAntipulgas={includeAntipulgas}
                 />
+
+                <BreedChargeQuote />
               </div>
             </div>
           </div>
@@ -853,6 +856,7 @@ function Servicios() {
         showAgendar={!!detailService && (perms.isCliente || perms.isColaborador)}
         breedHint={perms.isCliente ? breedHint.data : null}
         petSelected={perms.isCliente && !!selectedClientPet}
+        staffQuote={!perms.isCliente}
       />
 
       <ConfirmDialog
