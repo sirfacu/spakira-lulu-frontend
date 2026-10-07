@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   PENDING_SERVICE_PRICE_LABEL,
   appointmentShowsChargedPrice,
+  breedChargeQuoteLabel,
+  breedChargeValueLabel,
   isPendingCatalogPrice,
   servicePriceHeadline,
   servicePriceHeadlineForClient,
@@ -55,6 +57,14 @@ describe("service pricing visibility", () => {
         true,
       ),
     ).toBe("Validar en mostrador");
+  });
+
+  it("shows staff the breed value and keeps the range off the emailed amount", () => {
+    expect(breedChargeValueLabel({ price_min: 65000 })).toMatch(/65/);
+    expect(breedChargeValueLabel({ price_min: 65000 })).not.toMatch(/Desde/);
+    expect(breedChargeValueLabel({ price_min: 65000 })).not.toMatch(/80/);
+    expect(breedChargeQuoteLabel({ price_min: 65000, price_max: 80000 })).toMatch(/65/);
+    expect(breedChargeQuoteLabel({ price_min: 65000, price_max: 80000 })).toMatch(/80/);
   });
 
   it("hides charged price for clients until en proceso", () => {

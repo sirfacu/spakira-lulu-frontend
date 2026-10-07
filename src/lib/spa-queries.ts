@@ -1902,6 +1902,19 @@ export const materialRolesQuery = {
   queryFn: () => api<MaterialRole[]>("/material-roles"),
 };
 
+export type BreedPriceQuote = {
+  breed_id: string;
+  breed_name: string;
+  species: string;
+  price_min: number;
+  price_max: number | null;
+};
+
+export const breedPriceQuotesQuery = queryOptions({
+  queryKey: ["breed-price-quotes"],
+  queryFn: () => api<BreedPriceQuote[]>("/breed-price-quotes"),
+});
+
 export const breedBathProfilesQuery = {
   queryKey: ["breed-bath-profiles"],
   queryFn: () => api<BreedBathProfile[]>("/breed-bath-profiles"),

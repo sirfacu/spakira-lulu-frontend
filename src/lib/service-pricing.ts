@@ -71,6 +71,22 @@ export function servicePriceNote(
   return DEFAULT_PRICE_NOTE;
 }
 
+/** Monto de la raza que se guarda en la cita y se manda en el correo. */
+export function breedChargeValueLabel(
+  hint: Pick<BreedPriceHint, "price_min"> | null | undefined,
+): string | null {
+  if (hint?.price_min == null) return null;
+  return cop(hint.price_min);
+}
+
+/** Rango de la tarifa. Solo para el staff; no sale en el correo. */
+export function breedChargeQuoteLabel(
+  hint: Pick<BreedPriceHint, "price_min" | "price_max"> | null | undefined,
+): string | null {
+  if (hint?.price_min == null) return null;
+  return copRange(hint.price_min, hint.price_max ?? hint.price_min);
+}
+
 export function breedPriceHeadline(hint: BreedPriceHint | null | undefined): string | null {
   if (hint?.price_min == null) return null;
   return `Desde ${cop(hint.price_min)}`;
