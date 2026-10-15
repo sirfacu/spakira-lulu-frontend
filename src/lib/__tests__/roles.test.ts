@@ -16,6 +16,7 @@ import {
   isActiveSale,
   sortPanelNavPaths,
   canFilterVeterinaryAgenda,
+  canWriteClinicalNotes,
   veterinarySections,
 } from "../roles";
 
@@ -220,6 +221,13 @@ describe("roles", () => {
     ).toBe(true);
     expect(canFilterVeterinaryAgenda({ role: "admin", veterinary_enabled: true })).toBe(true);
     expect(canFilterVeterinaryAgenda({ role: "cliente", veterinary_enabled: true })).toBe(false);
+    expect(canWriteClinicalNotes({ role: "admin" })).toBe(true);
+    expect(
+      canWriteClinicalNotes({ role: "colaborador", veterinary_capabilities: ["vet.write"] }),
+    ).toBe(true);
+    expect(
+      canWriteClinicalNotes({ role: "colaborador", veterinary_capabilities: ["vet.exam"] }),
+    ).toBe(false);
     expect(canAccessPath("admin", "/panel/agenda")).toBe(true);
   });
 });

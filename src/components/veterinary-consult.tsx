@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useRouteContext } from "@tanstack/react-router";
 import { toast } from "sonner";
 import { AppShell } from "@/components/app-shell";
 import { Button } from "@/components/ui/button";
@@ -9,6 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Empty } from "@/components/ui-kit";
 import { api, resolveMediaUrl } from "@/lib/api";
 import { time } from "@/lib/format";
+import { canWriteClinicalNotes } from "@/lib/roles";
 
 type Consult = {
   id: string;
@@ -30,9 +32,33 @@ type Consult = {
   vet_name: string;
   starts_at: string;
   status: string;
+  clinical_temperature?: string | null;
+  clinical_heart_rate?: string | null;
+  clinical_resp_rate?: string | null;
+  clinical_mucous?: string | null;
+  clinical_body_condition?: string | null;
+  clinical_reason?: string | null;
+  clinical_diagnosis?: string | null;
+  clinical_treatment?: string | null;
 };
 
 const TABS = ["Consulta", "Exámenes", "Vacunas", "Historial"] as const;
+
+const VITAL_FIELDS = [
+  { key: "clinical_temperature", label: "Temperatura" },
+  { key: "clinical_heart_rate", label: "Frec. cardíaca" },
+  { key: "clinical_resp_rate", label: "Frec. respiratoria" },
+  { key: "clinical_mucous", label: "Mucosas" },
+  { key: "clinical_body_condition", label: "Condición corporal" },
+] as const;
+
+const NOTE_FIELDS = [
+  { key: "clinical_reason", label: "Motivo de la consulta" },
+  { key: "clinical_diagnosis", label: "Diagnóstico" },
+  { key: "clinical_treatment", label: "Tratamiento y fórmula" },
+] as const;
+
+type ClinicalKey = (typeof VITAL_FIELDS)[number]["key"] | (typeof NOTE_FIELDS)[number]["key"];
 
 export function VeterinaryConsults() {
   const query = useQuery({
@@ -41,7 +67,11 @@ export function VeterinaryConsults() {
   });
   const [openId, setOpenId] = useState<string | null>(null);
   const items = query.data?.items ?? [];
-  const open = items.find((item) => item.id === openId) ?? null;
+  const detail = useQuery({
+    queryKey: ["veterinary", "consult", openId],
+    enabled: Boolean(openId),
+    queryFn: () => api<Consult>(`/veterinary/consults/${openId}`),
+  });
 
   return (
     <AppShell title="Consultas">
@@ -49,8 +79,18 @@ export function VeterinaryConsults() {
         <Empty message="No tenés acceso a esta sección." />
       ) : query.isPending ? (
         <Empty message="Cargando." />
-      ) : open ? (
-        <ConsultSheet item={open} siblings={items} onBack={() => setOpenId(null)} />
+      ) : openId ? (
+        detail.isError ? (
+          <Empty message="No se pudo abrir esta consulta." />
+        ) : detail.isPending || !detail.data ? (
+          <Empty message="Cargando consulta." />
+        ) : (
+          <ConsultSheet
+            item={detail.data}
+            siblings={items}
+            onBack={() => setOpenId(null)}
+          />
+        )
       ) : items.length === 0 ? (
         <Empty message="Todavía no hay consultas." />
       ) : (
@@ -181,7 +221,7 @@ function ConsultSheet({
         ))}
       </div>
 
-      {tab === "Consulta" ? <ConsultTab /> : null}
+      {tab === "Consulta" ? <ConsultTab item={item} /> : null}
       {tab === "Exámenes" ? <ExamTab appointmentId={item.id} /> : null}
       {tab === "Vacunas" ? <VaccineTab appointmentId={item.id} weightKg={weight} /> : null}
       {tab === "Historial" ? (
@@ -205,26 +245,89 @@ function ConsultSheet({
   );
 }
 
-function ConsultTab() {
+function ConsultTab({ item }: { item: Consult }) {
+  const { user } = useRouteContext({ from: "/_authenticated" });
+  const canWrite = canWriteClinicalNotes(user);
+  const qc = useQueryClient();
+  const [fields, setFields] = useState<Record<ClinicalKey, string>>(() => clinicalState(item));
+
+  useEffect(() => {
+    setFields(clinicalState(item));
+  }, [item.id, item.clinical_reason, item.clinical_diagnosis, item.clinical_treatment,
+    item.clinical_temperature, item.clinical_heart_rate, item.clinical_resp_rate,
+    item.clinical_mucous, item.clinical_body_condition]);
+
+  const save = useMutation({
+    mutationFn: (patch: Partial<Record<ClinicalKey, string>>) =>
+      api(`/veterinary/consults/${item.id}/clinical`, {
+        method: "PATCH",
+        body: patch,
+      }),
+    onSuccess: async () => {
+      toast.success("Consulta guardada");
+      await qc.invalidateQueries({ queryKey: ["veterinary", "consult", item.id] });
+      await qc.invalidateQueries({ queryKey: ["veterinary", "consults"] });
+    },
+    onError: (error: Error) => toast.error(error.message),
+  });
+
+  const persist = (key: ClinicalKey) => {
+    if (!canWrite) return;
+    const next = fields[key].trim();
+    const previous = (item[key] ?? "").trim();
+    if (next === previous) return;
+    save.mutate({ [key]: next });
+  };
+
   return (
     <section className="card-soft space-y-4 p-5">
       <h3 className="text-sm font-semibold text-foreground">Consulta de hoy</h3>
+      {!canWrite ? (
+        <p className="text-xs text-muted-foreground">Solo lectura. El veterinario completa esta ficha.</p>
+      ) : null}
       <div className="grid gap-3 sm:grid-cols-5">
-        {["Temperatura", "Frec. cardíaca", "Frec. respiratoria", "Mucosas", "Condición corporal"].map((label) => (
-          <div key={label}>
-            <Label>{label}</Label>
-            <Input className="mt-1 h-11 rounded-xl" disabled />
+        {VITAL_FIELDS.map(({ key, label }) => (
+          <div key={key}>
+            <Label htmlFor={key}>{label}</Label>
+            <Input
+              id={key}
+              className="mt-1 h-11 rounded-xl"
+              value={fields[key]}
+              disabled={!canWrite}
+              onChange={(event) => setFields((current) => ({ ...current, [key]: event.target.value }))}
+              onBlur={() => persist(key)}
+            />
           </div>
         ))}
       </div>
-      {["Motivo de la consulta", "Diagnóstico", "Tratamiento y fórmula"].map((label) => (
-        <div key={label}>
-          <Label>{label}</Label>
-          <textarea className="mt-1 min-h-[72px] w-full rounded-xl border border-input bg-transparent px-3 py-2 text-sm" disabled />
+      {NOTE_FIELDS.map(({ key, label }) => (
+        <div key={key}>
+          <Label htmlFor={key}>{label}</Label>
+          <textarea
+            id={key}
+            className="mt-1 min-h-[72px] w-full rounded-xl border border-input bg-transparent px-3 py-2 text-sm disabled:opacity-60"
+            value={fields[key]}
+            disabled={!canWrite}
+            onChange={(event) => setFields((current) => ({ ...current, [key]: event.target.value }))}
+            onBlur={() => persist(key)}
+          />
         </div>
       ))}
     </section>
   );
+}
+
+function clinicalState(item: Consult): Record<ClinicalKey, string> {
+  return {
+    clinical_temperature: item.clinical_temperature ?? "",
+    clinical_heart_rate: item.clinical_heart_rate ?? "",
+    clinical_resp_rate: item.clinical_resp_rate ?? "",
+    clinical_mucous: item.clinical_mucous ?? "",
+    clinical_body_condition: item.clinical_body_condition ?? "",
+    clinical_reason: item.clinical_reason ?? "",
+    clinical_diagnosis: item.clinical_diagnosis ?? "",
+    clinical_treatment: item.clinical_treatment ?? "",
+  };
 }
 
 type ExamOrder = { id: string; exam_name: string; scheduled_at: string | null; status: string };

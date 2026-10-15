@@ -143,6 +143,22 @@ export function canFilterVeterinaryAgenda(
   return role === "admin" || role === "colaborador";
 }
 
+/** Admin o veterinario: escribe el texto clínico. El especialista solo lee. */
+export function canWriteClinicalNotes(
+  user:
+    | {
+        role?: string | null;
+        veterinary_capabilities?: string[];
+      }
+    | null
+    | undefined,
+) {
+  const role = normalizeRole(user?.role);
+  if (role === "admin") return true;
+  if (role !== "colaborador") return false;
+  return (user?.veterinary_capabilities ?? []).includes("vet.write");
+}
+
 export function veterinarySections(
   user:
     | {
