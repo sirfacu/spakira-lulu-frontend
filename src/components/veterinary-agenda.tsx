@@ -14,7 +14,11 @@ import {
 } from "@/components/ui/select";
 import { api, resolveMediaUrl } from "@/lib/api";
 import { initials, time } from "@/lib/format";
-import { petsQuery, type Pet } from "@/lib/spa-queries";
+import { getLocations, petsQuery, type Pet } from "@/lib/spa-queries";
+import {
+  pickWorkingLocation,
+  readWorkingLocationId,
+} from "@/lib/working-location";
 
 type VetAppointment = {
   id: string;
@@ -89,6 +93,11 @@ export function VeterinaryWeek({
     queryKey: ["veterinary", "vets"],
     queryFn: () => api<{ items: { id: string; full_name: string }[] }>("/veterinary/agenda/vets"),
   });
+  const locationsQ = useQuery({ queryKey: ["locations"], queryFn: getLocations });
+  const workingLocation = pickWorkingLocation(
+    (locationsQ.data?.items ?? []).filter((x) => x.active),
+    readWorkingLocationId(),
+  );
 
   const create = useMutation({
     mutationFn: () =>
@@ -99,6 +108,7 @@ export function VeterinaryWeek({
           service_id: serviceId,
           vet_user_id: vetId,
           starts_at: new Date(when).toISOString(),
+          location_id: workingLocation?.id,
         },
       }),
     onSuccess: async () => {

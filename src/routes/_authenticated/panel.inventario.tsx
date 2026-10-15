@@ -74,6 +74,7 @@ import {
   writeWorkingLocationId,
 } from "@/lib/working-location";
 import {
+  defaultDispenseMode,
   filterCategoryNamesByModule,
   filterInventoryByModule,
   type InventoryModuleFilter,
@@ -487,6 +488,11 @@ function Inventario() {
       const payload: Record<string, unknown> = {
         name: form.name.trim(),
         category: form.category.trim() || null,
+        module: inventoryModule,
+        dispense_mode:
+          inventoryModule === "veterinary"
+            ? defaultDispenseMode(form.category)
+            : null,
         barcode: form.barcode.trim() || null,
         staff_description: form.staff_description.trim() || null,
         sell_by_shoot: form.sell_by_shoot,

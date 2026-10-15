@@ -272,6 +272,8 @@ export type InventoryItem = {
   id: string;
   name: string;
   category: string | null;
+  module?: string | null;
+  dispense_mode?: string | null;
   sku?: string | null;
   barcode?: string | null;
   photo_url: string | null;
@@ -2157,6 +2159,8 @@ export async function updateInventoryQuantity(id: string, quantity: number) {
 export async function createInventoryItem(body: {
   name: string;
   category?: string | null;
+  module?: string | null;
+  dispense_mode?: string | null;
   sku?: string | null;
   barcode?: string | null;
   quantity?: number;
@@ -2189,6 +2193,8 @@ export async function patchInventoryItem(
   body: Partial<{
     name: string;
     category: string | null;
+    module: string | null;
+    dispense_mode: string | null;
     sku: string | null;
     barcode: string | null;
     min_stock: number;

@@ -10,7 +10,16 @@ import { Label } from "@/components/ui/label";
 import { Empty } from "@/components/ui-kit";
 import { api, resolveMediaUrl } from "@/lib/api";
 import { time } from "@/lib/format";
+import {
+  defaultDispenseMode,
+  stockQtyForDispense,
+} from "@/lib/inventory-module";
 import { canWriteClinicalNotes } from "@/lib/roles";
+import {
+  pickWorkingLocation,
+  readWorkingLocationId,
+} from "@/lib/working-location";
+import { getLocations } from "@/lib/spa-queries";
 
 type Consult = {
   id: string;
@@ -223,7 +232,9 @@ function ConsultSheet({
 
       {tab === "Consulta" ? <ConsultTab item={item} /> : null}
       {tab === "Exámenes" ? <ExamTab appointmentId={item.id} /> : null}
-      {tab === "Vacunas" ? <VaccineTab appointmentId={item.id} weightKg={weight} /> : null}
+      {tab === "Vacunas" ? (
+        <VaccineTab appointmentId={item.id} weightKg={weight} />
+      ) : null}
       {tab === "Historial" ? (
         history.length === 0 ? (
           <Empty message="No hay otras citas veterinarias de esta mascota." />
@@ -331,10 +342,27 @@ function clinicalState(item: Consult): Record<ClinicalKey, string> {
 }
 
 type ExamOrder = { id: string; exam_name: string; scheduled_at: string | null; status: string };
-type Supply = { id: string; name: string; category: string; quantity: number };
+type Supply = {
+  id: string;
+  name: string;
+  category: string;
+  quantity: number;
+  module?: string | null;
+  dispense_mode?: string | null;
+  unit_kind?: string | null;
+  pack_size?: number | null;
+};
 
 type CatalogItem = { id: string; name: string };
-type ConsultSupply = { id: string; name: string; inventory_item_id: string | null };
+type ConsultSupply = {
+  id: string;
+  name: string;
+  inventory_item_id: string | null;
+  qty_applied?: number | null;
+  qty_stock?: number | null;
+  dispense_mode?: string | null;
+  location_id?: string | null;
+};
 
 const OTHER_EXAM = "__other__";
 
@@ -459,12 +487,27 @@ function ExamTab({ appointmentId }: { appointmentId: string }) {
 }
 
 function VaccineTab({ appointmentId, weightKg }: { appointmentId: string; weightKg: string }) {
+  const { user } = useRouteContext({ from: "/_authenticated" });
+  const canApply = canWriteClinicalNotes(user);
   const qc = useQueryClient();
   const [extra, setExtra] = useState("");
   const [custom, setCustom] = useState(false);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [qtyApplied, setQtyApplied] = useState("1");
+  const locationsQ = useQuery({ queryKey: ["locations"], queryFn: getLocations });
+  const workingLocation = pickWorkingLocation(
+    (locationsQ.data?.items ?? []).filter((x) => x.active),
+    readWorkingLocationId(),
+  );
+  const locationId = workingLocation?.id || "";
   const supplies = useQuery({
-    queryKey: ["veterinary", "supplies"],
-    queryFn: () => api<{ items: Supply[] }>("/veterinary/supplies"),
+    queryKey: ["veterinary", "supplies", locationId],
+    queryFn: () =>
+      api<{ items: Supply[] }>(
+        locationId
+          ? `/veterinary/supplies?location_id=${encodeURIComponent(locationId)}`
+          : "/veterinary/supplies",
+      ),
   });
   const catalog = useQuery({
     queryKey: ["veterinary", "catalog", "vaccine"],
@@ -475,51 +518,149 @@ function VaccineTab({ appointmentId, weightKg }: { appointmentId: string; weight
     queryFn: () => api<{ items: ConsultSupply[] }>(`/veterinary/consults/${appointmentId}/supplies`),
   });
   const add = useMutation({
-    mutationFn: (body: { name: string; inventory_item_id?: string }) =>
-      api(`/veterinary/consults/${appointmentId}/supplies`, { method: "POST", body }),
+    mutationFn: (body: {
+      name: string;
+      inventory_item_id?: string;
+      qty_applied?: number;
+      location_id?: string;
+    }) => api(`/veterinary/consults/${appointmentId}/supplies`, { method: "POST", body }),
     onSuccess: async () => {
       setExtra("");
       setCustom(false);
+      setSelectedId(null);
+      setQtyApplied("1");
+      toast.success("Insumo aplicado");
       await qc.invalidateQueries({ queryKey: ["veterinary", "consult-supplies", appointmentId] });
+      await qc.invalidateQueries({ queryKey: ["veterinary", "supplies"] });
+      await qc.invalidateQueries({ queryKey: ["inventory"] });
     },
     onError: (error: Error) => toast.error(error.message),
   });
-  const stock = (supplies.data?.items ?? []).filter((item) => {
-    const category = item.category.trim().toLowerCase();
-    return category === "vacuna" || category === "desparasitante";
-  });
-  const names = new Set((saved.data?.items ?? []).map((item) => item.name));
+  const stock = supplies.data?.items ?? [];
+  const selected = stock.find((item) => item.id === selectedId) ?? null;
+  const mode = selected
+    ? (selected.dispense_mode || defaultDispenseMode(selected.category)).toLowerCase()
+    : "content";
+  const appliedNum = Number(qtyApplied) || 0;
+  const stockPreview = selected
+    ? stockQtyForDispense({
+        dispense_mode: mode,
+        unit_kind: selected.unit_kind,
+        pack_size: selected.pack_size,
+        qty_applied: appliedNum > 0 ? appliedNum : 1,
+      })
+    : 0;
+  const applied = saved.data?.items ?? [];
+
   return (
     <section className="card-soft space-y-4 p-5">
       <p className="text-sm text-foreground">Peso {weightKg.trim() || "sin registro"} kg</p>
+      {workingLocation ? (
+        <p className="text-xs text-muted-foreground">Stock de {workingLocation.name}</p>
+      ) : null}
+      {!canApply ? (
+        <p className="text-xs text-muted-foreground">Solo el veterinario aplica insumos con descuento de stock.</p>
+      ) : null}
+
+      {applied.length ? (
+        <div>
+          <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Aplicados</h4>
+          <ul className="mt-2 grid gap-2">
+            {applied.map((row) => (
+              <li key={row.id} className="rounded-2xl bg-secondary/60 px-4 py-3 text-sm">
+                <span className="font-medium text-foreground">{row.name}</span>
+                <span className="mt-0.5 block text-xs text-muted-foreground">
+                  {row.qty_applied != null ? `Aplicado ${row.qty_applied}` : "Sin stock"}
+                  {row.qty_stock != null ? ` · Kardex −${row.qty_stock}` : ""}
+                  {row.dispense_mode === "whole_pack" ? " · frasco completo" : ""}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+
       <ul className="grid gap-2">
-        {stock.map((item) => (
-          <li key={item.id}>
-            <button
-              type="button"
-              className="flex w-full items-center justify-between rounded-2xl bg-secondary/60 px-4 py-3 text-left text-sm"
-              disabled={names.has(item.name) || add.isPending}
-              onClick={() => add.mutate({ name: item.name, inventory_item_id: item.id })}
-            >
-              <span>{item.name}</span>
-              <span className="text-muted-foreground">{names.has(item.name) ? "En la consulta" : item.category}</span>
-            </button>
-          </li>
-        ))}
-        {(catalog.data?.items ?? []).filter((item) => !stock.some((row) => row.name === item.name)).map((item) => (
-          <li key={item.id}>
-            <button
-              type="button"
-              className="flex w-full items-center justify-between rounded-2xl bg-secondary/60 px-4 py-3 text-left text-sm"
-              disabled={names.has(item.name) || add.isPending}
-              onClick={() => add.mutate({ name: item.name })}
-            >
-              <span>{item.name}</span>
-              <span className="text-muted-foreground">{names.has(item.name) ? "En la consulta" : "Vacuna"}</span>
-            </button>
-          </li>
-        ))}
+        {stock.map((item) => {
+          const itemMode = (item.dispense_mode || defaultDispenseMode(item.category)).toLowerCase();
+          return (
+            <li key={item.id}>
+              <button
+                type="button"
+                className={`flex w-full items-center justify-between rounded-2xl px-4 py-3 text-left text-sm ${
+                  selectedId === item.id ? "bg-accent/20 ring-1 ring-accent/40" : "bg-secondary/60"
+                }`}
+                disabled={!canApply || add.isPending || item.quantity <= 0}
+                onClick={() => {
+                  setSelectedId(item.id);
+                  setQtyApplied(itemMode === "whole_pack" ? String(item.pack_size || 1) : "1");
+                }}
+              >
+                <span>
+                  <span className="block font-medium">{item.name}</span>
+                  <span className="text-xs text-muted-foreground">
+                    {item.category}
+                    {itemMode === "whole_pack" ? " · frasco completo" : ""}
+                  </span>
+                </span>
+                <span className="text-muted-foreground">Stock {item.quantity}</span>
+              </button>
+            </li>
+          );
+        })}
+        {(catalog.data?.items ?? [])
+          .filter((item) => !stock.some((row) => row.name === item.name))
+          .map((item) => (
+            <li key={item.id}>
+              <button
+                type="button"
+                className="flex w-full items-center justify-between rounded-2xl bg-secondary/60 px-4 py-3 text-left text-sm"
+                disabled={!canApply || add.isPending}
+                onClick={() => add.mutate({ name: item.name })}
+              >
+                <span>{item.name}</span>
+                <span className="text-muted-foreground">Solo anotar</span>
+              </button>
+            </li>
+          ))}
       </ul>
+
+      {selected && canApply ? (
+        <div className="rounded-2xl border border-border/70 p-4 space-y-3">
+          <p className="text-sm font-medium text-foreground">Aplicar {selected.name}</p>
+          {mode === "whole_pack" ? (
+            <p className="text-xs text-muted-foreground">
+              Este producto descuenta el frasco completo ({stockPreview} en kardex), aunque indiques menos.
+            </p>
+          ) : null}
+          <div>
+            <Label htmlFor="supply-qty">Cantidad aplicada</Label>
+            <Input
+              id="supply-qty"
+              className="mt-1 h-11 rounded-xl"
+              inputMode="decimal"
+              value={qtyApplied}
+              onChange={(event) => setQtyApplied(event.target.value)}
+            />
+          </div>
+          <Button
+            type="button"
+            className="rounded-xl"
+            disabled={add.isPending || !(appliedNum > 0)}
+            onClick={() =>
+              add.mutate({
+                name: selected.name,
+                inventory_item_id: selected.id,
+                qty_applied: appliedNum,
+                location_id: locationId || undefined,
+              })
+            }
+          >
+            Aplicar y descontar stock
+          </Button>
+        </div>
+      ) : null}
+
       {custom ? (
         <form
           className="flex gap-2"
@@ -534,12 +675,18 @@ function VaccineTab({ appointmentId, weightKg }: { appointmentId: string; weight
             autoFocus
             onChange={(event) => setExtra(event.target.value)}
           />
-          <Button type="submit" className="rounded-xl" disabled={add.isPending || !extra.trim()}>
-            Agregar
+          <Button type="submit" className="rounded-xl" disabled={add.isPending || !extra.trim() || !canApply}>
+            Anotar
           </Button>
         </form>
       ) : (
-        <Button type="button" variant="outline" className="rounded-xl" onClick={() => setCustom(true)}>
+        <Button
+          type="button"
+          variant="outline"
+          className="rounded-xl"
+          disabled={!canApply}
+          onClick={() => setCustom(true)}
+        >
           Indique la vacuna…
         </Button>
       )}

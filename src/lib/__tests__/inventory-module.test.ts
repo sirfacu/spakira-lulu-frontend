@@ -1,9 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
+  defaultDispenseMode,
   filterCategoryNamesByModule,
   filterInventoryByModule,
   isVetInventoryCategory,
   itemMatchesInventoryModule,
+  resolveInventoryModule,
+  stockQtyForDispense,
 } from "../inventory-module";
 
 describe("inventory module filter", () => {
@@ -15,11 +18,19 @@ describe("inventory module filter", () => {
     expect(isVetInventoryCategory("Salud")).toBe(false);
   });
 
+  it("prefers explicit module over category", () => {
+    expect(resolveInventoryModule({ module: "spa", category: "Vacuna" })).toBe("spa");
+    expect(resolveInventoryModule({ module: "veterinary", category: "Shampoo" })).toBe(
+      "veterinary",
+    );
+    expect(resolveInventoryModule({ category: "Vacuna" })).toBe("veterinary");
+  });
+
   it("splits spa stock from veterinary stock", () => {
     const rows = [
-      { name: "Hydra", category: "Shampoo" },
-      { name: "Rabia", category: "Vacuna" },
-      { name: "Pipeta", category: "Desparasitante" },
+      { name: "Hydra", category: "Shampoo", module: "spa" },
+      { name: "Rabia", category: "Vacuna", module: "veterinary" },
+      { name: "Pipeta", category: "Desparasitante", module: "veterinary" },
     ];
     expect(filterInventoryByModule(rows, "spa").map((r) => r.name)).toEqual(["Hydra"]);
     expect(filterInventoryByModule(rows, "veterinary").map((r) => r.name)).toEqual([
@@ -35,7 +46,28 @@ describe("inventory module filter", () => {
       "Vacuna",
       "Medicamento",
     ]);
-    expect(itemMatchesInventoryModule(null, "spa")).toBe(true);
-    expect(itemMatchesInventoryModule(null, "veterinary")).toBe(false);
+    expect(itemMatchesInventoryModule({ category: null }, "spa")).toBe(true);
+    expect(itemMatchesInventoryModule({ category: null }, "veterinary")).toBe(false);
+  });
+
+  it("computes kardex qty for content vs whole_pack", () => {
+    expect(defaultDispenseMode("Vacuna")).toBe("whole_pack");
+    expect(defaultDispenseMode("Medicamento")).toBe("content");
+    expect(
+      stockQtyForDispense({
+        dispense_mode: "content",
+        unit_kind: "ml",
+        pack_size: 150,
+        qty_applied: 30,
+      }),
+    ).toBe(30);
+    expect(
+      stockQtyForDispense({
+        dispense_mode: "whole_pack",
+        unit_kind: "ml",
+        pack_size: 150,
+        qty_applied: 30,
+      }),
+    ).toBe(150);
   });
 });

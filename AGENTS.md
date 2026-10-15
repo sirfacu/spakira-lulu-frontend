@@ -36,7 +36,9 @@ Usuarios locales de prueba:
 
 **Auth:** Admin y Staff solo locales (invitar / correo+clave). Google solo entra o registra como `cliente`.
 
-Contexto de roles/módulos, ver vs editar, staff↔cliente y comandos locales: `docs/contexto-roles-permisos.md`.
+Contexto de roles/módulos, ver vs editar, staff↔cliente y comandos locales: `docs/contexto-roles-permisos.md` (backend).
+
+**Integración spa / veterinaria / hotel:** todo diseño declara módulo dueño. Inventario filtra por `module`; no mezclar stock clínico con baño. Contrato en `odd/tasks/vet-inventario-modulo.md` (workspace kirajiro).
 
 Si el proyecto sigue vinculado en lovable.dev, desconectalo desde su UI
 (ver `docs/legacy-supabase-lovable/DISCONNECT_LOVABLE.md`).
