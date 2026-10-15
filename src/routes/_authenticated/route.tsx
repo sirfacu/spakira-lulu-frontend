@@ -1,5 +1,6 @@
 import { createFileRoute, Outlet, redirect } from "@tanstack/react-router";
 import { fetchMe, logout, mayHaveSession } from "@/lib/api";
+import { shouldRethrowAuthGuardError } from "@/lib/auth-route-guard";
 import { homeForRole, permissionsFor } from "@/lib/roles";
 
 export const Route = createFileRoute("/_authenticated")({
@@ -35,8 +36,7 @@ export const Route = createFileRoute("/_authenticated")({
       }
       return { user };
     } catch (err) {
-      if (err && typeof err === "object" && "to" in err) throw err;
-      if (err && typeof err === "object" && "href" in err) throw err;
+      if (shouldRethrowAuthGuardError(err)) throw err;
       logout();
       throw redirect({
         to: "/auth",

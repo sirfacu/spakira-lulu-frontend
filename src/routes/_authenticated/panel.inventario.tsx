@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { createFileRoute, useRouteContext } from "@tanstack/react-router";
+import { createFileRoute, useNavigate, useRouteContext, useSearch } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
@@ -73,9 +73,17 @@ import {
   readWorkingLocationId,
   writeWorkingLocationId,
 } from "@/lib/working-location";
+import {
+  filterCategoryNamesByModule,
+  filterInventoryByModule,
+  type InventoryModuleFilter,
+} from "@/lib/inventory-module";
 
 export const Route = createFileRoute("/_authenticated/panel/inventario")({
   beforeLoad: requirePathAccess("/panel/inventario"),
+  validateSearch: (s: Record<string, unknown>) => ({
+    modulo: s.modulo === "veterinary" ? ("veterinary" as const) : undefined,
+  }),
   head: () => ({
     meta: [
       { title: "Inventario | Spa Kira" },
@@ -100,6 +108,9 @@ const PREFERRED_CATEGORY_ORDER = [
   "Salud",
   "Alimentos",
   "Accesorios",
+  "Vacuna",
+  "Desparasitante",
+  "Medicamento",
 ];
 
 const CHANNEL_OPTIONS = ["interno", "interno_externo", "externo"] as const;
@@ -125,7 +136,7 @@ type ItemForm = {
   consumption_mode: string;
 };
 
-const emptyForm = (): ItemForm => ({
+const emptyForm = (overrides?: Partial<ItemForm>): ItemForm => ({
   name: "",
   category: "",
   barcode: "",
@@ -143,6 +154,7 @@ const emptyForm = (): ItemForm => ({
   dilution_water: "10",
   wear_every_n_uses: "",
   consumption_mode: "",
+  ...overrides,
 });
 
 /** Cantidad de presentación (envases / packs / piezas) según unit_kind. */
@@ -312,7 +324,12 @@ function isDosificacionCategory(category: string): boolean {
 
 function Inventario() {
   const { user } = useRouteContext({ from: "/_authenticated" });
+  const navigate = useNavigate({ from: "/_authenticated/panel/inventario" });
+  const search = useSearch({ from: "/_authenticated/panel/inventario" });
   const canSeeInventoryValue = permissionsFor(user?.role).isAdmin;
+  const vetInventoryOn = Boolean(user?.veterinary_enabled);
+  const inventoryModule: InventoryModuleFilter =
+    vetInventoryOn && search.modulo === "veterinary" ? "veterinary" : "spa";
   const qc = useQueryClient();
   const locationsQ = useQuery({ queryKey: ["locations"], queryFn: getLocations });
   const activeLocations = (locationsQ.data?.items ?? []).filter((x) => x.active);
@@ -354,7 +371,12 @@ function Inventario() {
     setMovePage(0);
   }, [selectedId]);
 
-  const catalog = inv.data ?? [];
+  useEffect(() => {
+    setEditing(null);
+    setQ("");
+  }, [inventoryModule]);
+
+  const catalog = filterInventoryByModule(inv.data ?? [], inventoryModule);
   const items = catalog.filter((i) => {
     const hay = `${i.name} ${i.category ?? ""}`.toLowerCase().includes(q.toLowerCase());
     if (!hay) return false;
@@ -375,7 +397,10 @@ function Inventario() {
     const exp = nextExpiry(i);
     return exp && Number(i.quantity) > 0 && new Date(exp) <= soon;
   });
-  const totalValue = invSummary.data?.total_cost_value ?? 0;
+  const totalValue =
+    inventoryModule === "veterinary"
+      ? scoped.reduce((sum, item) => sum + inventoryLineValue(item), 0)
+      : (invSummary.data?.total_cost_value ?? 0);
   const nameNeedle = form.name.trim().toLowerCase();
   const nameSuggestions =
     editing === "new" && nameSuggestOpen && nameNeedle.length >= 2
@@ -419,10 +444,15 @@ function Inventario() {
   };
 
   const categoryOptions = useMemo(() => {
-    const names = new Set((cats.data ?? []).map((c) => c.name));
+    const names = new Set(
+      filterCategoryNamesByModule(
+        (cats.data ?? []).map((c) => c.name),
+        inventoryModule,
+      ),
+    );
     if (form.category && !names.has(form.category)) names.add(form.category);
     return orderCategories([...names]);
-  }, [cats.data, form.category]);
+  }, [cats.data, form.category, inventoryModule]);
 
   const showDosificacion = isDosificacionCategory(form.category) || form.sell_by_shoot;
   const shoppable = isShoppable(form.channel);
@@ -641,11 +671,15 @@ function Inventario() {
 
   return (
     <AppShell
-      title="Inventario"
+      title={inventoryModule === "veterinary" ? "Inventario clínico" : "Inventario"}
       subtitle={
         workingLocation
-          ? `Stock de ${workingLocation.name} · el catálogo es el mismo en todas las sedes`
-          : `${items.length} productos · historial de existencias`
+          ? inventoryModule === "veterinary"
+            ? `Vacunas, desparasitantes y medicamentos en ${workingLocation.name}`
+            : `Stock de ${workingLocation.name} · el catálogo es el mismo en todas las sedes`
+          : inventoryModule === "veterinary"
+            ? `${items.length} productos clínicos`
+            : `${items.length} productos · historial de existencias`
       }
     >
       <WorkingLocationBar
@@ -657,11 +691,46 @@ function Inventario() {
           setEditing(null);
         }}
       />
+      {vetInventoryOn ? (
+        <div className="mb-3 flex flex-wrap gap-2">
+          {(
+            [
+              ["spa", "Spa"],
+              ["veterinary", "Veterinaria"],
+            ] as const
+          ).map(([id, label]) => {
+            const active = inventoryModule === id;
+            return (
+              <button
+                key={id}
+                type="button"
+                className={`rounded-full border px-3 py-1 text-xs ${
+                  active
+                    ? "border-accent bg-accent/15"
+                    : "border-border text-muted-foreground"
+                }`}
+                onClick={() =>
+                  void navigate({
+                    to: "/panel/inventario",
+                    search: { modulo: id === "spa" ? undefined : id },
+                  })
+                }
+              >
+                {label}
+              </button>
+            );
+          })}
+        </div>
+      ) : null}
       <div className="mb-4 flex justify-end">
         <Button
           className="rounded-xl"
           onClick={() => {
-            setForm(emptyForm());
+            setForm(
+              emptyForm(
+                inventoryModule === "veterinary" ? { category: "Vacuna" } : undefined,
+              ),
+            );
             setShowNewCategory(false);
             setNameSuggestOpen(true);
             setEditing("new");

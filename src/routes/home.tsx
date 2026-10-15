@@ -396,11 +396,16 @@ function Landing() {
                       >
                         Leer más
                       </Button>
-                      {s.category === "veterinary" ? null : me.data && !staff ? (
+                      {s.category === "veterinary" ? null : mayHaveSession() && !staff ? (
                         <Button asChild className="h-10 w-full rounded-xl">
                           <Link
                             to="/panel/agenda"
-                            search={{ service: s.id, google: undefined }}
+                            search={{
+                              service: s.id,
+                              google: undefined,
+                              pet: undefined,
+                              modulo: undefined,
+                            }}
                           >
                             Agendar
                           </Link>

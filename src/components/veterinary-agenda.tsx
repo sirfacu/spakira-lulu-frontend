@@ -287,7 +287,9 @@ export function VeterinaryWeek({
             create.mutate();
           }}
         >
-          <h3 className="font-display text-lg font-bold text-primary sm:col-span-2">Nueva cita</h3>
+          <h3 className="font-display text-lg font-bold text-primary sm:col-span-2">
+            Nueva cita veterinaria
+          </h3>
           <div>
             <Label htmlFor="vet-pet">Mascota</Label>
             <select

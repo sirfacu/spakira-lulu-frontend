@@ -92,6 +92,10 @@ import {
 import { canonicalizeStaffRole, isAdminStaffJob } from "@/lib/staff-roles";
 import { ClientAgenda } from "@/components/client-agenda";
 import { VeterinaryWeek } from "@/components/veterinary-agenda";
+import {
+  agendaCreateKind,
+  agendaSearchPreserveModulo,
+} from "@/lib/agenda-create-kind";
 import { FinishAppointmentDialog } from "@/components/finish-appointment-dialog";
 import { MaterialEstimatePanel } from "@/components/material-estimate-panel";
 import { CommercialAddonRequest } from "@/components/commercial-addon-request";
@@ -653,14 +657,21 @@ function StaffAgenda() {
     setOpenForm(true);
     void navigate({
       to: "/panel/agenda",
-      search: { google: search.google, service: search.service, pet: undefined },
+      search: agendaSearchPreserveModulo({
+        google: search.google,
+        service: search.service,
+        pet: undefined,
+        modulo: search.modulo,
+      }),
       replace: true,
     });
-  }, [search.pet, search.google, search.service, navigate]);
+  }, [search.pet, search.google, search.service, search.modulo, navigate]);
 
   useEffect(() => {
     const sid = search.service;
     if (!sid) return;
+    // Deep-link de baño del home: no abrir el formulario spa encima del chip Veterinaria.
+    if (search.modulo === "veterinary") return;
     let cancelled = false;
     setServiceId(sid);
     setOpenForm(true);
@@ -690,7 +701,12 @@ function StaffAgenda() {
           // Usar fullPath /panel/agenda (nunca el id /_authenticated/...), o la URL queda rota.
           void navigate({
             to: "/panel/agenda",
-            search: { google: search.google, service: undefined },
+            search: agendaSearchPreserveModulo({
+              google: search.google,
+              service: undefined,
+              pet: search.pet,
+              modulo: search.modulo,
+            }),
             replace: true,
           });
         }
@@ -699,7 +715,11 @@ function StaffAgenda() {
     return () => {
       cancelled = true;
     };
-  }, [search.service, search.google, navigate]);
+  }, [search.service, search.google, search.pet, search.modulo, navigate, formLocationId]);
+
+  useEffect(() => {
+    if (search.modulo === "veterinary") setOpenForm(false);
+  }, [search.modulo]);
 
   const persistLocalExtras = async (appointmentId: string) => {
     const savedIds = new Set(extrasSaved.map((e) => e.id));
@@ -1134,9 +1154,14 @@ function StaffAgenda() {
       actions={
         <Button
           className="h-10 rounded-xl"
-          onClick={() => (showingVet ? setVetCreate((current) => current + 1) : openNewAppointment())}
+          onClick={() =>
+            agendaCreateKind(search.modulo) === "veterinary"
+              ? setVetCreate((current) => current + 1)
+              : openNewAppointment()
+          }
         >
-          <Plus className="mr-2 h-4 w-4" /> Nueva cita
+          <Plus className="mr-2 h-4 w-4" />
+          {showingVet ? "Nueva cita veterinaria" : "Nueva cita"}
         </Button>
       }
     >
@@ -1238,7 +1263,8 @@ function StaffAgenda() {
                     to: "/panel/agenda",
                     search: {
                       google: search.google,
-                      service: search.service,
+                      // Deep-link de baño no debe quedar pegado al chip Veterinaria.
+                      service: id === "veterinary" ? undefined : search.service,
                       pet: search.pet,
                       modulo: id === "spa" ? undefined : id,
                     },
