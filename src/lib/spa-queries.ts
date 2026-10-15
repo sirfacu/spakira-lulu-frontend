@@ -117,6 +117,7 @@ export type Staff = {
   hired_at?: string | null;
   skills?: string[];
   user_id?: string | null;
+  attends_spa?: boolean;
   location_ids?: string[];
   home_location_id?: string | null;
 };
@@ -216,6 +217,7 @@ export type Service = {
   client_inclusion_note?: string | null;
   uses_medicated?: boolean;
   uses_colorimetry?: boolean;
+  category?: "spa" | "veterinary" | string;
 };
 
 export type ServiceActivityCatalogItem = {
@@ -381,6 +383,7 @@ export type AppUser = {
   modules?: string[];
   modules_custom?: boolean;
   modules_inherited?: string[];
+  veterinary_capabilities?: string[];
   location_ids?: string[];
   locations_all?: boolean;
 };
@@ -1365,6 +1368,13 @@ export async function saveUserModules(
   }>(`/auth/users/${userId}/modules`, { method: "PUT", body: input });
 }
 
+export async function saveVeterinaryCapabilities(userId: string, capabilities: string[]) {
+  return api<{ user_id: string; veterinary_capabilities: string[] }>(
+    `/auth/users/${userId}/veterinary-capabilities`,
+    { method: "PUT", body: { capabilities } },
+  );
+}
+
 export async function createSale(input: {
   owner_id: string | null;
   staff_id: string | null;
@@ -1778,6 +1788,7 @@ export async function upsertService(
       activities: input.activities ?? [],
       uses_medicated: Boolean(input.uses_medicated),
       uses_colorimetry: Boolean(input.uses_colorimetry),
+      category: input.category ?? "spa",
     },
   });
 }

@@ -18,11 +18,13 @@ import {
   LogOut,
   Bell,
   Shield,
+  Stethoscope,
+  ChevronDown,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { BrandMark, PawIcon } from "@/components/brand";
 import { logout as apiLogout, resolveMediaUrl } from "@/lib/api";
-import { canAccessPath, normalizeRole, panelNavLabel, sortPanelNavPaths } from "@/lib/roles";
+import { canAccessPath, normalizeRole, panelNavLabel, sortPanelNavPaths, veterinarySections } from "@/lib/roles";
 import { markNotificationsRead, notificationsQuery, getBusinessSettings } from "@/lib/spa-queries";
 import { initials, shortDate, time } from "@/lib/format";
 import { EmacCredit } from "@/components/emac-credit";
@@ -41,6 +43,55 @@ const NAV = [
   { to: "/panel/configuracion", label: "Configuración", icon: Settings },
   { to: "/panel/permisos", label: "Roles y permisos", icon: Shield },
 ] as const;
+
+function VeterinaryNav({
+  sections,
+  pathname,
+  onNavigate,
+}: {
+  sections: { path: string; label: string }[];
+  pathname: string;
+  onNavigate: () => void;
+}) {
+  const here = sections.some((section) => pathname === section.path);
+  const [expanded, setExpanded] = useState(here);
+  useEffect(() => {
+    if (here) setExpanded(true);
+  }, [here]);
+  if (!sections.length) return null;
+  return (
+    <div className="pt-1">
+      <button
+        type="button"
+        className="flex w-full items-center gap-3 rounded-xl px-3.5 py-2.5 text-left text-sm font-medium text-sidebar-foreground hover:bg-sidebar-accent"
+        aria-expanded={expanded}
+        onClick={() => setExpanded((value) => !value)}
+      >
+        <Stethoscope className="h-[18px] w-[18px] shrink-0" />
+        <span className="truncate">Veterinaria</span>
+        <ChevronDown className={cn("ml-auto h-4 w-4 shrink-0 transition-transform", expanded && "rotate-180")} />
+      </button>
+      {expanded ? sections.map((section) => {
+        const active = pathname === section.path;
+        return (
+          <Link
+            key={section.path}
+            to={section.path}
+            onClick={onNavigate}
+            className={cn(
+              "flex items-center rounded-xl py-2 pl-11 pr-3.5 text-sm font-medium transition-all duration-200",
+              active
+                ? "bg-primary text-primary-foreground shadow-soft"
+                : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+            )}
+          >
+            <span className="truncate">{section.label}</span>
+          </Link>
+        );
+      }) : null}
+    </div>
+  );
+}
 
 export function AppShell({
   title,
@@ -75,6 +126,7 @@ export function AppShell({
     if (!item) return [];
     return [{ ...item, label: panelNavLabel(item.to, role) }];
   });
+  const vetSections = veterinarySections(user);
   const qc = useQueryClient();
   const notifs = useQuery(notificationsQuery);
   const business = useQuery({
@@ -162,22 +214,27 @@ export function AppShell({
             const active =
               item.to === "/panel" ? pathname === "/panel" : pathname.startsWith(item.to);
             return (
-              <Link
-                key={item.to}
-                to={item.to}
-                onClick={() => setOpen(false)}
-                className={cn(
-                  "group flex items-center gap-3 rounded-xl px-3.5 py-2.5 text-sm font-medium transition-all duration-200",
-                  active
-                    ? "bg-primary text-primary-foreground shadow-soft"
-                    : "text-sidebar-foreground hover:translate-x-0.5 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
-                )}
-              >
-                <item.icon className="h-[18px] w-[18px] shrink-0" />
-                <span className="truncate">{item.label}</span>
-              </Link>
+              <div key={item.to}>
+                <Link
+                  to={item.to}
+                  onClick={() => setOpen(false)}
+                  className={cn(
+                    "group flex items-center gap-3 rounded-xl px-3.5 py-2.5 text-sm font-medium transition-all duration-200",
+                    active
+                      ? "bg-primary text-primary-foreground shadow-soft"
+                      : "text-sidebar-foreground hover:translate-x-0.5 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+                  )}
+                >
+                  <item.icon className="h-[18px] w-[18px] shrink-0" />
+                  <span className="truncate">{item.label}</span>
+                </Link>
+                {item.to === "/panel/inventario" ? <VeterinaryNav sections={vetSections} pathname={pathname} onNavigate={() => setOpen(false)} /> : null}
+              </div>
             );
           })}
+          {nav.some((item) => item.to === "/panel/inventario") ? null : (
+            <VeterinaryNav sections={vetSections} pathname={pathname} onNavigate={() => setOpen(false)} />
+          )}
         </nav>
 
         <div className="paw-pattern m-3 overflow-hidden rounded-2xl bg-blush/60 p-4">

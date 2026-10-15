@@ -29,6 +29,10 @@ import { Route as AuthenticatedPanelPropietariosRouteImport } from './routes/_au
 import { Route as AuthenticatedPanelRazasRouteImport } from './routes/_authenticated/panel.razas'
 import { Route as AuthenticatedPanelReportesRouteImport } from './routes/_authenticated/panel.reportes'
 import { Route as AuthenticatedPanelVentasRouteImport } from './routes/_authenticated/panel.ventas'
+import { Route as AuthenticatedPanelVeterinariaAgendaRouteImport } from './routes/_authenticated/panel.veterinaria.agenda'
+import { Route as AuthenticatedPanelVeterinariaConsultasRouteImport } from './routes/_authenticated/panel.veterinaria.consultas'
+import { Route as AuthenticatedPanelVeterinariaOrdenesRouteImport } from './routes/_authenticated/panel.veterinaria.ordenes'
+import { Route as AuthenticatedPanelVeterinariaServiciosRouteImport } from './routes/_authenticated/panel.veterinaria.servicios'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -141,6 +145,30 @@ const AuthenticatedPanelVentasRoute =
     path: '/panel/ventas',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
+const AuthenticatedPanelVeterinariaAgendaRoute =
+  AuthenticatedPanelVeterinariaAgendaRouteImport.update({
+    id: '/panel/veterinaria/agenda',
+    path: '/panel/veterinaria/agenda',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedPanelVeterinariaConsultasRoute =
+  AuthenticatedPanelVeterinariaConsultasRouteImport.update({
+    id: '/panel/veterinaria/consultas',
+    path: '/panel/veterinaria/consultas',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedPanelVeterinariaOrdenesRoute =
+  AuthenticatedPanelVeterinariaOrdenesRouteImport.update({
+    id: '/panel/veterinaria/ordenes',
+    path: '/panel/veterinaria/ordenes',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedPanelVeterinariaServiciosRoute =
+  AuthenticatedPanelVeterinariaServiciosRouteImport.update({
+    id: '/panel/veterinaria/servicios',
+    path: '/panel/veterinaria/servicios',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -162,6 +190,10 @@ export interface FileRoutesByFullPath {
   '/panel/reportes': typeof AuthenticatedPanelReportesRoute
   '/panel/ventas': typeof AuthenticatedPanelVentasRoute
   '/panel/': typeof AuthenticatedPanelIndexRoute
+  '/panel/veterinaria/agenda': typeof AuthenticatedPanelVeterinariaAgendaRoute
+  '/panel/veterinaria/consultas': typeof AuthenticatedPanelVeterinariaConsultasRoute
+  '/panel/veterinaria/ordenes': typeof AuthenticatedPanelVeterinariaOrdenesRoute
+  '/panel/veterinaria/servicios': typeof AuthenticatedPanelVeterinariaServiciosRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -183,6 +215,10 @@ export interface FileRoutesByTo {
   '/panel/reportes': typeof AuthenticatedPanelReportesRoute
   '/panel/ventas': typeof AuthenticatedPanelVentasRoute
   '/panel': typeof AuthenticatedPanelIndexRoute
+  '/panel/veterinaria/agenda': typeof AuthenticatedPanelVeterinariaAgendaRoute
+  '/panel/veterinaria/consultas': typeof AuthenticatedPanelVeterinariaConsultasRoute
+  '/panel/veterinaria/ordenes': typeof AuthenticatedPanelVeterinariaOrdenesRoute
+  '/panel/veterinaria/servicios': typeof AuthenticatedPanelVeterinariaServiciosRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -206,6 +242,10 @@ export interface FileRoutesById {
   '/_authenticated/panel/reportes': typeof AuthenticatedPanelReportesRoute
   '/_authenticated/panel/ventas': typeof AuthenticatedPanelVentasRoute
   '/_authenticated/panel/': typeof AuthenticatedPanelIndexRoute
+  '/_authenticated/panel/veterinaria/agenda': typeof AuthenticatedPanelVeterinariaAgendaRoute
+  '/_authenticated/panel/veterinaria/consultas': typeof AuthenticatedPanelVeterinariaConsultasRoute
+  '/_authenticated/panel/veterinaria/ordenes': typeof AuthenticatedPanelVeterinariaOrdenesRoute
+  '/_authenticated/panel/veterinaria/servicios': typeof AuthenticatedPanelVeterinariaServiciosRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -229,6 +269,10 @@ export interface FileRouteTypes {
     | '/panel/reportes'
     | '/panel/ventas'
     | '/panel/'
+    | '/panel/veterinaria/agenda'
+    | '/panel/veterinaria/consultas'
+    | '/panel/veterinaria/ordenes'
+    | '/panel/veterinaria/servicios'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -250,6 +294,10 @@ export interface FileRouteTypes {
     | '/panel/reportes'
     | '/panel/ventas'
     | '/panel'
+    | '/panel/veterinaria/agenda'
+    | '/panel/veterinaria/consultas'
+    | '/panel/veterinaria/ordenes'
+    | '/panel/veterinaria/servicios'
   id:
     | '__root__'
     | '/'
@@ -272,6 +320,10 @@ export interface FileRouteTypes {
     | '/_authenticated/panel/reportes'
     | '/_authenticated/panel/ventas'
     | '/_authenticated/panel/'
+    | '/_authenticated/panel/veterinaria/agenda'
+    | '/_authenticated/panel/veterinaria/consultas'
+    | '/_authenticated/panel/veterinaria/ordenes'
+    | '/_authenticated/panel/veterinaria/servicios'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -425,6 +477,34 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedPanelVentasRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/panel/veterinaria/agenda': {
+      id: '/_authenticated/panel/veterinaria/agenda'
+      path: '/panel/veterinaria/agenda'
+      fullPath: '/panel/veterinaria/agenda'
+      preLoaderRoute: typeof AuthenticatedPanelVeterinariaAgendaRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/panel/veterinaria/consultas': {
+      id: '/_authenticated/panel/veterinaria/consultas'
+      path: '/panel/veterinaria/consultas'
+      fullPath: '/panel/veterinaria/consultas'
+      preLoaderRoute: typeof AuthenticatedPanelVeterinariaConsultasRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/panel/veterinaria/ordenes': {
+      id: '/_authenticated/panel/veterinaria/ordenes'
+      path: '/panel/veterinaria/ordenes'
+      fullPath: '/panel/veterinaria/ordenes'
+      preLoaderRoute: typeof AuthenticatedPanelVeterinariaOrdenesRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/panel/veterinaria/servicios': {
+      id: '/_authenticated/panel/veterinaria/servicios'
+      path: '/panel/veterinaria/servicios'
+      fullPath: '/panel/veterinaria/servicios'
+      preLoaderRoute: typeof AuthenticatedPanelVeterinariaServiciosRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
   }
 }
 
@@ -443,6 +523,10 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedPanelReportesRoute: typeof AuthenticatedPanelReportesRoute
   AuthenticatedPanelVentasRoute: typeof AuthenticatedPanelVentasRoute
   AuthenticatedPanelIndexRoute: typeof AuthenticatedPanelIndexRoute
+  AuthenticatedPanelVeterinariaAgendaRoute: typeof AuthenticatedPanelVeterinariaAgendaRoute
+  AuthenticatedPanelVeterinariaConsultasRoute: typeof AuthenticatedPanelVeterinariaConsultasRoute
+  AuthenticatedPanelVeterinariaOrdenesRoute: typeof AuthenticatedPanelVeterinariaOrdenesRoute
+  AuthenticatedPanelVeterinariaServiciosRoute: typeof AuthenticatedPanelVeterinariaServiciosRoute
 }
 
 const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
@@ -460,6 +544,14 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedPanelReportesRoute: AuthenticatedPanelReportesRoute,
   AuthenticatedPanelVentasRoute: AuthenticatedPanelVentasRoute,
   AuthenticatedPanelIndexRoute: AuthenticatedPanelIndexRoute,
+  AuthenticatedPanelVeterinariaAgendaRoute:
+    AuthenticatedPanelVeterinariaAgendaRoute,
+  AuthenticatedPanelVeterinariaConsultasRoute:
+    AuthenticatedPanelVeterinariaConsultasRoute,
+  AuthenticatedPanelVeterinariaOrdenesRoute:
+    AuthenticatedPanelVeterinariaOrdenesRoute,
+  AuthenticatedPanelVeterinariaServiciosRoute:
+    AuthenticatedPanelVeterinariaServiciosRoute,
 }
 
 const AuthenticatedRouteRouteWithChildren =

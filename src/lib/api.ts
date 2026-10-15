@@ -16,6 +16,8 @@ let meCache: {
     needs_pet?: boolean;
     modules?: string[];
     modules_custom?: boolean;
+    veterinary_enabled?: boolean;
+    veterinary_capabilities?: string[];
   };
 } | null = null;
 
@@ -369,6 +371,8 @@ export function fetchMe() {
     needs_pet?: boolean;
     modules?: string[];
     modules_custom?: boolean;
+    veterinary_enabled?: boolean;
+    veterinary_capabilities?: string[];
     location_ids?: string[];
     locations_all?: boolean;
   }>("/auth/me").then(

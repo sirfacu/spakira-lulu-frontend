@@ -3,7 +3,8 @@ import { Fragment, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Bath, Scissors, Sparkles, Heart, Smile, Clock, Instagram, Facebook } from "lucide-react";
 import { BrandMark, PawIcon, LOGO_SRC } from "@/components/brand";
-import { resolveMediaUrl } from "@/lib/api";
+import { api, fetchMe, logout, mayHaveSession, resolveMediaUrl } from "@/lib/api";
+import { homeModuleChips, servicesForHomeModule, type HomeModule } from "@/lib/home-module-chips";
 import { ServiceDetailDialog } from "@/components/service-detail-dialog";
 import { ChipRail } from "@/components/home-chip-rail";
 import { SocialEmbed } from "@/components/social-embed";
@@ -29,7 +30,6 @@ import {
   type Service,
 } from "@/lib/spa-queries";
 import { servicePriceHeadline, servicePriceNote } from "@/lib/service-pricing";
-import { fetchMe, logout, mayHaveSession } from "@/lib/api";
 import { sanitizePreviewHtml } from "@/lib/sanitize-html";
 import { homeForRole, permissionsFor } from "@/lib/roles";
 import { normalizeSectionOrder } from "@/lib/home-sections";
@@ -93,11 +93,23 @@ function Landing() {
     queryFn: getPublicHomeContent,
     retry: false,
   });
-  const publicServices = services.filter((s) => {
-    if (!s.is_public) return false;
-    if (!s.publish_at) return true;
-    return new Date(s.publish_at).getTime() <= Date.now();
+  const modules = useQuery({
+    queryKey: ["modules", "public"],
+    queryFn: () => api<{ veterinary: boolean }>("/modules/public", { auth: false }),
+    retry: false,
   });
+  const veterinaryOn = modules.data?.veterinary === true;
+  const [homeModule, setHomeModule] = useState<HomeModule>("spa");
+  const selectedModule: HomeModule = veterinaryOn && homeModule === "veterinary" ? "veterinary" : "spa";
+  const publicServices = servicesForHomeModule(
+    services.filter((s) => {
+      if (!s.is_public) return false;
+      if (!s.publish_at) return true;
+      return new Date(s.publish_at).getTime() <= Date.now();
+    }),
+    selectedModule,
+  );
+  const moduleChips = homeModuleChips(veterinaryOn);
   const perms = permissionsFor(me.data?.role);
   const staff = perms.isStaff;
   const panelTo = homeForRole(me.data?.role);
@@ -310,9 +322,30 @@ function Landing() {
           <div className="gold-rule mx-auto mt-4 max-w-xs" />
         </div>
 
+        {moduleChips.length > 1 ? (
+          <div className="mt-8 flex flex-wrap justify-center gap-2">
+            {moduleChips.map((id) => (
+              <button
+                key={id}
+                type="button"
+                className={`rounded-full border px-3 py-1 text-xs ${
+                  selectedModule === id
+                    ? "border-accent bg-accent/15"
+                    : "border-border text-muted-foreground"
+                }`}
+                onClick={() => setHomeModule(id)}
+              >
+                {id === "veterinary" ? "Veterinaria" : "Spa"}
+              </button>
+            ))}
+          </div>
+        ) : null}
+
         {publicServices.length === 0 ? (
           <p className="mt-10 text-center text-sm text-muted-foreground">
-            Los rituales y precios se publican en esta misma página.
+            {selectedModule === "veterinary"
+              ? "Todavía no hay servicios de veterinaria publicados."
+              : "Los rituales y precios se publican en esta misma página."}
           </p>
         ) : (
           <div className="mt-10">
@@ -331,15 +364,19 @@ function Landing() {
                         className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
                       />
                     ) : null}
+                    {s.category === "veterinary" ? null : (
                     <span className="absolute right-3 top-3 inline-flex items-center gap-1 rounded-full bg-card/90 px-2.5 py-1 text-[11px] font-medium text-primary backdrop-blur">
                       <Clock className="h-3 w-3" /> {s.duration_min} min
                     </span>
+                    )}
                   </div>
                   <div className="flex flex-1 flex-col p-4">
                     <h3 className="font-display text-lg font-bold text-primary">{s.name}</h3>
                     <p className="mt-2 line-clamp-3 flex-1 text-sm leading-relaxed text-muted-foreground">
                       {s.description}
                     </p>
+                    {s.category === "veterinary" ? null : (
+                    <>
                     <p className="mt-3 font-display text-xl font-bold text-accent">
                       {servicePriceHeadline(s)}
                     </p>
@@ -348,6 +385,8 @@ function Landing() {
                         {servicePriceNote(s)}
                       </p>
                     ) : null}
+                    </>
+                    )}
                     <div className="mt-3 grid gap-2">
                       <Button
                         type="button"
@@ -357,7 +396,7 @@ function Landing() {
                       >
                         Leer más
                       </Button>
-                      {me.data && !staff ? (
+                      {s.category === "veterinary" ? null : me.data && !staff ? (
                         <Button asChild className="h-10 w-full rounded-xl">
                           <Link
                             to="/panel/agenda"
@@ -448,8 +487,11 @@ function Landing() {
         onOpenChange={(open) => {
           if (!open) setDetailService(null);
         }}
+        hideOffer={detailService?.category === "veterinary"}
         showAgendar={
-          !!detailService && (perms.isCliente || perms.isColaborador)
+          !!detailService &&
+          detailService.category !== "veterinary" &&
+          (perms.isCliente || perms.isColaborador)
         }
       />
 

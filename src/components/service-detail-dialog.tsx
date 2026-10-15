@@ -25,6 +25,7 @@ type ServiceDetailDialogProps = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   showAgendar?: boolean;
+  hideOffer?: boolean;
   breedHint?: BreedPriceHint | null;
   petSelected?: boolean;
 };
@@ -34,6 +35,7 @@ export function ServiceDetailDialog({
   open,
   onOpenChange,
   showAgendar = false,
+  hideOffer = false,
   breedHint = null,
   petSelected = false,
 }: ServiceDetailDialogProps) {
@@ -71,9 +73,11 @@ export function ServiceDetailDialog({
               Sin imagen
             </div>
           )}
+          {hideOffer ? null : (
           <span className="absolute right-3 top-3 inline-flex items-center gap-1 rounded-full bg-card/90 px-2.5 py-1 text-[11px] font-medium text-primary backdrop-blur">
             <Clock className="h-3 w-3" /> {service.duration_min} min
           </span>
+          )}
         </div>
 
         <div className="p-6">
@@ -85,6 +89,7 @@ export function ServiceDetailDialog({
             </p>
           ) : null}
 
+          {hideOffer ? null : (
           <div className="mt-5 rounded-2xl border border-border/70 bg-secondary/35 p-4">
             <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
               {breedHint?.price_min != null
@@ -102,6 +107,7 @@ export function ServiceDetailDialog({
               <p className="mt-2 text-xs leading-relaxed text-muted-foreground">{note}</p>
             ) : null}
           </div>
+          )}
 
           {service.activities?.length ? (
             <div className="mt-6">
@@ -126,7 +132,7 @@ export function ServiceDetailDialog({
             </div>
           ) : null}
 
-          {showAgendar ? (
+          {showAgendar && !hideOffer ? (
             <Button
               className="mt-6 h-11 w-full rounded-xl"
               onClick={() => {

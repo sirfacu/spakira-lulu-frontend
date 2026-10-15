@@ -15,6 +15,8 @@ import {
   editableAppointmentStatuses,
   isActiveSale,
   sortPanelNavPaths,
+  canFilterVeterinaryAgenda,
+  veterinarySections,
 } from "../roles";
 
 describe("roles", () => {
@@ -181,5 +183,43 @@ describe("roles", () => {
     expect(permissionsFor("cliente").canViewSalesAnalytics).toBe(false);
     expect(permissionsFor("colaborador").canViewSalesAnalytics).toBe(false);
     expect(permissionsFor("colaborador").maskOwnerPii).toBe(true);
+  });
+
+  it("hides veterinary until the module is on and the person has a capability", () => {
+    expect(veterinarySections({ role: "admin", veterinary_enabled: false })).toEqual([]);
+    expect(
+      veterinarySections({
+        role: "colaborador",
+        veterinary_enabled: true,
+        veterinary_capabilities: [],
+      }),
+    ).toEqual([]);
+    expect(
+      veterinarySections({ role: "admin", veterinary_enabled: true }).map((section) => section.id),
+    ).toEqual(["consultas", "ordenes", "servicios"]);
+    expect(
+      veterinarySections({
+        role: "colaborador",
+        veterinary_enabled: true,
+        veterinary_capabilities: ["vet.schedule"],
+      }).map((section) => section.id),
+    ).toEqual([]);
+    expect(
+      veterinarySections({
+        role: "colaborador",
+        veterinary_enabled: true,
+        veterinary_capabilities: ["vet.exam"],
+      }).map((section) => section.id),
+    ).toEqual(["consultas", "ordenes"]);
+    expect(
+      canFilterVeterinaryAgenda({
+        role: "colaborador",
+        veterinary_enabled: true,
+        veterinary_capabilities: [],
+      }),
+    ).toBe(true);
+    expect(canFilterVeterinaryAgenda({ role: "admin", veterinary_enabled: true })).toBe(true);
+    expect(canFilterVeterinaryAgenda({ role: "cliente", veterinary_enabled: true })).toBe(false);
+    expect(canAccessPath("admin", "/panel/agenda")).toBe(true);
   });
 });

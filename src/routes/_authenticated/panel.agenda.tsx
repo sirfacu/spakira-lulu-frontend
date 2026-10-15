@@ -87,9 +87,11 @@ import {
   canCancelAppointment,
   editableAppointmentStatuses,
   permissionsFor,
+  canFilterVeterinaryAgenda,
 } from "@/lib/roles";
 import { canonicalizeStaffRole, isAdminStaffJob } from "@/lib/staff-roles";
 import { ClientAgenda } from "@/components/client-agenda";
+import { VeterinaryWeek } from "@/components/veterinary-agenda";
 import { FinishAppointmentDialog } from "@/components/finish-appointment-dialog";
 import { MaterialEstimatePanel } from "@/components/material-estimate-panel";
 import { CommercialAddonRequest } from "@/components/commercial-addon-request";
@@ -109,7 +111,7 @@ import {
   PENDING_SERVICE_PRICE_LABEL,
   PENDING_SERVICE_PRICE_NOTE,
 } from "@/lib/service-pricing";
-import { ApiError, resolveMediaUrl } from "@/lib/api";
+import { ApiError, api, resolveMediaUrl } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { ymd } from "@/lib/client-agenda";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -179,6 +181,7 @@ export const Route = createFileRoute("/_authenticated/panel/agenda")({
     google: typeof s.google === "string" ? s.google : undefined,
     service: typeof s.service === "string" ? s.service : undefined,
     pet: typeof s.pet === "string" ? s.pet : undefined,
+    modulo: s.modulo === "veterinary" || s.modulo === "todos" ? s.modulo : undefined,
   }),
   head: () => ({
     meta: [
@@ -342,6 +345,33 @@ function StaffAgenda() {
     enabled: perms.isColaborador,
   });
   const [anchor, setAnchor] = useState(() => startOfWeek(new Date()));
+  const [vetCreate, setVetCreate] = useState(0);
+  const canSeeVeterinaryAgenda = canFilterVeterinaryAgenda(user);
+  const showingVet = search.modulo === "veterinary" && canSeeVeterinaryAgenda;
+  const showingAll = search.modulo === "todos" && canSeeVeterinaryAgenda;
+  const vetWeek = useQuery({
+    queryKey: ["veterinary", "agenda", dayKey(anchor), dayKey(addDays(anchor, 6))],
+    enabled: showingAll,
+    queryFn: () =>
+      api<{
+        items: {
+          id: string;
+          pet_name: string;
+          owner_name: string | null;
+          service_name: string;
+          vet_name: string;
+          starts_at: string;
+          status: string;
+        }[];
+        exams: {
+          id: string;
+          pet_name: string;
+          owner_name: string | null;
+          exam_name: string;
+          starts_at: string;
+        }[];
+      }>(`/veterinary/agenda?start=${dayKey(anchor)}&end=${dayKey(addDays(anchor, 6))}`),
+  });
   const [q, setQ] = useState("");
   const [breed, setBreed] = useState("todas");
   const [staffId, setStaffId] = useState("todos");
@@ -354,7 +384,9 @@ function StaffAgenda() {
   const [formStaffId, setFormStaffId] = useState("");
   const [formLocationId, setFormLocationId] = useState("");
   const [startsAt, setStartsAt] = useState(() => defaultStartsAtForDay(new Date()));
-  const staffForForm = perms.isCliente ? [] : (staff.data ?? []);
+  const staffForForm = perms.isCliente
+    ? []
+    : (staff.data ?? []).filter((person) => person.attends_spa !== false);
   useEffect(() => {
     if (!activeLocations.length) return;
     const primary = activeLocations.find((x) => x.is_primary) ?? activeLocations[0];
@@ -1100,12 +1132,15 @@ function StaffAgenda() {
               } · tocá una ficha para gestionar`
       }
       actions={
-        <Button className="h-10 rounded-xl" onClick={() => openNewAppointment()}>
+        <Button
+          className="h-10 rounded-xl"
+          onClick={() => (showingVet ? setVetCreate((current) => current + 1) : openNewAppointment())}
+        >
           <Plus className="mr-2 h-4 w-4" /> Nueva cita
         </Button>
       }
     >
-      {activeLocations.length ? (
+      {activeLocations.length && !showingVet && !showingAll ? (
         <WorkingLocationBar
           noun="Agenda"
           location={filterLocation ?? activeLocations[0] ?? null}
@@ -1125,7 +1160,7 @@ function StaffAgenda() {
           }}
         />
       ) : null}
-      {perms.isAdmin && (pendingReschedules.data?.length ?? 0) > 0 ? (
+      {perms.isAdmin && !showingVet && (pendingReschedules.data?.length ?? 0) > 0 ? (
         <div className="card-soft mb-6 p-5">
           <h3 className="font-display text-lg font-bold text-primary">
             4.º reagendamiento (revisión)
@@ -1179,6 +1214,43 @@ function StaffAgenda() {
         </div>
       ) : null}
       <div className="card-soft p-4 sm:p-5">
+        {canSeeVeterinaryAgenda ? (
+          <div className="mb-3 flex flex-wrap gap-2">
+            {(
+              [
+                ["spa", "Spa"],
+                ["veterinary", "Veterinaria"],
+                ["todos", "Todos"],
+              ] as const
+            ).map(([id, label]) => {
+              const active = showingAll ? "todos" : showingVet ? "veterinary" : "spa";
+              return (
+              <button
+                key={id}
+                type="button"
+                className={`rounded-full border px-3 py-1 text-xs ${
+                  active === id
+                    ? "border-accent bg-accent/15"
+                    : "border-border text-muted-foreground"
+                }`}
+                onClick={() =>
+                  void navigate({
+                    to: "/panel/agenda",
+                    search: {
+                      google: search.google,
+                      service: search.service,
+                      pet: search.pet,
+                      modulo: id === "spa" ? undefined : id,
+                    },
+                  })
+                }
+              >
+                {label}
+              </button>
+              );
+            })}
+          </div>
+        ) : null}
         <div className="flex flex-wrap items-center gap-3">
           <div className="flex items-center gap-1 rounded-xl border border-border bg-card p-1">
             <Button
@@ -1224,6 +1296,8 @@ function StaffAgenda() {
             />
           </div>
 
+          {!showingVet && !showingAll ? (
+          <>
           <Select
             value={breed}
             onValueChange={setBreed}
@@ -1261,7 +1335,7 @@ function StaffAgenda() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="todos">Todo el personal</SelectItem>
-                {(staff.data ?? [])
+                {staffForForm
                   .filter((s) => !isAdminStaffJob(s.role_title))
                   .map((s) => (
                   <SelectItem key={s.id} value={s.id}>
@@ -1291,14 +1365,35 @@ function StaffAgenda() {
               ))}
             </SelectContent>
           </Select>
+          </>
+          ) : null}
         </div>
       </div>
 
+      {showingVet ? (
+        <VeterinaryWeek anchor={anchor} query={q} createRequest={vetCreate} />
+      ) : (
       <div className="mt-6 overflow-x-auto pb-1">
         <div className="grid min-w-[84rem] grid-cols-7 gap-3">
         {days.map((d) => {
           const key = dayKey(d);
           const list = filtered.filter((a) => dayKey(new Date(a.starts_at)) === key);
+          const needle = q.trim().toLowerCase();
+          const vetItems = showingAll
+            ? (vetWeek.data?.items ?? []).filter((item) => {
+                if (item.status === "cancelada") return false;
+                if (dayKey(new Date(item.starts_at)) !== key) return false;
+                if (!needle) return true;
+                return `${item.pet_name} ${item.owner_name ?? ""}`.toLowerCase().includes(needle);
+              })
+            : [];
+          const examItems = showingAll
+            ? (vetWeek.data?.exams ?? []).filter((item) => {
+                if (dayKey(new Date(item.starts_at)) !== key) return false;
+                if (!needle) return true;
+                return `${item.pet_name} ${item.owner_name ?? ""} ${item.exam_name}`.toLowerCase().includes(needle);
+              })
+            : [];
           const isToday = key === dayKey(new Date());
           return (
             <div
@@ -1317,7 +1412,7 @@ function StaffAgenda() {
                 </div>
                 <div className="flex shrink-0 items-center gap-1">
                   <span className="rounded-full bg-secondary px-2 py-0.5 text-xs font-medium text-secondary-foreground">
-                    {list.length}
+                    {list.length + vetItems.length + examItems.length}
                   </span>
                   <Button
                     type="button"
@@ -1352,6 +1447,11 @@ function StaffAgenda() {
                           : undefined
                       }
                     >
+                      {showingAll ? (
+                        <p className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-blush-foreground">
+                          Spa
+                        </p>
+                      ) : null}
                       <button
                         type="button"
                         onClick={() => openManage(a)}
@@ -1487,7 +1587,34 @@ function StaffAgenda() {
                     </article>
                   );
                 })}
-                {!list.length ? (
+                {vetItems.map((item) => (
+                  <article
+                    key={item.id}
+                    className="overflow-hidden rounded-2xl border border-sky/40 bg-background p-3 shadow-soft"
+                    style={{ borderLeftWidth: 3 }}
+                  >
+                    <p className="text-[10px] font-semibold uppercase tracking-wide text-sky-foreground">
+                      Veterinaria
+                    </p>
+                    <p className="mt-1 text-sm font-semibold text-foreground">{item.pet_name}</p>
+                    <p className="mt-0.5 text-xs tabular-nums text-muted-foreground">{time(item.starts_at)}</p>
+                    <p className="mt-0.5 text-[11px] text-muted-foreground">{item.service_name}</p>
+                    <p className="mt-0.5 text-[11px] text-muted-foreground">Atiende · {item.vet_name}</p>
+                  </article>
+                ))}
+                {examItems.map((item) => (
+                  <article
+                    key={item.id}
+                    className="overflow-hidden rounded-2xl border border-sky/40 bg-background p-3 shadow-soft"
+                    style={{ borderLeftWidth: 3 }}
+                  >
+                    <p className="text-[10px] font-semibold uppercase tracking-wide text-sky-foreground">Examen</p>
+                    <p className="mt-1 text-sm font-semibold text-foreground">{item.pet_name}</p>
+                    <p className="mt-0.5 text-xs tabular-nums text-muted-foreground">{time(item.starts_at)}</p>
+                    <p className="mt-0.5 text-[11px] text-muted-foreground">{item.exam_name}</p>
+                  </article>
+                ))}
+                {!list.length && !vetItems.length && !examItems.length ? (
                   <button
                     type="button"
                     onClick={() => openNewAppointment(d)}
@@ -1502,8 +1629,9 @@ function StaffAgenda() {
         })}
         </div>
       </div>
+      )}
 
-      {openForm ? (
+      {openForm && !showingVet ? (
         <div ref={altaRef} id="agenda-alta" className="card-soft mt-6 p-5">
           <h3 className="font-display text-lg font-bold text-primary">Nueva cita</h3>
           <p className="mt-1 text-sm text-muted-foreground">
@@ -1959,7 +2087,7 @@ function StaffAgenda() {
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="none">Sin asignar</SelectItem>
-                        {(staff.data ?? [])
+                        {staffForForm
                           .filter((s) => s.active)
                           .filter((s) => !isAdminStaffJob(s.role_title))
                           .map((s) => {

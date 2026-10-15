@@ -60,6 +60,7 @@ import {
 } from "@/lib/service-pricing";
 import { requirePathAccess } from "@/lib/route-access";
 import { permissionsFor } from "@/lib/roles";
+import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/_authenticated/panel/precios")({
@@ -93,6 +94,7 @@ type ServiceForm = {
   activities: string[];
   uses_medicated: boolean;
   uses_colorimetry: boolean;
+  category: "spa" | "veterinary";
 };
 
 const emptyForm = (): ServiceForm => ({
@@ -111,6 +113,7 @@ const emptyForm = (): ServiceForm => ({
   activities: [],
   uses_medicated: false,
   uses_colorimetry: false,
+  category: "spa",
 });
 
 function toLocalInput(iso: string | null | undefined): string {
@@ -142,6 +145,7 @@ function serviceToForm(s: Service): ServiceForm {
     activities: [...(s.activities ?? [])].filter((a) => a !== "accesorios"),
     uses_medicated: Boolean(s.uses_medicated),
     uses_colorimetry: Boolean(s.uses_colorimetry),
+    category: s.category === "veterinary" ? "veterinary" : "spa",
   };
 }
 
@@ -157,7 +161,16 @@ function publishBadge(s: Service): { label: string; className: string } {
 
 function Servicios() {
   const navigate = useNavigate();
-  const services = useQuery(panelServicesQuery);
+  const { user } = useRouteContext({ from: "/_authenticated" });
+  const veterinaryOn = Boolean(
+    (user as { veterinary_enabled?: boolean } | undefined)?.veterinary_enabled,
+  );
+  const services = useQuery({
+    ...panelServicesQuery,
+    queryKey: ["services", veterinaryOn ? "with-veterinary" : "spa"],
+    queryFn: () =>
+      api<Service[]>(veterinaryOn ? "/services?category=all" : "/services"),
+  });
   const activityCatalog = useQuery(serviceActivityCatalogQuery);
   const pets = useQuery(petsQuery);
   const serverList = useMemo(
@@ -172,7 +185,6 @@ function Servicios() {
     setList(serverList);
   }, [serverList]);
 
-  const { user } = useRouteContext({ from: "/_authenticated" });
   const perms = permissionsFor(user?.role);
   const canManage = perms.canManagePrices;
   const inventoryForRule = useQuery({ ...inventoryQuery, enabled: canManage });
@@ -183,6 +195,7 @@ function Servicios() {
   const [pendingDelete, setPendingDelete] = useState<{ name: string; id: string } | null>(null);
   const [materialDrafts, setMaterialDrafts] = useState<ServiceMaterialDraft[]>([]);
   const [clientPetId, setClientPetId] = useState("");
+  const [categoryFilter, setCategoryFilter] = useState<"todos" | "spa" | "veterinary">("todos");
   const includeAntipulgas = form.activities.includes("pulgas");
   const antipulgasRule = useQuery({
     queryKey: ["antipulgas-config"],
@@ -267,13 +280,19 @@ function Servicios() {
           editing && typeof editing === "object"
             ? editing.sort_order ?? list.length
             : list.length,
-        is_public,
         publish_at,
-        activities: form.activities.filter((a) => a !== "accesorios"),
-        uses_medicated: form.uses_medicated,
-        uses_colorimetry: form.uses_colorimetry,
+        activities:
+          veterinaryOn && form.category === "veterinary"
+            ? []
+            : form.activities.filter((a) => a !== "accesorios"),
+        uses_medicated: veterinaryOn && form.category === "veterinary" ? false : form.uses_medicated,
+        uses_colorimetry: veterinaryOn && form.category === "veterinary" ? false : form.uses_colorimetry,
+        category: veterinaryOn ? form.category : "spa",
+        is_public: veterinaryOn && form.category === "veterinary" ? false : is_public,
       }).then(async (saved) => {
-        if (materialDrafts.length) {
+        if (veterinaryOn && form.category === "veterinary") {
+          await putServiceMaterials(saved.id, []);
+        } else if (materialDrafts.length) {
           await putServiceMaterials(saved.id, draftsToApiPayload(materialDrafts));
         } else if (saved.id) {
           await putServiceMaterials(saved.id, []);
@@ -355,7 +374,9 @@ function Servicios() {
               {editing === "new" ? "Nuevo servicio" : `Editar: ${editing.name}`}
             </h2>
             <p className="mt-1 text-sm text-muted-foreground">
-              Datos, precio, publicación, actividades e insumos en la misma pantalla.
+              {form.category === "veterinary"
+                ? "Nombre, precio y duración. El servicio clínico no se publica en la página."
+                : "Datos, precio, publicación, actividades e insumos en la misma pantalla."}
             </p>
 
             <div className="mt-8 grid gap-8 xl:grid-cols-2">
@@ -372,6 +393,31 @@ function Servicios() {
                       className="h-11 rounded-xl"
                     />
                   </div>
+                  {veterinaryOn ? (
+                    <div className="space-y-2">
+                      <Label>Categoría</Label>
+                      <Select
+                        value={form.category}
+                        onValueChange={(value) =>
+                          setForm((current) => ({
+                            ...current,
+                            category: value === "veterinary" ? "veterinary" : "spa",
+                            activities: value === "veterinary" ? [] : current.activities,
+                            uses_medicated: value === "veterinary" ? false : current.uses_medicated,
+                            uses_colorimetry: value === "veterinary" ? false : current.uses_colorimetry,
+                          }))
+                        }
+                      >
+                        <SelectTrigger className="h-11 rounded-xl">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="spa">Spa</SelectItem>
+                          <SelectItem value="veterinary">Veterinaria</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  ) : null}
                   <div className="space-y-2">
                     <Label>Descripción</Label>
                     <Textarea
@@ -486,14 +532,16 @@ function Servicios() {
                           rows={4}
                         />
                         <p className="text-xs leading-relaxed text-muted-foreground">
-                          Aparece en la ficha del servicio y en los correos de cita. El valor final se
-                          confirma en recepción. Puede variar por medicado, tinte u otros adicionales.
+                          {form.category === "veterinary"
+                            ? "Aparece en la ficha del servicio y en los correos de la cita."
+                            : "Aparece en la ficha del servicio y en los correos de cita. El valor final se confirma en recepción. Puede variar por medicado, tinte u otros adicionales."}
                         </p>
                       </div>
                     </div>
                   )}
                 </section>
 
+                {form.category === "veterinary" ? null : (
                 <section className="space-y-4 border-t border-border/70 pt-8">
                   <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                     Publicación
@@ -532,8 +580,10 @@ function Servicios() {
                     </div>
                   ) : null}
                 </section>
+                )}
               </div>
 
+              {form.category === "veterinary" ? null : (
               <div className="space-y-8">
                 <section className="space-y-3">
                   <div>
@@ -625,6 +675,7 @@ function Servicios() {
                   includeAntipulgas={includeAntipulgas}
                 />
               </div>
+              )}
             </div>
           </div>
         </div>
@@ -679,11 +730,41 @@ function Servicios() {
 
           {canManage ? <AntipulgasSettings items={inventoryForRule.data ?? []} /> : null}
 
+          {veterinaryOn ? (
+            <div className="mt-6 flex flex-wrap gap-2">
+              {(
+                [
+                  ["todos", "Todos"],
+                  ["spa", "Spa"],
+                  ["veterinary", "Veterinaria"],
+                ] as const
+              ).map(([id, label]) => (
+                <button
+                  key={id}
+                  type="button"
+                  className={`rounded-full border px-3 py-1 text-xs ${
+                    categoryFilter === id
+                      ? "border-accent bg-accent/15"
+                      : "border-border text-muted-foreground"
+                  }`}
+                  onClick={() => setCategoryFilter(id)}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          ) : null}
+
           <ReorderList
-        items={list}
-        disabled={!canManage}
+        items={
+          veterinaryOn && categoryFilter !== "todos"
+            ? list.filter((item) => (item.category || "spa") === categoryFilter)
+            : list
+        }
+        disabled={!canManage || (veterinaryOn && categoryFilter !== "todos")}
         className="mt-8 grid gap-6 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4"
         onReorder={(next) => {
+          if (veterinaryOn && categoryFilter !== "todos") return;
           setList(next);
           reorderMut.mutate(next.map((s) => s.id));
         }}
@@ -730,7 +811,14 @@ function Servicios() {
                 )}
               </div>
               <div className="flex flex-1 flex-col p-5">
-                <h3 className="font-display text-lg font-bold text-primary">{s.name}</h3>
+                <h3 className="font-display text-lg font-bold text-primary">
+                  {s.name}
+                  {veterinaryOn ? (
+                    <span className="ml-2 align-middle text-xs font-medium text-muted-foreground">
+                      {s.category === "veterinary" ? "Veterinaria" : "Spa"}
+                    </span>
+                  ) : null}
+                </h3>
                 <p className="mt-2 line-clamp-2 flex-1 text-sm leading-relaxed text-muted-foreground">
                   {s.description || "Sin descripción"}
                 </p>

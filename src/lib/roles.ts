@@ -122,6 +122,47 @@ export function canAccessPath(
   return tabs.some((tab) => tab !== "/panel" && (pathname === tab || pathname.startsWith(`${tab}/`)));
 }
 
+export const VETERINARY_SECTIONS = [
+  { id: "consultas", path: "/panel/veterinaria/consultas", label: "Consultas", capabilities: ["vet.write", "vet.exam"] },
+  { id: "ordenes", path: "/panel/veterinaria/ordenes", label: "Órdenes", capabilities: ["vet.exam"] },
+  { id: "servicios", path: "/panel/veterinaria/servicios", label: "Servicios", capabilities: [] },
+] as const;
+
+export function canFilterVeterinaryAgenda(
+  user:
+    | {
+        role?: string | null;
+        veterinary_enabled?: boolean;
+        veterinary_capabilities?: string[];
+      }
+    | null
+    | undefined,
+) {
+  if (!user?.veterinary_enabled) return false;
+  const role = normalizeRole(user.role);
+  return role === "admin" || role === "colaborador";
+}
+
+export function veterinarySections(
+  user:
+    | {
+        role?: string | null;
+        veterinary_enabled?: boolean;
+        veterinary_capabilities?: string[];
+      }
+    | null
+    | undefined,
+) {
+  if (!user?.veterinary_enabled) return [];
+  const role = normalizeRole(user.role);
+  if (role === "cliente") return [];
+  const caps = new Set(user.veterinary_capabilities ?? []);
+  return VETERINARY_SECTIONS.filter((section) => {
+    if (role === "admin") return true;
+    return section.capabilities.some((capability) => caps.has(capability));
+  });
+}
+
 export function moduleIdForPath(pathname: string): string | undefined {
   if (pathname === "/panel" || pathname === "/panel/") return "dashboard";
   const hit = PANEL_MODULES.find(

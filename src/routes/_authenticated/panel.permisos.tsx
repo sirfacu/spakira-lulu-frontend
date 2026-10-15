@@ -14,6 +14,7 @@ import {
   fetchRoleModules,
   saveRoleModules,
   saveUserModules,
+  saveVeterinaryCapabilities,
   type AppUser,
 } from "@/lib/spa-queries";
 
@@ -54,6 +55,17 @@ function PermisosPage() {
         return next;
       });
       await qc.invalidateQueries({ queryKey: ["role-modules"] });
+      await qc.invalidateQueries({ queryKey: ["app-users"] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const saveCapabilities = useMutation({
+    mutationFn: (input: { id: string; capabilities: string[] }) =>
+      saveVeterinaryCapabilities(input.id, input.capabilities),
+    onSuccess: async () => {
+      toast.success("Capacidades veterinarias actualizadas");
+      clearMeCache();
       await qc.invalidateQueries({ queryKey: ["app-users"] });
     },
     onError: (e: Error) => toast.error(e.message),
@@ -171,10 +183,13 @@ function PermisosPage() {
         <ul className="mt-6 divide-y divide-border rounded-3xl border border-border bg-card">
           {(users.data ?? []).map((u) => (
             <UserModulesRow
-              key={`${u.id}-${u.modules_custom ? "c" : "i"}-${(u.modules ?? []).join(",")}`}
+              key={`${u.id}-${u.modules_custom ? "c" : "i"}-${(u.modules ?? []).join(",")}-${(u.veterinary_capabilities ?? []).join(",")}`}
               user={u}
-              pending={saveUser.isPending}
+              pending={saveUser.isPending || saveCapabilities.isPending}
               onSave={(payload) => saveUser.mutate({ id: u.id, ...payload })}
+              onSaveCapabilities={(capabilities) =>
+                saveCapabilities.mutate({ id: u.id, capabilities })
+              }
             />
           ))}
           {!(users.data ?? []).length ? (
@@ -192,14 +207,23 @@ function UserModulesRow({
   user,
   pending,
   onSave,
+  onSaveCapabilities,
 }: {
   user: AppUser;
   pending: boolean;
   onSave: (p: { inherit?: boolean; modules?: string[] }) => void;
+  onSaveCapabilities: (capabilities: string[]) => void;
 }) {
   const inherited = user.modules_inherited ?? user.modules ?? [];
   const [custom, setCustom] = useState(!!user.modules_custom);
   const [mods, setMods] = useState<string[]>(user.modules ?? inherited);
+  const [caps, setCaps] = useState<string[]>(user.veterinary_capabilities ?? []);
+  const canHoldVeterinary = user.role === "admin" || user.role === "colaborador";
+  const veterinaryChoices = [
+    { id: "vet.schedule", label: "Recepción" },
+    { id: "vet.write", label: "Veterinario" },
+    { id: "vet.exam", label: "Especialista" },
+  ];
 
   const forbidden =
     user.role === "cliente"
@@ -278,6 +302,47 @@ function UserModulesRow({
           Guardar
         </Button>
       </div>
+      {canHoldVeterinary ? (
+        <div className="mt-4">
+          <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+            Veterinaria
+          </p>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {veterinaryChoices.map((choice) => {
+              const on = caps.includes(choice.id);
+              return (
+                <label
+                  key={choice.id}
+                  className={`cursor-pointer rounded-full border px-3 py-1 text-xs ${
+                    on ? "border-accent bg-accent/15" : "border-border text-muted-foreground"
+                  }`}
+                >
+                  <input
+                    type="checkbox"
+                    className="mr-1.5"
+                    checked={on}
+                    onChange={() =>
+                      setCaps((cur) =>
+                        on ? cur.filter((item) => item !== choice.id) : [...cur, choice.id],
+                      )
+                    }
+                  />
+                  {choice.label}
+                </label>
+              );
+            })}
+          </div>
+          <Button
+            size="sm"
+            variant="outline"
+            className="mt-3 rounded-xl"
+            disabled={pending}
+            onClick={() => onSaveCapabilities(caps)}
+          >
+            Guardar veterinaria
+          </Button>
+        </div>
+      ) : null}
     </li>
   );
 }
