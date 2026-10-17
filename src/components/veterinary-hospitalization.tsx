@@ -8,7 +8,8 @@ import { AppShell } from "@/components/app-shell";
 import { Empty } from "@/components/ui-kit";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ChevronDown } from "lucide-react";
-import { filterInventoryByModule } from "@/lib/inventory-module";
+import { filterInventoryByModule, defaultDispenseMode } from "@/lib/inventory-module";
+import { doseUnitLabel } from "@/lib/inventory-qty";
 
 const PET_PLACEHOLDER = "/images/kira-face-grey.png";
 
@@ -1297,12 +1298,35 @@ function StayEvents({ petId }: { petId: string }) {
   );
 }
 
+type RoundVetSku = {
+  id: string;
+  name: string;
+  module?: string | null;
+  category?: string | null;
+  quantity: number;
+  unit_kind?: string | null;
+  pack_size?: number | null;
+  pack_label?: string | null;
+  dispense_mode?: string | null;
+};
+
 type RoundExtraRow = {
   key: string;
   inventory_item_id: string;
   name: string;
   qty_applied: string;
+  unit_kind: string;
+  dose_text: string;
+  route: string;
 };
+
+const ROUND_ROUTES = [
+  { id: "", label: "Sin vía" },
+  { id: "oral", label: "Oral" },
+  { id: "inyectable", label: "Inyectable" },
+  { id: "topico", label: "Tópico" },
+  { id: "otro", label: "Otro" },
+] as const;
 
 function HospRoundPanel({ locationId, canAct }: { locationId: string; canAct: boolean }) {
   const qc = useQueryClient();
@@ -1315,6 +1339,7 @@ function HospRoundPanel({ locationId, canAct }: { locationId: string; canAct: bo
           id: string;
           bed_code: string;
           pet_name: string | null;
+          pet_photo_url?: string | null;
           care_level: CareLevel;
           pending_tasks: number;
         }[];
@@ -1324,15 +1349,7 @@ function HospRoundPanel({ locationId, canAct }: { locationId: string; canAct: bo
     queryKey: ["inventory", locationId, "veterinary-round"],
     enabled: Boolean(locationId) && canAct,
     queryFn: () =>
-      api<
-        {
-          id: string;
-          name: string;
-          module?: string | null;
-          category?: string | null;
-          quantity: number;
-        }[]
-      >(`/inventory?location_id=${encodeURIComponent(locationId)}`),
+      api<RoundVetSku[]>(`/inventory?location_id=${encodeURIComponent(locationId)}`),
   });
   const vetSkus = filterInventoryByModule(inventoryQ.data ?? [], "veterinary").filter(
     (x) => Number(x.quantity) > 0,
@@ -1346,7 +1363,16 @@ function HospRoundPanel({ locationId, canAct }: { locationId: string; canAct: bo
   const [extras, setExtras] = useState<RoundExtraRow[]>([]);
   const [pickSkuId, setPickSkuId] = useState("");
   const [pickQty, setPickQty] = useState("1");
+  const [pickDose, setPickDose] = useState("");
+  const [pickRoute, setPickRoute] = useState("");
   const [freeName, setFreeName] = useState("");
+
+  const pickSku = vetSkus.find((x) => x.id === pickSkuId) ?? null;
+  const pickUnit = (pickSku?.unit_kind || "unidad").toLowerCase();
+  const pickUnitLabel = doseUnitLabel(pickUnit);
+  const pickMode = (
+    pickSku?.dispense_mode || defaultDispenseMode(pickSku?.category)
+  ).toLowerCase();
 
   const sheetQ = useQuery({
     queryKey: ["vet-round", stayId],
@@ -1355,10 +1381,18 @@ function HospRoundPanel({ locationId, canAct }: { locationId: string; canAct: bo
       api<{
         stay: {
           pet_name: string | null;
+          pet_photo_url?: string | null;
           bed_code: string;
           visit_allowed_now: boolean;
         };
-        tasks: { id: string; order_name: string; overdue: boolean; due_at: string | null }[];
+        tasks: {
+          id: string;
+          order_name: string;
+          overdue: boolean;
+          due_at: string | null;
+          dose_text?: string | null;
+          kind?: string | null;
+        }[];
       }>(`/veterinary/hospitalizations/${stayId}/round`),
   });
 
@@ -1372,8 +1406,16 @@ function HospRoundPanel({ locationId, canAct }: { locationId: string; canAct: bo
     setExtras([]);
     setPickSkuId("");
     setPickQty("1");
+    setPickDose("");
+    setPickRoute("");
     setFreeName("");
   }, [stayId]);
+
+  useEffect(() => {
+    if (!pickSku) return;
+    setPickQty(pickMode === "whole_pack" ? "1" : pickUnit === "ml" || pickUnit === "g" ? "1" : "1");
+    setPickDose("");
+  }, [pickSkuId]); // eslint-disable-line react-hooks/exhaustive-deps -- reset al cambiar SKU
 
   const closeMut = useMutation({
     mutationFn: () =>
@@ -1390,6 +1432,9 @@ function HospRoundPanel({ locationId, canAct }: { locationId: string; canAct: bo
             name: e.name,
             inventory_item_id: e.inventory_item_id || null,
             qty_applied: Number(e.qty_applied) || 1,
+            unit_kind: e.unit_kind || null,
+            dose_text: e.dose_text.trim() || null,
+            route: e.route || null,
           })),
         },
       }),
@@ -1411,6 +1456,7 @@ function HospRoundPanel({ locationId, canAct }: { locationId: string; canAct: bo
     const sku = vetSkus.find((x) => x.id === pickSkuId);
     if (!sku) return;
     const qty = String(Math.max(0.01, Number(pickQty) || 1));
+    const unit = (sku.unit_kind || "unidad").toLowerCase();
     setExtras((prev) => [
       ...prev,
       {
@@ -1418,10 +1464,15 @@ function HospRoundPanel({ locationId, canAct }: { locationId: string; canAct: bo
         inventory_item_id: sku.id,
         name: sku.name,
         qty_applied: qty,
+        unit_kind: unit,
+        dose_text: pickDose.trim(),
+        route: pickRoute,
       },
     ]);
     setPickSkuId("");
     setPickQty("1");
+    setPickDose("");
+    setPickRoute("");
   }
 
   function addFreeExtra() {
@@ -1434,9 +1485,14 @@ function HospRoundPanel({ locationId, canAct }: { locationId: string; canAct: bo
         inventory_item_id: "",
         name,
         qty_applied: "1",
+        unit_kind: "",
+        dose_text: pickDose.trim(),
+        route: pickRoute,
       },
     ]);
     setFreeName("");
+    setPickDose("");
+    setPickRoute("");
   }
 
   return (
@@ -1452,15 +1508,22 @@ function HospRoundPanel({ locationId, canAct }: { locationId: string; canAct: bo
               <li key={s.id}>
                 <button
                   type="button"
-                  className={`flex w-full items-center justify-between px-1 py-2 text-left text-sm ${
+                  className={`flex w-full items-center gap-3 px-1 py-2 text-left text-sm ${
                     stayId === s.id ? "bg-violet-50" : ""
                   }`}
                   onClick={() => setStayId(s.id)}
                 >
-                  <span className="font-medium text-slate-900">
-                    {s.bed_code} · {s.pet_name}
+                  <img
+                    src={s.pet_photo_url || PET_PLACEHOLDER}
+                    alt=""
+                    className="h-10 w-10 shrink-0 rounded-full object-cover ring-1 ring-slate-200"
+                  />
+                  <span className="min-w-0 flex-1">
+                    <span className="block font-medium text-slate-900">
+                      {s.bed_code} · {s.pet_name}
+                    </span>
+                    <span className="text-xs text-slate-500">{s.pending_tasks} pend.</span>
                   </span>
-                  <span className="text-xs text-slate-500">{s.pending_tasks} pend.</span>
                 </button>
               </li>
             ))}
@@ -1475,13 +1538,22 @@ function HospRoundPanel({ locationId, canAct }: { locationId: string; canAct: bo
           <p className="text-sm text-slate-500">Cargando ronda…</p>
         ) : (
           <>
-            <h2 className="text-sm font-semibold text-slate-900">
-              Ronda · {sheetQ.data?.stay.bed_code} · {sheetQ.data?.stay.pet_name}
-            </h2>
-            <p className="text-xs text-slate-500">
-              Visita dueño ahora:{" "}
-              {sheetQ.data?.stay.visit_allowed_now ? "permitida" : "fuera de horario"}
-            </p>
+            <div className="flex items-start gap-3">
+              <img
+                src={sheetQ.data?.stay.pet_photo_url || PET_PLACEHOLDER}
+                alt=""
+                className="h-14 w-14 shrink-0 rounded-full object-cover ring-1 ring-slate-200"
+              />
+              <div className="min-w-0">
+                <h2 className="text-sm font-semibold text-slate-900">
+                  Ronda · {sheetQ.data?.stay.bed_code} · {sheetQ.data?.stay.pet_name}
+                </h2>
+                <p className="text-xs text-slate-500">
+                  Visita dueño ahora:{" "}
+                  {sheetQ.data?.stay.visit_allowed_now ? "permitida" : "fuera de horario"}
+                </p>
+              </div>
+            </div>
             <ul className="mt-3 space-y-2">
               {(sheetQ.data?.tasks ?? []).map((t) => (
                 <li key={t.id} className="flex items-center gap-2 text-sm">
@@ -1493,6 +1565,9 @@ function HospRoundPanel({ locationId, canAct }: { locationId: string; canAct: bo
                   />
                   <span>
                     {t.order_name}
+                    {t.dose_text ? (
+                      <span className="text-slate-500"> · {t.dose_text}</span>
+                    ) : null}
                     {t.overdue ? <span className="text-rose-600"> · vencida</span> : null}
                   </span>
                 </li>
@@ -1503,47 +1578,83 @@ function HospRoundPanel({ locationId, canAct }: { locationId: string; canAct: bo
             ) : null}
 
             {canAct ? (
-              <div className="mt-4 rounded-lg border border-slate-100 bg-slate-50/80 p-3">
-                <p className="text-xs font-semibold text-slate-800">Ítems / insumos de la ronda</p>
+              <div className="mt-4 rounded-lg border border-violet-200 bg-violet-50/50 p-3">
+                <p className="text-xs font-semibold text-slate-800">¿Suministraste algo adicional?</p>
                 <p className="text-[11px] text-slate-500">
-                  Sumá SKUs clínicos (descuenta stock) o un ítem libre sin inventario.
+                  Elegí del inventario clínico: la cantidad usa la unidad del SKU (ml, g, unidad…).
+                  Frasco completo descuenta el envase entero.
                 </p>
-                <div className="mt-2 flex flex-wrap items-end gap-2">
-                  <label className="min-w-[10rem] flex-1 text-xs text-slate-600">
-                    Inventario clínico
+                <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                  <label className="text-xs text-slate-600 sm:col-span-2">
+                    Producto
                     <select
                       className="mt-1 w-full rounded-md border border-slate-200 bg-white px-2 py-1.5 text-sm"
                       value={pickSkuId}
                       onChange={(e) => setPickSkuId(e.target.value)}
                     >
-                      <option value="">Elegir…</option>
-                      {vetSkus.map((s) => (
-                        <option key={s.id} value={s.id}>
-                          {s.name} (disp. {s.quantity})
+                      <option value="">Elegir del inventario…</option>
+                      {vetSkus.map((s) => {
+                        const u = doseUnitLabel((s.unit_kind || "unidad").toLowerCase());
+                        return (
+                          <option key={s.id} value={s.id}>
+                            {s.name}
+                            {s.category ? ` · ${s.category}` : ""} · stock {s.quantity} {u}
+                          </option>
+                        );
+                      })}
+                    </select>
+                  </label>
+                  <label className="text-xs text-slate-600">
+                    Cantidad aplicada ({pickSku ? pickUnitLabel : "unidad"})
+                    <input
+                      className="mt-1 w-full rounded-md border border-slate-200 bg-white px-2 py-1.5 text-sm"
+                      inputMode="decimal"
+                      value={pickQty}
+                      onChange={(e) => setPickQty(e.target.value)}
+                      disabled={!pickSkuId}
+                    />
+                  </label>
+                  <label className="text-xs text-slate-600">
+                    Vía
+                    <select
+                      className="mt-1 w-full rounded-md border border-slate-200 bg-white px-2 py-1.5 text-sm"
+                      value={pickRoute}
+                      onChange={(e) => setPickRoute(e.target.value)}
+                    >
+                      {ROUND_ROUTES.map((r) => (
+                        <option key={r.id || "none"} value={r.id}>
+                          {r.label}
                         </option>
                       ))}
                     </select>
                   </label>
-                  <label className="w-20 text-xs text-slate-600">
-                    Cant.
+                  <label className="text-xs text-slate-600 sm:col-span-2">
+                    Dosis / detalle (opcional)
                     <input
                       className="mt-1 w-full rounded-md border border-slate-200 bg-white px-2 py-1.5 text-sm"
-                      value={pickQty}
-                      onChange={(e) => setPickQty(e.target.value)}
+                      value={pickDose}
+                      onChange={(e) => setPickDose(e.target.value)}
+                      placeholder="p. ej. 0,5 ml IV · 1 comprimido"
                     />
                   </label>
-                  <button
-                    type="button"
-                    className="rounded-md border border-slate-200 bg-white px-2 py-1.5 text-xs font-medium text-slate-800 disabled:opacity-50"
-                    disabled={!pickSkuId}
-                    onClick={addSkuExtra}
-                  >
-                    Agregar
-                  </button>
                 </div>
-                <div className="mt-2 flex flex-wrap items-end gap-2">
+                {pickSku && pickMode === "whole_pack" ? (
+                  <p className="mt-1 text-[11px] text-amber-800">
+                    Este SKU descuenta frasco/presentación completa en kardex
+                    {pickSku.pack_size ? ` (${pickSku.pack_size} ${pickUnitLabel})` : ""}.
+                  </p>
+                ) : null}
+                <button
+                  type="button"
+                  className="mt-2 rounded-md bg-[var(--kira-primary,#7c3aed)] px-3 py-1.5 text-xs font-medium text-white disabled:opacity-50"
+                  disabled={!pickSkuId || !(Number(pickQty) > 0)}
+                  onClick={addSkuExtra}
+                >
+                  Agregar al cierre de ronda
+                </button>
+                <div className="mt-3 flex flex-wrap items-end gap-2 border-t border-violet-100 pt-3">
                   <label className="min-w-[10rem] flex-1 text-xs text-slate-600">
-                    Ítem libre (sin stock)
+                    Anotar sin stock
                     <input
                       className="mt-1 w-full rounded-md border border-slate-200 bg-white px-2 py-1.5 text-sm"
                       value={freeName}
@@ -1557,20 +1668,23 @@ function HospRoundPanel({ locationId, canAct }: { locationId: string; canAct: bo
                     disabled={!freeName.trim()}
                     onClick={addFreeExtra}
                   >
-                    Agregar
+                    Anotar
                   </button>
                 </div>
                 {extras.length > 0 ? (
-                  <ul className="mt-2 divide-y divide-slate-200 text-sm">
+                  <ul className="mt-2 divide-y divide-violet-100 text-sm">
                     {extras.map((e) => (
                       <li key={e.key} className="flex items-center justify-between gap-2 py-1.5">
                         <span>
                           {e.name}
-                          {e.inventory_item_id ? (
-                            <span className="text-xs text-slate-500"> · stock × {e.qty_applied}</span>
-                          ) : (
-                            <span className="text-xs text-slate-500"> · libre</span>
-                          )}
+                          <span className="text-xs text-slate-500">
+                            {" "}
+                            · {e.qty_applied}
+                            {e.unit_kind ? ` ${doseUnitLabel(e.unit_kind)}` : ""}
+                            {e.route ? ` · ${e.route}` : ""}
+                            {e.dose_text ? ` · ${e.dose_text}` : ""}
+                            {!e.inventory_item_id ? " · sin stock" : ""}
+                          </span>
                         </span>
                         <button
                           type="button"

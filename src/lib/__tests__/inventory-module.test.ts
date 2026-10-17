@@ -14,6 +14,7 @@ describe("inventory module filter", () => {
     expect(isVetInventoryCategory("Vacuna")).toBe(true);
     expect(isVetInventoryCategory("DESPARASITANTE")).toBe(true);
     expect(isVetInventoryCategory("medicamento")).toBe(true);
+    expect(isVetInventoryCategory("Insumo")).toBe(true);
     expect(isVetInventoryCategory("Shampoo")).toBe(false);
     expect(isVetInventoryCategory("Salud")).toBe(false);
   });
@@ -40,11 +41,12 @@ describe("inventory module filter", () => {
   });
 
   it("filters category pickers the same way", () => {
-    const names = ["Shampoo", "Vacuna", "Salud", "Medicamento"];
+    const names = ["Shampoo", "Vacuna", "Salud", "Medicamento", "Insumo"];
     expect(filterCategoryNamesByModule(names, "spa")).toEqual(["Shampoo", "Salud"]);
     expect(filterCategoryNamesByModule(names, "veterinary")).toEqual([
       "Vacuna",
       "Medicamento",
+      "Insumo",
     ]);
     expect(itemMatchesInventoryModule({ category: null }, "spa")).toBe(true);
     expect(itemMatchesInventoryModule({ category: null }, "veterinary")).toBe(false);
@@ -52,6 +54,7 @@ describe("inventory module filter", () => {
 
   it("computes kardex qty for content vs whole_pack", () => {
     expect(defaultDispenseMode("Vacuna")).toBe("whole_pack");
+    expect(defaultDispenseMode("Insumo")).toBe("whole_pack");
     expect(defaultDispenseMode("Medicamento")).toBe("content");
     expect(
       stockQtyForDispense({

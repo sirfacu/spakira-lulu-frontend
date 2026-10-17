@@ -10,6 +10,7 @@ export const VET_INVENTORY_CATEGORIES = [
   "vacuna",
   "desparasitante",
   "medicamento",
+  "insumo",
 ] as const;
 
 export type DispenseMode = "content" | "whole_pack";
@@ -57,7 +58,7 @@ export function filterCategoryNamesByModule(
 
 export function defaultDispenseMode(category: string | null | undefined): DispenseMode {
   const cat = (category ?? "").trim().toLowerCase();
-  if (cat === "vacuna" || cat === "desparasitante") return "whole_pack";
+  if (cat === "vacuna" || cat === "desparasitante" || cat === "insumo") return "whole_pack";
   return "content";
 }
 

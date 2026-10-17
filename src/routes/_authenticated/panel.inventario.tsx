@@ -112,6 +112,7 @@ const PREFERRED_CATEGORY_ORDER = [
   "Vacuna",
   "Desparasitante",
   "Medicamento",
+  "Insumo",
 ];
 
 const CHANNEL_OPTIONS = ["interno", "interno_externo", "externo"] as const;
@@ -681,7 +682,7 @@ function Inventario() {
       subtitle={
         workingLocation
           ? inventoryModule === "veterinary"
-            ? `Vacunas, desparasitantes y medicamentos en ${workingLocation.name}`
+            ? `Vacunas, desparasitantes, medicamentos e insumos en ${workingLocation.name}`
             : `Stock de ${workingLocation.name} · el catálogo es el mismo en todas las sedes`
           : inventoryModule === "veterinary"
             ? `${items.length} productos clínicos`
