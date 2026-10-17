@@ -1409,6 +1409,7 @@ function HospRoundPanel({ locationId, canAct }: { locationId: string; canAct: bo
     setPickDose("");
     setPickRoute("");
     setFreeName("");
+    setRoundMailInfo(null);
   }, [stayId]);
 
   useEffect(() => {
@@ -1417,9 +1418,24 @@ function HospRoundPanel({ locationId, canAct }: { locationId: string; canAct: bo
     setPickDose("");
   }, [pickSkuId]); // eslint-disable-line react-hooks/exhaustive-deps -- reset al cambiar SKU
 
+  const [roundMailInfo, setRoundMailInfo] = useState<{
+    attempted: number;
+    sent: number;
+    subjects: string[];
+    recipients: string[];
+    previews: string[];
+  } | null>(null);
+
   const closeMut = useMutation({
     mutationFn: () =>
-      api(`/veterinary/hospitalizations/${stayId}/round/close`, {
+      api<{
+        ok?: boolean;
+        mail_attempted?: number;
+        mail_sent?: number;
+        mail_subjects?: string[];
+        mail_recipients?: string[];
+        mail_previews?: string[];
+      }>(`/veterinary/hospitalizations/${stayId}/round/close`, {
         method: "POST",
         body: {
           task_ids: Object.entries(selected)
@@ -1438,7 +1454,14 @@ function HospRoundPanel({ locationId, canAct }: { locationId: string; canAct: bo
           })),
         },
       }),
-    onSuccess: async () => {
+    onSuccess: async (data) => {
+      setRoundMailInfo({
+        attempted: data.mail_attempted ?? 0,
+        sent: data.mail_sent ?? 0,
+        subjects: data.mail_subjects ?? [],
+        recipients: data.mail_recipients ?? [],
+        previews: data.mail_previews ?? [],
+      });
       await qc.invalidateQueries({ queryKey: ["vet-hosp-board", locationId] });
       await qc.invalidateQueries({ queryKey: ["vet-care-alerts", locationId] });
       await qc.invalidateQueries({ queryKey: ["vet-round", stayId] });
@@ -1747,7 +1770,27 @@ function HospRoundPanel({ locationId, canAct }: { locationId: string; canAct: bo
               </button>
             ) : null}
             {closeMut.isSuccess ? (
-              <p className="mt-2 text-sm text-emerald-700">Ronda registrada.</p>
+              <div className="mt-2 space-y-1 text-sm text-emerald-800">
+                <p className="font-medium text-emerald-700">Ronda registrada.</p>
+                {roundMailInfo ? (
+                  <>
+                    <p>
+                      Correo: {roundMailInfo.sent}/{roundMailInfo.attempted} enviado
+                      {roundMailInfo.recipients.length
+                        ? ` → ${roundMailInfo.recipients.join(", ")}`
+                        : " (sin destinatario con email)"}
+                    </p>
+                    {roundMailInfo.subjects[0] ? (
+                      <p className="text-xs text-slate-600">Asunto: {roundMailInfo.subjects[0]}</p>
+                    ) : null}
+                    {roundMailInfo.previews.length > 0 ? (
+                      <p className="break-all text-xs text-slate-600">
+                        Preview HTML (SMTP off): {roundMailInfo.previews[0]}
+                      </p>
+                    ) : null}
+                  </>
+                ) : null}
+              </div>
             ) : null}
             {closeMut.isError ? (
               <p className="mt-2 text-sm text-rose-600">{(closeMut.error as Error).message}</p>
