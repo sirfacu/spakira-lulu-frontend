@@ -41,6 +41,7 @@ type Consult = {
   vet_name: string;
   starts_at: string;
   status: string;
+  location_id?: string | null;
   clinical_temperature?: string | null;
   clinical_heart_rate?: string | null;
   clinical_resp_rate?: string | null;
@@ -249,8 +250,82 @@ function ConsultSheet({
         )
       ) : null}
 
-      <Button type="button" variant="outline" className="rounded-xl" onClick={onBack}>
-        Volver al listado
+      <div className="flex flex-wrap gap-2">
+        <Button type="button" variant="outline" className="rounded-xl" onClick={onBack}>
+          Volver al listado
+        </Button>
+        <AdmitFromConsultButton item={item} />
+      </div>
+    </div>
+  );
+}
+
+function AdmitFromConsultButton({ item }: { item: Consult }) {
+  const { user } = useRouteContext({ from: "/_authenticated" });
+  const canWrite = canWriteClinicalNotes(user);
+  const locationsQ = useQuery({ queryKey: ["locations"], queryFn: getLocations });
+  const locationId =
+    item.location_id ||
+    pickWorkingLocation(locationsQ.data?.items ?? [], readWorkingLocationId())?.id ||
+    "";
+  const bedsQ = useQuery({
+    queryKey: ["vet-beds-free", locationId],
+    enabled: Boolean(locationId) && canWrite,
+    queryFn: () =>
+      api<{ items: { id: string; code: string; status: string }[] }>(
+        `/veterinary/beds?location_id=${locationId}`,
+      ),
+  });
+  const freeBeds = (bedsQ.data?.items ?? []).filter((b) => b.status === "free");
+  const [bedId, setBedId] = useState("");
+  useEffect(() => {
+    if (!bedId && freeBeds[0]) setBedId(freeBeds[0].id);
+  }, [freeBeds, bedId]);
+
+  const admitMut = useMutation({
+    mutationFn: () =>
+      api("/veterinary/hospitalizations", {
+        method: "POST",
+        body: {
+          pet_id: item.pet_id,
+          bed_id: bedId,
+          location_id: locationId,
+          consult_id: item.id,
+          care_level: "observacion",
+          orders: [],
+        },
+      }),
+    onSuccess: () => toast.success("Ingresó a hospitalización"),
+    onError: (error: Error) => toast.error(error.message),
+  });
+
+  if (!canWrite) return null;
+
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <select
+        className="h-10 rounded-xl border border-border bg-background px-2 text-sm"
+        value={bedId}
+        onChange={(e) => setBedId(e.target.value)}
+        disabled={freeBeds.length === 0}
+      >
+        {freeBeds.length === 0 ? (
+          <option value="">Sin habitaciones libres</option>
+        ) : (
+          freeBeds.map((b) => (
+            <option key={b.id} value={b.id}>
+              Hab. {b.code}
+            </option>
+          ))
+        )}
+      </select>
+      <Button
+        type="button"
+        className="rounded-xl"
+        disabled={!bedId || admitMut.isPending}
+        onClick={() => admitMut.mutate()}
+      >
+        Internar
       </Button>
     </div>
   );

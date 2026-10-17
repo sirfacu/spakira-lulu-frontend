@@ -125,6 +125,19 @@ export function canAccessPath(
 export const VETERINARY_SECTIONS = [
   { id: "consultas", path: "/panel/veterinaria/consultas", label: "Consultas", capabilities: ["vet.write", "vet.exam"] },
   { id: "ordenes", path: "/panel/veterinaria/ordenes", label: "Órdenes", capabilities: ["vet.exam"] },
+  {
+    id: "hospitalizacion",
+    path: "/panel/veterinaria/hospitalizacion",
+    label: "Hospitalización",
+    capabilities: ["vet.write", "vet.exam", "vet.schedule"],
+  },
+  { id: "tarifas", path: "/panel/veterinaria/tarifas", label: "Tarifas internación", capabilities: [] },
+  {
+    id: "plantillas",
+    path: "/panel/veterinaria/plantillas",
+    label: "Plantillas correo",
+    capabilities: [],
+  },
   { id: "servicios", path: "/panel/veterinaria/servicios", label: "Servicios", capabilities: [] },
 ] as const;
 

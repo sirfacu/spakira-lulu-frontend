@@ -31,8 +31,11 @@ import { Route as AuthenticatedPanelReportesRouteImport } from './routes/_authen
 import { Route as AuthenticatedPanelVentasRouteImport } from './routes/_authenticated/panel.ventas'
 import { Route as AuthenticatedPanelVeterinariaAgendaRouteImport } from './routes/_authenticated/panel.veterinaria.agenda'
 import { Route as AuthenticatedPanelVeterinariaConsultasRouteImport } from './routes/_authenticated/panel.veterinaria.consultas'
+import { Route as AuthenticatedPanelVeterinariaHospitalizacionRouteImport } from './routes/_authenticated/panel.veterinaria.hospitalizacion'
 import { Route as AuthenticatedPanelVeterinariaOrdenesRouteImport } from './routes/_authenticated/panel.veterinaria.ordenes'
+import { Route as AuthenticatedPanelVeterinariaPlantillasRouteImport } from './routes/_authenticated/panel.veterinaria.plantillas'
 import { Route as AuthenticatedPanelVeterinariaServiciosRouteImport } from './routes/_authenticated/panel.veterinaria.servicios'
+import { Route as AuthenticatedPanelVeterinariaTarifasRouteImport } from './routes/_authenticated/panel.veterinaria.tarifas'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -157,16 +160,34 @@ const AuthenticatedPanelVeterinariaConsultasRoute =
     path: '/panel/veterinaria/consultas',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
+const AuthenticatedPanelVeterinariaHospitalizacionRoute =
+  AuthenticatedPanelVeterinariaHospitalizacionRouteImport.update({
+    id: '/panel/veterinaria/hospitalizacion',
+    path: '/panel/veterinaria/hospitalizacion',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedPanelVeterinariaOrdenesRoute =
   AuthenticatedPanelVeterinariaOrdenesRouteImport.update({
     id: '/panel/veterinaria/ordenes',
     path: '/panel/veterinaria/ordenes',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
+const AuthenticatedPanelVeterinariaPlantillasRoute =
+  AuthenticatedPanelVeterinariaPlantillasRouteImport.update({
+    id: '/panel/veterinaria/plantillas',
+    path: '/panel/veterinaria/plantillas',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedPanelVeterinariaServiciosRoute =
   AuthenticatedPanelVeterinariaServiciosRouteImport.update({
     id: '/panel/veterinaria/servicios',
     path: '/panel/veterinaria/servicios',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedPanelVeterinariaTarifasRoute =
+  AuthenticatedPanelVeterinariaTarifasRouteImport.update({
+    id: '/panel/veterinaria/tarifas',
+    path: '/panel/veterinaria/tarifas',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
 
@@ -192,8 +213,11 @@ export interface FileRoutesByFullPath {
   '/panel/': typeof AuthenticatedPanelIndexRoute
   '/panel/veterinaria/agenda': typeof AuthenticatedPanelVeterinariaAgendaRoute
   '/panel/veterinaria/consultas': typeof AuthenticatedPanelVeterinariaConsultasRoute
+  '/panel/veterinaria/hospitalizacion': typeof AuthenticatedPanelVeterinariaHospitalizacionRoute
   '/panel/veterinaria/ordenes': typeof AuthenticatedPanelVeterinariaOrdenesRoute
+  '/panel/veterinaria/plantillas': typeof AuthenticatedPanelVeterinariaPlantillasRoute
   '/panel/veterinaria/servicios': typeof AuthenticatedPanelVeterinariaServiciosRoute
+  '/panel/veterinaria/tarifas': typeof AuthenticatedPanelVeterinariaTarifasRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -217,8 +241,11 @@ export interface FileRoutesByTo {
   '/panel': typeof AuthenticatedPanelIndexRoute
   '/panel/veterinaria/agenda': typeof AuthenticatedPanelVeterinariaAgendaRoute
   '/panel/veterinaria/consultas': typeof AuthenticatedPanelVeterinariaConsultasRoute
+  '/panel/veterinaria/hospitalizacion': typeof AuthenticatedPanelVeterinariaHospitalizacionRoute
   '/panel/veterinaria/ordenes': typeof AuthenticatedPanelVeterinariaOrdenesRoute
+  '/panel/veterinaria/plantillas': typeof AuthenticatedPanelVeterinariaPlantillasRoute
   '/panel/veterinaria/servicios': typeof AuthenticatedPanelVeterinariaServiciosRoute
+  '/panel/veterinaria/tarifas': typeof AuthenticatedPanelVeterinariaTarifasRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -244,8 +271,11 @@ export interface FileRoutesById {
   '/_authenticated/panel/': typeof AuthenticatedPanelIndexRoute
   '/_authenticated/panel/veterinaria/agenda': typeof AuthenticatedPanelVeterinariaAgendaRoute
   '/_authenticated/panel/veterinaria/consultas': typeof AuthenticatedPanelVeterinariaConsultasRoute
+  '/_authenticated/panel/veterinaria/hospitalizacion': typeof AuthenticatedPanelVeterinariaHospitalizacionRoute
   '/_authenticated/panel/veterinaria/ordenes': typeof AuthenticatedPanelVeterinariaOrdenesRoute
+  '/_authenticated/panel/veterinaria/plantillas': typeof AuthenticatedPanelVeterinariaPlantillasRoute
   '/_authenticated/panel/veterinaria/servicios': typeof AuthenticatedPanelVeterinariaServiciosRoute
+  '/_authenticated/panel/veterinaria/tarifas': typeof AuthenticatedPanelVeterinariaTarifasRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -271,8 +301,11 @@ export interface FileRouteTypes {
     | '/panel/'
     | '/panel/veterinaria/agenda'
     | '/panel/veterinaria/consultas'
+    | '/panel/veterinaria/hospitalizacion'
     | '/panel/veterinaria/ordenes'
+    | '/panel/veterinaria/plantillas'
     | '/panel/veterinaria/servicios'
+    | '/panel/veterinaria/tarifas'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -296,8 +329,11 @@ export interface FileRouteTypes {
     | '/panel'
     | '/panel/veterinaria/agenda'
     | '/panel/veterinaria/consultas'
+    | '/panel/veterinaria/hospitalizacion'
     | '/panel/veterinaria/ordenes'
+    | '/panel/veterinaria/plantillas'
     | '/panel/veterinaria/servicios'
+    | '/panel/veterinaria/tarifas'
   id:
     | '__root__'
     | '/'
@@ -322,8 +358,11 @@ export interface FileRouteTypes {
     | '/_authenticated/panel/'
     | '/_authenticated/panel/veterinaria/agenda'
     | '/_authenticated/panel/veterinaria/consultas'
+    | '/_authenticated/panel/veterinaria/hospitalizacion'
     | '/_authenticated/panel/veterinaria/ordenes'
+    | '/_authenticated/panel/veterinaria/plantillas'
     | '/_authenticated/panel/veterinaria/servicios'
+    | '/_authenticated/panel/veterinaria/tarifas'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -491,6 +530,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedPanelVeterinariaConsultasRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/panel/veterinaria/hospitalizacion': {
+      id: '/_authenticated/panel/veterinaria/hospitalizacion'
+      path: '/panel/veterinaria/hospitalizacion'
+      fullPath: '/panel/veterinaria/hospitalizacion'
+      preLoaderRoute: typeof AuthenticatedPanelVeterinariaHospitalizacionRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/panel/veterinaria/ordenes': {
       id: '/_authenticated/panel/veterinaria/ordenes'
       path: '/panel/veterinaria/ordenes'
@@ -498,11 +544,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedPanelVeterinariaOrdenesRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/panel/veterinaria/plantillas': {
+      id: '/_authenticated/panel/veterinaria/plantillas'
+      path: '/panel/veterinaria/plantillas'
+      fullPath: '/panel/veterinaria/plantillas'
+      preLoaderRoute: typeof AuthenticatedPanelVeterinariaPlantillasRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/panel/veterinaria/servicios': {
       id: '/_authenticated/panel/veterinaria/servicios'
       path: '/panel/veterinaria/servicios'
       fullPath: '/panel/veterinaria/servicios'
       preLoaderRoute: typeof AuthenticatedPanelVeterinariaServiciosRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/panel/veterinaria/tarifas': {
+      id: '/_authenticated/panel/veterinaria/tarifas'
+      path: '/panel/veterinaria/tarifas'
+      fullPath: '/panel/veterinaria/tarifas'
+      preLoaderRoute: typeof AuthenticatedPanelVeterinariaTarifasRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
   }
@@ -525,8 +585,11 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedPanelIndexRoute: typeof AuthenticatedPanelIndexRoute
   AuthenticatedPanelVeterinariaAgendaRoute: typeof AuthenticatedPanelVeterinariaAgendaRoute
   AuthenticatedPanelVeterinariaConsultasRoute: typeof AuthenticatedPanelVeterinariaConsultasRoute
+  AuthenticatedPanelVeterinariaHospitalizacionRoute: typeof AuthenticatedPanelVeterinariaHospitalizacionRoute
   AuthenticatedPanelVeterinariaOrdenesRoute: typeof AuthenticatedPanelVeterinariaOrdenesRoute
+  AuthenticatedPanelVeterinariaPlantillasRoute: typeof AuthenticatedPanelVeterinariaPlantillasRoute
   AuthenticatedPanelVeterinariaServiciosRoute: typeof AuthenticatedPanelVeterinariaServiciosRoute
+  AuthenticatedPanelVeterinariaTarifasRoute: typeof AuthenticatedPanelVeterinariaTarifasRoute
 }
 
 const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
@@ -548,10 +611,16 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
     AuthenticatedPanelVeterinariaAgendaRoute,
   AuthenticatedPanelVeterinariaConsultasRoute:
     AuthenticatedPanelVeterinariaConsultasRoute,
+  AuthenticatedPanelVeterinariaHospitalizacionRoute:
+    AuthenticatedPanelVeterinariaHospitalizacionRoute,
   AuthenticatedPanelVeterinariaOrdenesRoute:
     AuthenticatedPanelVeterinariaOrdenesRoute,
+  AuthenticatedPanelVeterinariaPlantillasRoute:
+    AuthenticatedPanelVeterinariaPlantillasRoute,
   AuthenticatedPanelVeterinariaServiciosRoute:
     AuthenticatedPanelVeterinariaServiciosRoute,
+  AuthenticatedPanelVeterinariaTarifasRoute:
+    AuthenticatedPanelVeterinariaTarifasRoute,
 }
 
 const AuthenticatedRouteRouteWithChildren =
