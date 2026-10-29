@@ -364,6 +364,8 @@ export type PaymentMethod = {
   charges_commission: boolean;
   commission_percent: number;
   commission_fixed: number;
+  /** true = cobrar fee al cliente; false = spa absorbe (costo). */
+  commission_pass_to_client?: boolean;
   active: boolean;
   sort_order: number;
 };
@@ -763,6 +765,7 @@ export async function createPaymentMethod(input: {
   charges_commission?: boolean;
   commission_percent?: number;
   commission_fixed?: number;
+  commission_pass_to_client?: boolean;
   active?: boolean;
   sort_order?: number;
 }) {
@@ -777,11 +780,50 @@ export async function patchPaymentMethod(
     charges_commission?: boolean;
     commission_percent?: number;
     commission_fixed?: number;
+    commission_pass_to_client?: boolean;
     active?: boolean;
     sort_order?: number;
   },
 ) {
   return api<PaymentMethod>(`/payment-methods/${id}`, { method: "PATCH", body: input });
+}
+
+export async function createBoldPaymentLink(input: {
+  amount: number;
+  description?: string;
+  reference?: string;
+  appointment_id?: string;
+  sale_id?: string;
+}) {
+  return api<{
+    url: string;
+    payment_link: string;
+    reference: string;
+    amount: number;
+  }>("/payments/bold/payment-link", { method: "POST", body: input });
+}
+
+export async function fetchBoldPaymentStatus() {
+  return api<{
+    checkout_configured: boolean;
+    pos_configured: boolean;
+    env: string;
+    confirm_modes?: Record<string, string>;
+  }>("/payments/bold/status");
+}
+
+export async function fetchBoldPaymentLink(linkId: string) {
+  return api<{
+    payment_link: string;
+    status: string;
+    total: number | null;
+    reference: string | null;
+    transaction_id: string | null;
+    payment_method: string | null;
+    is_sandbox: boolean | null;
+    paid: boolean;
+    process_result?: string | null;
+  }>(`/payments/bold/payment-link/${encodeURIComponent(linkId)}`);
 }
 
 export async function deletePaymentMethod(id: string) {

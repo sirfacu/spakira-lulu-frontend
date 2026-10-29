@@ -22,6 +22,7 @@ export function ConfigPaymentMethodsPanel() {
   const [label, setLabel] = useState("");
   const [requireEvidence, setRequireEvidence] = useState(false);
   const [chargesCommission, setChargesCommission] = useState(false);
+  const [passToClient, setPassToClient] = useState(true);
   const [commissionPercent, setCommissionPercent] = useState("");
   const [commissionFixed, setCommissionFixed] = useState("");
   const [pendingDelete, setPendingDelete] = useState<PaymentMethod | null>(null);
@@ -38,12 +39,14 @@ export function ConfigPaymentMethodsPanel() {
         charges_commission: chargesCommission,
         commission_percent: Number(commissionPercent || 0),
         commission_fixed: Number(commissionFixed || 0),
+        commission_pass_to_client: passToClient,
       }),
     onSuccess: async () => {
       toast.success("Medio de pago agregado");
       setLabel("");
       setRequireEvidence(false);
       setChargesCommission(false);
+      setPassToClient(true);
       setCommissionPercent("");
       setCommissionFixed("");
       await invalidate();
@@ -76,8 +79,9 @@ export function ConfigPaymentMethodsPanel() {
     <SectionCard title="Medios de pago">
       <p className="mb-4 text-sm text-muted-foreground">
         Al finalizar un servicio se elige el medio. Si requiere evidencia, hay que adjuntar o
-        fotografiar el comprobante. Si cobra comisión, al cobrar se guarda ese monto en la venta.
-        Un cambio de tarifa no toca las ventas ya hechas.
+        fotografiar el comprobante. Si cobra comisión (ej. Bold: 3% + $300), podés elegir si se
+        cobra al cliente como «Servicios tecnológicos» o si el spa la absorbe (baja el margen). El
+        monto queda guardado en la venta; un cambio de tarifa no toca ventas ya hechas.
       </p>
 
       <div className="mb-6 grid gap-3 rounded-2xl border border-border bg-card p-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -98,8 +102,16 @@ export function ConfigPaymentMethodsPanel() {
           <Switch checked={chargesCommission} onCheckedChange={setChargesCommission} />
           Cobra comisión
         </label>
+        <label className="flex h-11 items-center gap-2 text-sm">
+          <Switch
+            checked={passToClient}
+            onCheckedChange={setPassToClient}
+            disabled={!chargesCommission}
+          />
+          Cobrar comisión al cliente
+        </label>
         <div className="space-y-2">
-          <Label>Porcentaje</Label>
+          <Label>Porcentaje (%)</Label>
           <Input
             className="h-11 rounded-xl"
             inputMode="decimal"
@@ -110,7 +122,7 @@ export function ConfigPaymentMethodsPanel() {
           />
         </div>
         <div className="space-y-2">
-          <Label>Valor fijo</Label>
+          <Label>Valor fijo (COP)</Label>
           <Input
             className="h-11 rounded-xl"
             inputMode="decimal"
@@ -142,9 +154,10 @@ export function ConfigPaymentMethodsPanel() {
                 <th className="py-3 font-semibold">Medio</th>
                 <th className="py-3 font-semibold">Código</th>
                 <th className="py-3 font-semibold">Evidencia</th>
-                <th className="py-3 font-semibold">Comisión</th>
-                <th className="py-3 font-semibold">%</th>
-                <th className="py-3 font-semibold">Fijo</th>
+                <th className="py-3 font-semibold">Cobra comisión</th>
+                <th className="py-3 font-semibold">Al cliente</th>
+                <th className="py-3 font-semibold">% sobre servicio</th>
+                <th className="py-3 font-semibold">Fijo COP</th>
                 <th className="py-3 font-semibold">Activo</th>
                 <th className="py-3 text-right font-semibold"> </th>
               </tr>
@@ -167,6 +180,18 @@ export function ConfigPaymentMethodsPanel() {
                       checked={m.charges_commission}
                       onCheckedChange={(v) =>
                         patchMut.mutate({ id: m.id, patch: { charges_commission: v } })
+                      }
+                    />
+                  </td>
+                  <td className="py-3">
+                    <Switch
+                      checked={m.commission_pass_to_client !== false}
+                      disabled={!m.charges_commission}
+                      onCheckedChange={(v) =>
+                        patchMut.mutate({
+                          id: m.id,
+                          patch: { commission_pass_to_client: v },
+                        })
                       }
                     />
                   </td>

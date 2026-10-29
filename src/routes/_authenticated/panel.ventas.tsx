@@ -39,12 +39,15 @@ import {
   openSaleInvoice,
   getMyStaff,
   getLoyaltyCustomer,
+  getBusinessSettings,
   getLocations,
   validatePromotion,
   type InventoryItem,
   type PromoValidate,
 } from "@/lib/spa-queries";
+import type { BoldChannel } from "@/lib/bold-payment-message";
 import { cop, dayKey, shortDate } from "@/lib/format";
+import { paymentChargeBreakdown } from "@/lib/payment-fee";
 import { requirePathAccess } from "@/lib/route-access";
 import { isActiveSale, permissionsFor } from "@/lib/roles";
 import { WorkingLocationBar } from "@/components/working-location-bar";
@@ -110,6 +113,7 @@ function Ventas() {
     locationId ? inventoryShopAtLocationQuery(locationId) : inventoryShopQuery,
   );
   const payMethods = useQuery(paymentMethodsQuery);
+  const business = useQuery({ queryKey: ["business-settings"], queryFn: getBusinessSettings });
   const myStaff = useQuery({
     queryKey: ["staff-me"],
     queryFn: getMyStaff,
@@ -121,6 +125,7 @@ function Ventas() {
   const [serviceId, setServiceId] = useState("");
   const [method, setMethod] = useState("");
   const [evidenceUrl, setEvidenceUrl] = useState("");
+  const [boldChannel, setBoldChannel] = useState<BoldChannel>("device");
   const [productId, setProductId] = useState("");
   const [cart, setCart] = useState<CartLine[]>([]);
   const [promo, setPromo] = useState<PromoValidate | null>(null);
@@ -140,6 +145,7 @@ function Ventas() {
   });
 
   const mostrador = (owners.data ?? []).find((o) => o.system_key === "mostrador");
+  const selectedOwner = (owners.data ?? []).find((o) => o.id === ownerId);
   const service = (services.data ?? []).find((s) => s.id === serviceId);
   const serviceTotal = Number(service?.price ?? 0);
   const productsTotal = cart.reduce((a, l) => a + l.unit_price * l.quantity, 0);
@@ -150,6 +156,8 @@ function Ventas() {
   const shownPromo = manualPromo ? promo : autoPromo;
   const discount = shownPromo?.valid ? Number(shownPromo.discount_amount || 0) : 0;
   const netTotal = Math.max(0, grandTotal - discount);
+  const selectedPay = (payMethods.data ?? []).find((m) => m.code === method);
+  const charge = paymentChargeBreakdown(netTotal, selectedPay);
 
   useEffect(() => {
     if (!ownerId || grandTotal <= 0 || manualPromo) {
@@ -260,7 +268,6 @@ function Ventas() {
     };
   });
 
-  const selectedPay = (payMethods.data ?? []).find((m) => m.code === method);
   const canSubmit =
     (!!serviceId || cart.length > 0) &&
     !!method &&
@@ -370,9 +377,27 @@ function Ventas() {
               <PaymentMethodFields
                 methods={payMethods.data ?? []}
                 methodCode={method}
-                onMethodChange={setMethod}
+                onMethodChange={(code) => {
+                  setMethod(code);
+                  setBoldChannel("device");
+                }}
                 evidenceUrl={evidenceUrl}
                 onEvidenceUrl={setEvidenceUrl}
+                baseTotal={netTotal}
+                boldChannel={boldChannel}
+                onBoldChannelChange={setBoldChannel}
+                boldContext={{
+                  petName: null,
+                  serviceName: service?.name || (cart.length ? "venta mostrador" : "venta"),
+                  ownerName:
+                    selectedOwner?.system_key === "mostrador"
+                      ? null
+                      : selectedOwner?.full_name,
+                  ownerPhone: selectedOwner?.phone,
+                  ownerWhatsapp: selectedOwner?.whatsapp,
+                  ownerPiiMasked: selectedOwner?.pii_masked,
+                  tradeName: business.data?.trade_name || "Spa Kira",
+                }}
               />
             </div>
 
@@ -474,8 +499,13 @@ function Ventas() {
 
             <div className="mt-5 grid grid-cols-[minmax(0,1fr)_auto] items-center gap-4 rounded-2xl bg-secondary/60 p-5">
               <div className="min-w-0">
-                <p className="text-xs uppercase tracking-wider text-muted-foreground">Total</p>
-                <p className="font-display text-3xl font-bold text-accent">{cop(netTotal)}</p>
+                <p className="text-xs uppercase tracking-wider text-muted-foreground">Total a cobrar</p>
+                <p className="font-display text-3xl font-bold text-accent">{cop(charge.amountDue)}</p>
+                {charge.fee > 0 ? (
+                  <p className="text-xs text-muted-foreground">
+                    Servicio {cop(charge.serviceTotal)} + comisión medio {cop(charge.fee)}
+                  </p>
+                ) : null}
                 {discount > 0 ? (
                   <p className="text-xs text-muted-foreground">
                     Antes {cop(grandTotal)}
@@ -625,7 +655,9 @@ function Ventas() {
                 </p>
                 {(saleDetail.payment_commission ?? 0) > 0 ? (
                   <p>
-                    <span className="text-muted-foreground">Comisión del medio · </span>
+                    <span className="text-muted-foreground">
+                      Comisión del medio (trasladada al cliente) ·{" "}
+                    </span>
                     {cop(saleDetail.payment_commission ?? 0)}
                   </p>
                 ) : null}

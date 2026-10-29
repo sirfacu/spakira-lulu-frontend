@@ -5,13 +5,29 @@ import { Minus, Plus, Search, Trash2, FileText, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { completeAppointment, listAppointmentExtras, inventoryShopQuery, inventoryQuery, inventoryShopAtLocationQuery, inventoryAtLocationQuery, paymentMethodsQuery, getLoyaltyCustomer, validatePromotion, type Appointment, type PromoValidate } from "@/lib/spa-queries";
+import {
+  completeAppointment,
+  listAppointmentExtras,
+  inventoryShopQuery,
+  inventoryQuery,
+  inventoryShopAtLocationQuery,
+  inventoryAtLocationQuery,
+  paymentMethodsQuery,
+  getLoyaltyCustomer,
+  getBusinessSettings,
+  validatePromotion,
+  type Appointment,
+  type PromoValidate,
+} from "@/lib/spa-queries";
 import { CouponApplyFields } from "@/components/coupon-apply-fields";
 import { MaterialEstimatePanel } from "@/components/material-estimate-panel";
 import { ApiError } from "@/lib/api";
 import { cop, time } from "@/lib/format";
 import { PaymentMethodFields } from "@/components/payment-method-fields";
 import { appointmentProductCatalog } from "@/lib/appointment-extras-catalog";
+import type { BoldChannel } from "@/lib/bold-payment-message";
+import { isBoldPaymentMethod } from "@/lib/bold-payment-message";
+import { paymentChargeBreakdown } from "@/lib/payment-fee";
 
 type CatalogItem = {
   id: string;
@@ -56,6 +72,7 @@ export function FinishAppointmentDialog({
   const [saving, setSaving] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState("");
   const [evidenceUrl, setEvidenceUrl] = useState("");
+  const [boldChannel, setBoldChannel] = useState<BoldChannel>("device");
   const [markPaid, setMarkPaid] = useState(true);
   const [promo, setPromo] = useState<PromoValidate | null>(null);
   const [autoPromo, setAutoPromo] = useState<PromoValidate | null>(null);
@@ -75,6 +92,11 @@ export function FinishAppointmentDialog({
     enabled: open,
   });
   const payMethods = useQuery({ ...paymentMethodsQuery, enabled: open });
+  const business = useQuery({
+    queryKey: ["business-settings"],
+    queryFn: getBusinessSettings,
+    enabled: open,
+  });
   const ownerId = appointment?.pets?.owners?.id ?? appointment?.pets?.owner_id ?? null;
   const loyalty = useQuery({
     queryKey: ["loyalty-customer", ownerId],
@@ -99,6 +121,7 @@ export function FinishAppointmentDialog({
     setCustomPrice("");
     setPaymentMethod("");
     setEvidenceUrl("");
+    setBoldChannel("device");
     setMarkPaid(true);
     setPromo(null);
     setPriceHint(null);
@@ -167,6 +190,13 @@ export function FinishAppointmentDialog({
   const shownPromo = manualPromo ? promo : autoPromo;
   const discount = shownPromo?.valid ? Number(shownPromo.discount_amount || 0) : 0;
   const netTotal = Math.max(0, grandTotal - discount);
+  const selectedPay = (payMethods.data ?? []).find((m) => m.code === paymentMethod);
+  const charge = paymentChargeBreakdown(netTotal, selectedPay);
+
+  useEffect(() => {
+    if (!isBoldPaymentMethod(selectedPay)) return;
+    setMarkPaid(boldChannel === "device");
+  }, [selectedPay, boldChannel]);
 
   useEffect(() => {
     if (!open || !ownerId || grandTotal <= 0 || manualPromo) {
@@ -536,9 +566,26 @@ export function FinishAppointmentDialog({
             <PaymentMethodFields
               methods={payMethods.data ?? []}
               methodCode={paymentMethod}
-              onMethodChange={setPaymentMethod}
+              onMethodChange={(code) => {
+                setPaymentMethod(code);
+                setBoldChannel("device");
+              }}
               evidenceUrl={evidenceUrl}
               onEvidenceUrl={setEvidenceUrl}
+              baseTotal={netTotal}
+              boldChannel={boldChannel}
+              onBoldChannelChange={setBoldChannel}
+              boldContext={{
+                petName: appointment.pets?.name,
+                serviceName: appointment.services?.name,
+                ownerName: appointment.pets?.owners?.full_name,
+                ownerPhone: appointment.pets?.owners?.phone,
+                ownerWhatsapp: appointment.pets?.owners?.whatsapp,
+                ownerPiiMasked: appointment.pets?.owners?.pii_masked,
+                tradeName: business.data?.trade_name || "Spa Kira",
+                appointmentId: appointment.id,
+              }}
+              onBoldPaid={() => setMarkPaid(true)}
             />
 
             <label className="flex cursor-pointer items-center gap-3 rounded-xl border border-border px-4 py-3 text-sm">
@@ -549,9 +596,13 @@ export function FinishAppointmentDialog({
                 onChange={(e) => setMarkPaid(e.target.checked)}
               />
               <span>
-                Pagado en mostrador
+                {isBoldPaymentMethod(selectedPay) && boldChannel === "whatsapp"
+                  ? "Ya pagó (marcar pagado)"
+                  : "Pagado en mostrador"}
                 <span className="mt-0.5 block text-xs text-muted-foreground">
-                  La factura queda como pagada; la mascota puede retirarse.
+                  {isBoldPaymentMethod(selectedPay) && boldChannel === "whatsapp"
+                    ? "Si abriste WhatsApp y el dueño aún no paga, dejalo sin marcar (pendiente)."
+                    : "La factura queda como pagada; la mascota puede retirarse."}
                 </span>
               </span>
             </label>
@@ -570,7 +621,12 @@ export function FinishAppointmentDialog({
             <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border pt-4">
               <div>
                 <p className="text-xs text-muted-foreground">Total a cobrar</p>
-                <p className="font-display text-xl font-bold text-primary">{cop(netTotal)}</p>
+                <p className="font-display text-xl font-bold text-primary">{cop(charge.amountDue)}</p>
+                {charge.fee > 0 ? (
+                  <p className="text-xs text-muted-foreground">
+                    Servicio {cop(charge.serviceTotal)} + comisión medio {cop(charge.fee)}
+                  </p>
+                ) : null}
                 {discount > 0 ? (
                   <p className="text-xs text-muted-foreground">
                     Antes {cop(grandTotal)}
@@ -614,8 +670,15 @@ export function FinishAppointmentDialog({
           </h3>
           <p className="mt-2 text-center text-sm text-muted-foreground">
             Se marcará el servicio como finalizado, se registrará la factura{" "}
-            <span className="font-medium text-foreground">{cop(netTotal)}</span> y se enviará un
-            PDF por correo a los dueños de {appointment.pets?.name ?? "la mascota"}.
+            <span className="font-medium text-foreground">{cop(charge.amountDue)}</span>
+            {charge.fee > 0 ? (
+              <>
+                {" "}
+                (servicio {cop(charge.serviceTotal)} + comisión {cop(charge.fee)})
+              </>
+            ) : null}{" "}
+            y se enviará un PDF por correo a los dueños de{" "}
+            {appointment.pets?.name ?? "la mascota"}.
           </p>
           <ul className="mt-4 space-y-1.5 rounded-2xl bg-secondary/50 px-4 py-3 text-sm">
             {includeService ? (
