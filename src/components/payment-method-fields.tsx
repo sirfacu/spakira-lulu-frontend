@@ -226,37 +226,36 @@ export function PaymentMethodFields({
         </Select>
       </div>
 
-      {selected?.charges_commission && charge ? (
+      {selected && charge && (charge.passToClient ? charge.clientSurcharge > 0 : charge.mediumTariff > 0) ? (
         <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-950">
           <p className="font-medium">
-            Comisión {selected.label}
+            {selected.label}
             {formatPaymentCommissionTariff(selected)
-              ? ` (${formatPaymentCommissionTariff(selected)})`
+              ? ` · tarifa ${formatPaymentCommissionTariff(selected)}`
               : ""}
           </p>
           <p className="mt-0.5 text-amber-900/80">
             {charge.passToClient
-              ? `Se cobra al cliente como «${TECH_SERVICES_LABEL}» (config en Medios).`
-              : "El spa absorbe la comisión (costo interno). El cliente paga solo el servicio."}
+              ? `Cargo al cliente «${TECH_SERVICES_LABEL}».`
+              : "Sin cargo al cliente: la tarifa entra como costo (baja el margen)."}
           </p>
-          {charge.fee > 0 ? (
-            <p className="mt-1 tabular-nums">
-              {charge.passToClient ? (
-                <>
-                  Servicio {cop(charge.serviceTotal)} + {TECH_SERVICES_LABEL} {cop(charge.fee)} ={" "}
-                  <span className="font-semibold">cobrar {cop(charge.amountDue)}</span>
-                </>
-              ) : (
-                <>
-                  Cobrar {cop(charge.amountDue)}
-                  <span className="text-amber-900/70">
-                    {" "}
-                    · costo {TECH_SERVICES_LABEL} {cop(charge.fee)}
-                  </span>
-                </>
-              )}
-            </p>
-          ) : null}
+          <p className="mt-1 tabular-nums">
+            {charge.passToClient ? (
+              <>
+                Servicio {cop(charge.serviceTotal)} + {TECH_SERVICES_LABEL}{" "}
+                {cop(charge.clientSurcharge)} ={" "}
+                <span className="font-semibold">cobrar {cop(charge.amountDue)}</span>
+              </>
+            ) : (
+              <>
+                Cobrar {cop(charge.amountDue)}
+                <span className="text-amber-900/70">
+                  {" "}
+                  · costo {cop(charge.mediumTariff)}
+                </span>
+              </>
+            )}
+          </p>
         </div>
       ) : null}
 

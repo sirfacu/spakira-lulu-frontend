@@ -352,19 +352,27 @@ export type Sale = {
   payment_method_label?: string | null;
   payment_evidence_url?: string | null;
   payment_commission?: number;
+  payment_client_surcharge?: number;
   owners?: Owner | null;
   staff?: Staff | null;
 };
+
+export type ClientChargeKind = "percent" | "fixed";
 
 export type PaymentMethod = {
   id: string;
   code: string;
   label: string;
   require_evidence: boolean;
+  /** Tarifa del medio (% y/o fijo). */
   charges_commission: boolean;
   commission_percent: number;
   commission_fixed: number;
-  /** true = cobrar fee al cliente; false = spa absorbe (costo). */
+  /** Cargo adicional al cliente (si off, la tarifa entra como costo). */
+  client_charge_enabled?: boolean;
+  client_charge_kind?: ClientChargeKind;
+  client_charge_value?: number;
+  /** Alias legacy de client_charge_enabled. */
   commission_pass_to_client?: boolean;
   active: boolean;
   sort_order: number;
@@ -765,6 +773,9 @@ export async function createPaymentMethod(input: {
   charges_commission?: boolean;
   commission_percent?: number;
   commission_fixed?: number;
+  client_charge_enabled?: boolean;
+  client_charge_kind?: ClientChargeKind;
+  client_charge_value?: number;
   commission_pass_to_client?: boolean;
   active?: boolean;
   sort_order?: number;
@@ -780,6 +791,9 @@ export async function patchPaymentMethod(
     charges_commission?: boolean;
     commission_percent?: number;
     commission_fixed?: number;
+    client_charge_enabled?: boolean;
+    client_charge_kind?: ClientChargeKind;
+    client_charge_value?: number;
     commission_pass_to_client?: boolean;
     active?: boolean;
     sort_order?: number;
@@ -2715,12 +2729,16 @@ export type MonthFinanceSummary = {
   operating_result: number;
   payment_commissions?: {
     total: number;
+    client_surcharge_total?: number;
+    channel_margin?: number;
     by_method: {
       code: string;
       label: string;
       sales_count: number;
       charged: number;
       commission: number;
+      client_surcharge?: number;
+      channel_margin?: number;
     }[];
   };
   indicators: {
@@ -2735,6 +2753,8 @@ export type MonthFinanceSummary = {
     adicionales_cost: number;
     fijos: number;
     medios?: number;
+    canales_cargo_cliente?: number;
+    canales_margen?: number;
   };
 };
 

@@ -655,10 +655,14 @@ function Ventas() {
                 </p>
                 {(saleDetail.payment_commission ?? 0) > 0 ? (
                   <p>
-                    <span className="text-muted-foreground">
-                      Comisión del medio (trasladada al cliente) ·{" "}
-                    </span>
+                    <span className="text-muted-foreground">Tarifa del medio (costo) · </span>
                     {cop(saleDetail.payment_commission ?? 0)}
+                  </p>
+                ) : null}
+                {(saleDetail.payment_client_surcharge ?? 0) > 0 ? (
+                  <p>
+                    <span className="text-muted-foreground">Cargo al cliente (canales) · </span>
+                    {cop(saleDetail.payment_client_surcharge ?? 0)}
                   </p>
                 ) : null}
                 {saleDetail.invoice_number ? (
