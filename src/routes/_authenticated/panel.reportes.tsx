@@ -852,6 +852,10 @@ function MesTab({ yearMonth, locationId }: { yearMonth: string; locationId: stri
   const profesionales = costs?.profesionales ?? sm?.labor_cost ?? 0;
   const fijos = includeFixed ? (costs?.fijos ?? d?.fixed_costs.total ?? 0) : 0;
   const medios = costs?.medios ?? d?.payment_commissions?.total ?? 0;
+  const canalesCargo =
+    costs?.canales_cargo_cliente ?? d?.payment_commissions?.client_surcharge_total ?? 0;
+  const canalesMargen =
+    costs?.canales_margen ?? d?.payment_commissions?.channel_margin ?? canalesCargo - medios;
   const medioLines = d?.payment_commissions?.by_method ?? [];
   const extrasCost = costs?.adicionales_cost ?? sm?.extras_cost ?? 0;
   const extrasRev = sm?.extras_revenue ?? 0;
@@ -861,7 +865,7 @@ function MesTab({ yearMonth, locationId }: { yearMonth: string; locationId: stri
     { name: "Insumos", value: insumos, fill: "var(--chart-1)" },
     { name: "Profesionales", value: profesionales, fill: "var(--chart-2)" },
     { name: "Gastos fijos", value: fijos, fill: "var(--chart-3)" },
-    { name: "Comisión de medios", value: medios, fill: "var(--chart-4)" },
+    { name: "Tarifa de medios", value: medios, fill: "var(--chart-4)" },
   ].filter((s) => s.value > 0);
   const pieTotal = pie.reduce((a, s) => a + s.value, 0);
 
@@ -877,7 +881,8 @@ function MesTab({ yearMonth, locationId }: { yearMonth: string; locationId: stri
     <>
       <p className="text-xs text-muted-foreground">
         Cómo cierra el mes: cobrado en servicios − insumos − comisión de groomer = margen de citas.
-        Luego extras de vitrina, mostrador, gastos fijos y la comisión que cobra el medio de pago.
+        Luego extras de vitrina, mostrador, gastos fijos, la tarifa del medio (costo) y el cargo
+        a cliente por canales (ingreso). El margen de canales = cargo − tarifa.
         El prorrateo de fijos por cita es solo un indicador.
       </p>
       {locationId ? (
@@ -997,17 +1002,23 @@ function MesTab({ yearMonth, locationId }: { yearMonth: string; locationId: stri
               {medioLines.length ? (
                 <div className="mt-4 border-t border-border/60 pt-3">
                   <p className="mb-2 text-xs font-medium text-foreground">
-                    Comisión por medio de pago
+                    Medios de pago (tarifa / cargo / margen)
                   </p>
                   <ul className="space-y-2">
                     {medioLines.map((ln) => (
-                      <li key={ln.code} className="flex justify-between gap-2 text-xs">
-                        <span className="truncate text-muted-foreground">
-                          {ln.label} · {ln.sales_count} cobro{ln.sales_count === 1 ? "" : "s"}
-                        </span>
-                        <span className="shrink-0 tabular-nums text-foreground">
-                          {cop(ln.commission)}
-                        </span>
+                      <li key={ln.code} className="space-y-0.5 text-xs">
+                        <div className="flex justify-between gap-2">
+                          <span className="truncate text-muted-foreground">
+                            {ln.label} · {ln.sales_count} cobro{ln.sales_count === 1 ? "" : "s"}
+                          </span>
+                          <span className="shrink-0 tabular-nums text-foreground">
+                            margen {cop(ln.channel_margin ?? (ln.client_surcharge ?? 0) - ln.commission)}
+                          </span>
+                        </div>
+                        <div className="flex justify-between gap-2 text-muted-foreground">
+                          <span>tarifa {cop(ln.commission)}</span>
+                          <span>cargo {cop(ln.client_surcharge ?? 0)}</span>
+                        </div>
                       </li>
                     ))}
                   </ul>
@@ -1046,10 +1057,20 @@ function MesTab({ yearMonth, locationId }: { yearMonth: string; locationId: stri
               {fijoLines.map((ln) => (
                 <PnlLine key={ln.id} label={ln.label} amount={ln.amount} kind="cost" indent />
               ))}
-              <PnlLine label="Comisión de medios" amount={medios} kind="cost" />
+              <PnlLine label="Cargo canales (cliente)" amount={canalesCargo} />
+              <PnlLine label="Tarifa de medios (costo)" amount={medios} kind="cost" />
               {medioLines.map((ln) => (
-                <PnlLine key={ln.code} label={ln.label} amount={ln.commission} kind="cost" indent />
+                <PnlLine
+                  key={ln.code}
+                  label={ln.label}
+                  amount={ln.commission}
+                  kind="cost"
+                  indent
+                />
               ))}
+              {(canalesCargo > 0 || medios > 0) ? (
+                <PnlLine label="Margen de canales" amount={canalesMargen} />
+              ) : null}
               <PnlLine label="Resultado operativo" amount={d.operating_result} kind="total" />
             </SectionCard>
           </div>
