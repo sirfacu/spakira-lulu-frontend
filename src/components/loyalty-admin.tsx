@@ -7,6 +7,14 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetFooter,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
+import {
   createLoyaltyRule,
   createLoyaltyTier,
   issueLoyaltyReward,
@@ -25,6 +33,11 @@ type Tier = {
   discount_type: string | null;
   discount_value: number;
   applies_to?: string;
+  free_service_qty?: number;
+  store_discount_percent?: number;
+  free_service_valid_days?: number | null;
+  store_discount_uses?: number;
+  store_discount_valid_days?: number | null;
 };
 
 type Rule = {
@@ -64,10 +77,42 @@ function asTier(t: Record<string, unknown>): Tier {
     name: String(t.name),
     min_visits: Number(t.min_visits || 0),
     min_months: Number(t.min_months || 0),
-    discount_type: (t.discount_type as string) || "percent",
+    discount_type: (t.discount_type as string) || "free_service",
     discount_value: Number(t.discount_value || 0),
     applies_to: String(t.applies_to || "services"),
+    free_service_qty: Number(t.free_service_qty || 0),
+    store_discount_percent: Number(t.store_discount_percent || 0),
+    free_service_valid_days: t.free_service_valid_days == null ? null : Number(t.free_service_valid_days),
+    store_discount_uses: Math.max(1, Number(t.store_discount_uses || 1)),
+    store_discount_valid_days: t.store_discount_valid_days == null ? null : Number(t.store_discount_valid_days),
   };
+}
+
+function validityHint(days: number | null | undefined): string {
+  if (days == null || days <= 0) return "sin vencimiento";
+  return `${days} días`;
+}
+
+function tierSummary(t: Tier): string {
+  const bits: string[] = [`${t.min_visits} visitas`];
+  if (t.min_months) bits.push(`${t.min_months} meses`);
+  const qty = t.free_service_qty || 0;
+  const store = t.store_discount_percent || 0;
+  const storeUses = t.store_discount_uses || 1;
+  if (qty > 0) {
+    bits.push(
+      `${qty === 1 ? "1 baño gratis" : `${qty} baños gratis`} (${validityHint(t.free_service_valid_days)})`,
+    );
+  }
+  if (store > 0) {
+    const usesLabel = storeUses === 1 ? "1 uso" : `${storeUses} usos`;
+    bits.push(`${store}% tienda · ${usesLabel} · ${validityHint(t.store_discount_valid_days)}`);
+  }
+  if (qty <= 0 && store <= 0 && t.discount_type === "percent" && t.discount_value > 0) {
+    bits.push(`${t.discount_value}% (legado)`);
+  }
+  if (qty <= 0 && store <= 0) bits.push("sin premios");
+  return bits.join(" · ");
 }
 
 function asRule(r: Record<string, unknown>): Rule {
@@ -92,57 +137,85 @@ export function LoyaltyTiersPanel({
   tiers: Record<string, unknown>[];
 }) {
   const qc = useQueryClient();
-  const [editing, setEditing] = useState<string | null>(null);
+  const [open, setOpen] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [name, setName] = useState("");
   const [visits, setVisits] = useState("3");
   const [months, setMonths] = useState("0");
-  const [percent, setPercent] = useState("5");
-  const [appliesTo, setAppliesTo] = useState("services");
-  const [newName, setNewName] = useState("");
-  const [newVisits, setNewVisits] = useState("3");
-  const [newPercent, setNewPercent] = useState("5");
-  const [newAppliesTo, setNewAppliesTo] = useState("services");
+  const [freeQty, setFreeQty] = useState("1");
+  const [freeOn, setFreeOn] = useState(true);
+  const [freeDays, setFreeDays] = useState("");
+  const [storePct, setStorePct] = useState("5");
+  const [storeOn, setStoreOn] = useState(true);
+  const [storeUses, setStoreUses] = useState("1");
+  const [storeDays, setStoreDays] = useState("");
 
-  const startEdit = (t: Tier) => {
-    setEditing(t.id);
-    setName(t.name);
-    setVisits(String(t.min_visits));
-    setMonths(String(t.min_months));
-    setPercent(String(t.discount_value));
-    setAppliesTo(t.applies_to || "services");
+  const resetForm = (t?: Tier) => {
+    if (t) {
+      setEditingId(t.id);
+      setName(t.name);
+      setVisits(String(t.min_visits));
+      setMonths(String(t.min_months));
+      const qty = Number(t.free_service_qty || 0);
+      const store = Number(t.store_discount_percent || 0);
+      setFreeOn(qty > 0);
+      setFreeQty(String(qty > 0 ? qty : 1));
+      setFreeDays(t.free_service_valid_days != null && t.free_service_valid_days > 0 ? String(t.free_service_valid_days) : "");
+      setStoreOn(store > 0);
+      setStorePct(String(store > 0 ? store : 5));
+      setStoreUses(String(Math.max(1, t.store_discount_uses || 1)));
+      setStoreDays(t.store_discount_valid_days != null && t.store_discount_valid_days > 0 ? String(t.store_discount_valid_days) : "");
+    } else {
+      setEditingId(null);
+      setName("");
+      setVisits("3");
+      setMonths("0");
+      setFreeOn(true);
+      setFreeQty("1");
+      setFreeDays("");
+      setStoreOn(true);
+      setStorePct("5");
+      setStoreUses("1");
+      setStoreDays("");
+    }
+  };
+
+  const openEdit = (t: Tier) => {
+    resetForm(t);
+    setOpen(true);
+  };
+
+  const openNew = () => {
+    resetForm();
+    setOpen(true);
   };
 
   const save = useMutation({
-    mutationFn: () =>
-      patchLoyaltyTier(editing!, {
+    mutationFn: () => {
+      const freeDaysN = Number(freeDays);
+      const storeDaysN = Number(storeDays);
+      const payload = {
         name: name.trim(),
         min_visits: Number(visits) || 0,
         min_months: Number(months) || 0,
-        discount_type: "percent",
-        discount_value: Number(percent) || 0,
-        applies_to: appliesTo,
-      }),
-    onSuccess: async () => {
-      toast.success("Nivel actualizado");
-      setEditing(null);
-      await qc.invalidateQueries({ queryKey: ["loyalty-program"] });
-    },
-    onError: (e: Error) => toast.error(e.message),
-  });
-
-  const create = useMutation({
-    mutationFn: () =>
-      createLoyaltyTier({
-        name: newName.trim(),
-        min_visits: Number(newVisits) || 0,
-        discount_type: "percent",
-        discount_value: Number(newPercent) || 0,
-        applies_to: newAppliesTo,
+        free_service_qty: freeOn ? Math.max(1, Number(freeQty) || 1) : 0,
+        free_service_valid_days: freeOn && freeDaysN > 0 ? freeDaysN : null,
+        store_discount_percent: storeOn ? Math.max(0, Number(storePct) || 0) : 0,
+        store_discount_uses: storeOn ? Math.max(1, Number(storeUses) || 1) : 1,
+        store_discount_valid_days: storeOn && storeDaysN > 0 ? storeDaysN : null,
+        discount_type: "free_service",
+        discount_value: 0,
+        applies_to: "services",
+      };
+      if (editingId) return patchLoyaltyTier(editingId, payload);
+      return createLoyaltyTier({
+        ...payload,
         sort_order: (tiers.length + 1) * 10,
-      }),
+      });
+    },
     onSuccess: async () => {
-      toast.success("Nivel creado");
-      setNewName("");
+      toast.success(editingId ? "Nivel actualizado" : "Nivel creado");
+      setOpen(false);
       await qc.invalidateQueries({ queryKey: ["loyalty-program"] });
       await qc.invalidateQueries({ queryKey: ["promotions-summary"] });
     },
@@ -152,98 +225,167 @@ export function LoyaltyTiersPanel({
   return (
     <SectionCard title="Niveles">
       <p className="mb-3 text-sm text-muted-foreground">
-        Cada nivel entrega su porcentaje una sola vez, en el cobro en que se alcanza. Después no vuelve a
-        descontar hasta el nivel siguiente. Sin cupón, se suma con las promociones automáticas. El alcance
-        dice si baja el servicio, las cosas sueltas, o los dos.
+        Al llegar a la meta se emiten premios de <strong>una sola vez</strong>: baños/servicios gratis (cantidad
+        configurable) y/o % en tienda hasta usarlo. No es un descuento permanente en el baño. Los premios se
+        generan cuando la visita ya está finalizada y cobrada, no en el preview.
       </p>
       <ul className="space-y-2 text-sm">
         {tiers.map((raw) => {
           const t = asTier(raw);
           return (
-            <li key={t.id} className="rounded-xl border border-border p-3">
-              {editing === t.id ? (
-                <div className="grid gap-2 sm:grid-cols-3">
-                  <div>
-                    <Label>Nombre</Label>
-                    <Input className="mt-1 rounded-xl" value={name} onChange={(e) => setName(e.target.value)} />
-                  </div>
-                  <div>
-                    <Label>Visitas mín.</Label>
-                    <Input className="mt-1 rounded-xl" value={visits} onChange={(e) => setVisits(e.target.value)} />
-                  </div>
-                  <div>
-                    <Label>% descuento</Label>
-                    <Input className="mt-1 rounded-xl" value={percent} onChange={(e) => setPercent(e.target.value)} />
-                  </div>
-                  <div>
-                    <Label>Meses mín.</Label>
-                    <Input className="mt-1 rounded-xl" value={months} onChange={(e) => setMonths(e.target.value)} />
-                  </div>
-                  <div>
-                    <Label>Aplica a</Label>
-                    <select
-                      className="mt-1 h-10 w-full rounded-xl border border-input bg-background px-2"
-                      value={appliesTo}
-                      onChange={(e) => setAppliesTo(e.target.value)}
-                    >
-                      <option value="services">Solo servicios</option>
-                      <option value="store">Solo vitrina</option>
-                      <option value="both">Servicios y vitrina</option>
-                    </select>
-                  </div>
-                  <div className="flex items-end gap-2 sm:col-span-2">
-                    <Button className="rounded-xl" disabled={save.isPending} onClick={() => save.mutate()}>
-                      Guardar
-                    </Button>
-                    <Button variant="outline" className="rounded-xl" onClick={() => setEditing(null)}>
-                      Cancelar
-                    </Button>
-                  </div>
+            <li key={t.id}>
+              <button
+                type="button"
+                className="flex w-full items-center justify-between gap-2 rounded-xl border border-border bg-background p-3 text-left transition hover:border-primary/40"
+                onClick={() => openEdit(t)}
+              >
+                <div>
+                  <p className="font-medium">{t.name}</p>
+                  <p className="text-muted-foreground">{tierSummary(t)}</p>
                 </div>
-              ) : (
-                <div className="flex items-center justify-between gap-2">
-                  <div>
-                    <p className="font-medium">{t.name}</p>
-                    <p className="text-muted-foreground">
-                      Desde {t.min_visits} visitas
-                      {t.min_months ? ` · ${t.min_months} meses` : ""}
-                      {t.discount_type === "percent" ? ` · ${t.discount_value}%` : ""}
-                      {t.applies_to ? ` · ${APPLIES_TO_LABEL[t.applies_to] || t.applies_to}` : ""}
-                    </p>
-                  </div>
-                  <Button variant="outline" size="sm" className="rounded-lg" onClick={() => startEdit(t)}>
-                    Editar
-                  </Button>
-                </div>
-              )}
+                <span className="text-xs text-muted-foreground">editar →</span>
+              </button>
             </li>
           );
         })}
       </ul>
-      <div className="mt-4 rounded-2xl bg-secondary/40 p-3">
-        <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Nuevo nivel</p>
-        <div className="grid gap-2 sm:grid-cols-[1fr_90px_90px_1fr_auto]">
-          <Input className="rounded-xl" placeholder="Nombre" value={newName} onChange={(e) => setNewName(e.target.value)} />
-          <Input className="rounded-xl" placeholder="Visitas" value={newVisits} onChange={(e) => setNewVisits(e.target.value)} />
-          <Input className="rounded-xl" placeholder="%" value={newPercent} onChange={(e) => setNewPercent(e.target.value)} />
-          <select
-            className="h-10 rounded-xl border border-input bg-background px-2 text-sm"
-            value={newAppliesTo}
-            onChange={(e) => setNewAppliesTo(e.target.value)}
-          >
-            <option value="services">Solo servicios</option>
-            <option value="store">Solo vitrina</option>
-            <option value="both">Servicios y vitrina</option>
-          </select>
-          <Button
-            className="rounded-xl"
-            disabled={!newName.trim() || create.isPending}
-            onClick={() => create.mutate()}
-          >
-            Agregar
-          </Button>
-        </div>
-      </div>
+      <Button className="mt-4 rounded-xl" variant="outline" onClick={openNew}>
+        + Nivel
+      </Button>
+
+      <Sheet open={open} onOpenChange={setOpen}>
+        <SheetContent className="w-full overflow-y-auto sm:max-w-md">
+          <SheetHeader>
+            <SheetTitle>{editingId ? "Editar nivel" : "Nuevo nivel"}</SheetTitle>
+            <SheetDescription>
+              Meta de visitas y premios únicos (baño gratis y/o % tienda).
+            </SheetDescription>
+          </SheetHeader>
+          <div className="mt-4 grid gap-3">
+            <div>
+              <Label>Nombre</Label>
+              <Input className="mt-1 rounded-xl" value={name} onChange={(e) => setName(e.target.value)} />
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <Label>Visitas para desbloquear</Label>
+                <Input className="mt-1 rounded-xl" value={visits} onChange={(e) => setVisits(e.target.value)} />
+              </div>
+              <div>
+                <Label>Meses mín. (opcional)</Label>
+                <Input className="mt-1 rounded-xl" value={months} onChange={(e) => setMonths(e.target.value)} />
+              </div>
+            </div>
+            <div className="rounded-xl border border-border p-3">
+              <div className="flex items-center justify-between gap-2">
+                <Label className="font-medium">Baños / servicios gratis</Label>
+                <Switch checked={freeOn} onCheckedChange={setFreeOn} />
+              </div>
+              {freeOn ? (
+                <div className="mt-2 grid grid-cols-2 gap-2">
+                  <div>
+                    <Label>Cantidad</Label>
+                    <Input
+                      className="mt-1 rounded-xl"
+                      type="number"
+                      min={1}
+                      value={freeQty}
+                      onChange={(e) => setFreeQty(e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <Label>Vigencia (días)</Label>
+                    <Input
+                      className="mt-1 rounded-xl"
+                      type="number"
+                      min={0}
+                      placeholder="Sin límite"
+                      value={freeDays}
+                      onChange={(e) => setFreeDays(e.target.value)}
+                    />
+                  </div>
+                </div>
+              ) : null}
+            </div>
+            <div className="rounded-xl border border-border p-3">
+              <div className="flex items-center justify-between gap-2">
+                <Label className="font-medium">% descuento en tienda</Label>
+                <Switch checked={storeOn} onCheckedChange={setStoreOn} />
+              </div>
+              {storeOn ? (
+                <div className="mt-2 grid gap-2">
+                  <div>
+                    <Label>Porcentaje</Label>
+                    <Input
+                      className="mt-1 rounded-xl"
+                      type="number"
+                      min={1}
+                      max={100}
+                      value={storePct}
+                      onChange={(e) => setStorePct(e.target.value)}
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <Label>Usos</Label>
+                      <Input
+                        className="mt-1 rounded-xl"
+                        type="number"
+                        min={1}
+                        value={storeUses}
+                        onChange={(e) => setStoreUses(e.target.value)}
+                      />
+                      <p className="mt-1 text-xs text-muted-foreground">1 = primer uso</p>
+                    </div>
+                    <div>
+                      <Label>Vigencia (días)</Label>
+                      <Input
+                        className="mt-1 rounded-xl"
+                        type="number"
+                        min={0}
+                        placeholder="Sin límite"
+                        value={storeDays}
+                        onChange={(e) => setStoreDays(e.target.value)}
+                      />
+                    </div>
+                  </div>
+                </div>
+              ) : null}
+            </div>
+            <div className="rounded-xl border border-dashed border-rose-200 bg-rose-50/50 p-3 text-sm">
+              <p className="font-medium text-foreground">Al cobrar, el cliente verá</p>
+              <ul className="mt-1 list-inside list-disc text-muted-foreground">
+                {freeOn ? (
+                  <li>
+                    {Number(freeQty) || 1} baño{Number(freeQty) === 1 ? "" : "s"} gratis
+                    {Number(freeDays) > 0 ? ` · ${freeDays} días` : " · sin vencimiento"}
+                  </li>
+                ) : null}
+                {storeOn && Number(storePct) > 0 ? (
+                  <li>
+                    {storePct}% en tienda · {Math.max(1, Number(storeUses) || 1)} uso
+                    {Math.max(1, Number(storeUses) || 1) === 1 ? "" : "s"}
+                    {Number(storeDays) > 0 ? ` · ${storeDays} días` : " · sin vencimiento"}
+                  </li>
+                ) : null}
+                {!freeOn && !storeOn ? <li>Sin premios configurados</li> : null}
+              </ul>
+            </div>
+          </div>
+          <SheetFooter className="mt-6 gap-2 sm:flex-col">
+            <Button
+              className="rounded-xl"
+              disabled={!name.trim() || save.isPending || (!freeOn && !storeOn)}
+              onClick={() => save.mutate()}
+            >
+              Guardar
+            </Button>
+            <Button variant="outline" className="rounded-xl" onClick={() => setOpen(false)}>
+              Cancelar
+            </Button>
+          </SheetFooter>
+        </SheetContent>
+      </Sheet>
     </SectionCard>
   );
 }

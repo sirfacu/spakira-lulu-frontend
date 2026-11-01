@@ -2530,6 +2530,27 @@ export const loyaltyProgramQuery = queryOptions({
     }>("/loyalty/program"),
 });
 
+export type LoyaltyCatalogTier = {
+  name: string;
+  sort_order: number;
+  min_visits: number;
+  min_months: number;
+  free_service_qty: number;
+  free_service_valid_days: number | null;
+  store_discount_percent: number;
+  store_discount_uses: number;
+  store_discount_valid_days: number | null;
+};
+
+export const loyaltyCatalogQuery = queryOptions({
+  queryKey: ["loyalty-catalog"],
+  queryFn: () =>
+    api<{
+      program: { id: string; name: string; active: boolean } | null;
+      tiers: LoyaltyCatalogTier[];
+    }>("/loyalty/catalog"),
+});
+
 export type LoyaltyCustomer = {
   months: number;
   visits: number;
@@ -2562,6 +2583,11 @@ export async function createLoyaltyTier(input: {
   discount_type?: string;
   discount_value?: number;
   applies_to?: string;
+  free_service_qty?: number;
+  store_discount_percent?: number;
+  free_service_valid_days?: number | null;
+  store_discount_uses?: number;
+  store_discount_valid_days?: number | null;
 }) {
   return api("/loyalty/tiers", { method: "POST", body: input });
 }
