@@ -404,9 +404,9 @@ function MargenTab({
                   onClick={() => setSelected(line)}
                 >
                   <td className="py-2 pr-3 whitespace-nowrap text-xs text-muted-foreground">
-                    {line.closed_at ? shortDate(line.closed_at) : line.starts_at ? shortDate(line.starts_at) : "—"}
-                    {line.starts_at ? (
-                      <span className="block text-[10px]">agenda {shortDate(line.starts_at)}</span>
+                    {line.starts_at ? shortDate(line.starts_at) : "—"}
+                    {line.closed_at ? (
+                      <span className="block text-[10px]">cierre {shortDate(line.closed_at)}</span>
                     ) : null}
                   </td>
                   <td className="py-2 pr-3">{line.service_name}</td>
@@ -880,10 +880,11 @@ function MesTab({ yearMonth, locationId }: { yearMonth: string; locationId: stri
   return (
     <>
       <p className="text-xs text-muted-foreground">
-        Cómo cierra el mes: cobrado en servicios − insumos − comisión de groomer = margen de citas.
-        Luego extras de vitrina, mostrador, gastos fijos, la tarifa del medio (costo) y el cargo
-        a cliente por canales (ingreso). El margen de canales = cargo − tarifa.
-        El prorrateo de fijos por cita es solo un indicador.
+        Cómo cierra el mes: las citas se imputan al día de agenda (no al día de cierre). Cobrado en
+        servicios − insumos − comisión de groomer = margen de citas. Luego extras de vitrina,
+        mostrador, gastos fijos, la tarifa del medio (costo) y el cargo a cliente por canales
+        (ingreso). El margen de canales = cargo − tarifa. El prorrateo de fijos por cita es solo un
+        indicador.
       </p>
       {locationId ? (
         <p className="rounded-2xl border border-border bg-secondary/40 px-4 py-3 text-sm text-muted-foreground">
