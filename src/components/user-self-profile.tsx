@@ -7,6 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
 import { LoyaltyCard } from "@/components/loyalty-card";
+import { LoyaltyLevelsCatalog } from "@/components/loyalty-levels-catalog";
 import { resolveMediaUrl } from "@/lib/api";
 import { initials } from "@/lib/format";
 import {
@@ -142,6 +143,8 @@ export function UserSelfProfile() {
       </SectionCard>
 
       {me.data?.id ? <LoyaltyCard customerId={me.data.id} self /> : null}
+
+      <LoyaltyLevelsCatalog />
 
       <SectionCard title="Notificaciones por correo">
         <p className="mb-4 text-sm text-muted-foreground">
