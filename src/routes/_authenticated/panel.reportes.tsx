@@ -26,6 +26,10 @@ import {
   ownersQuery,
   serviceMarginsQuery,
   monthFinanceQuery,
+  monthClosesQuery,
+  monthCloseStatusQuery,
+  closeFinanceMonth,
+  downloadMonthFinancePdf,
   fixedCostsQuery,
   createFixedCostEntry,
   updateFixedCostEntry,
@@ -149,6 +153,9 @@ function Reportes() {
           <TabsTrigger value="mes" disabled={!canFinance}>
             Resultado del mes
           </TabsTrigger>
+          <TabsTrigger value="cierre" disabled={!canFinance}>
+            Cierre
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="resumen" className="space-y-6">
@@ -178,6 +185,11 @@ function Reportes() {
         </TabsContent>
         <TabsContent value="mes" className="space-y-6">
           {canFinance ? <MesTab yearMonth={yearMonth} locationId={scopedLocationId} /> : null}
+        </TabsContent>
+        <TabsContent value="cierre" className="space-y-6">
+          {canFinance ? (
+            <CierreTab yearMonth={yearMonth} locationId={scopedLocationId} />
+          ) : null}
         </TabsContent>
       </Tabs>
     </AppShell>
@@ -610,6 +622,8 @@ function FijosTab({
 }) {
   const qc = useQueryClient();
   const q = useQuery(fixedCostsQuery(yearMonth));
+  const closeQ = useQuery(monthCloseStatusQuery(yearMonth));
+  const monthClosed = !!closeQ.data?.closed;
   const staffQ = useQuery(staffQuery);
   const [draft, setDraft] = useState({ label: "", amount: "" });
 
@@ -681,6 +695,12 @@ function FijosTab({
         Cada gasto es de una sede o de toda la instalación. En un local, el resultado
         resta solo los de esa sede.
       </p>
+      {monthClosed ? (
+        <p className="rounded-2xl border border-border bg-secondary/40 px-4 py-3 text-sm text-muted-foreground">
+          Este mes está <strong className="text-foreground">cerrado</strong>. Los gastos quedan
+          en solo lectura.
+        </p>
+      ) : null}
       {locationId ? (
         <p className="rounded-2xl border border-border bg-secondary/40 px-4 py-3 text-sm text-muted-foreground">
           Los que dicen «Toda la instalación» no entran en este local. Asignalos a la sede
@@ -705,6 +725,7 @@ function FijosTab({
               onSave={(next) => saveMut.mutate(next)}
               onDelete={() => delMut.mutate(entry.id)}
               busy={saveMut.isPending || delMut.isPending}
+              readOnly={monthClosed}
             />
           ))}
           {!visible.length && !q.isLoading ? (
@@ -717,6 +738,7 @@ function FijosTab({
             className="h-10 rounded-xl"
             placeholder="Nombre (ej. Arriendo local)"
             value={draft.label}
+            disabled={monthClosed}
             onChange={(e) => setDraft((d) => ({ ...d, label: e.target.value }))}
           />
           <Input
@@ -725,12 +747,13 @@ function FijosTab({
             min={0}
             placeholder="Monto"
             value={draft.amount}
+            disabled={monthClosed}
             onChange={(e) => setDraft((d) => ({ ...d, amount: e.target.value }))}
           />
           <Button
             type="button"
             className="h-10 rounded-xl"
-            disabled={!draft.label.trim() || createMut.isPending}
+            disabled={monthClosed || !draft.label.trim() || createMut.isPending}
             onClick={() => createMut.mutate()}
           >
             <Plus className="mr-1 h-4 w-4" />
@@ -748,12 +771,14 @@ function FixedCostRow({
   onSave,
   onDelete,
   busy,
+  readOnly = false,
 }: {
   entry: FixedCostEntry;
   locations: { id: string; name: string }[];
   onSave: (e: FixedCostEntry) => void;
   onDelete: () => void;
   busy: boolean;
+  readOnly?: boolean;
 }) {
   const [amount, setAmount] = useState(String(entry.amount));
   const [label, setLabel] = useState(entry.label);
@@ -763,8 +788,10 @@ function FixedCostRow({
       <Input
         className="h-9 min-w-[10rem] flex-1 rounded-lg"
         value={label}
+        disabled={readOnly || busy}
         onChange={(e) => setLabel(e.target.value)}
         onBlur={() => {
+          if (readOnly) return;
           if (label.trim() && label !== entry.label) {
             onSave({ ...entry, label: label.trim() });
           }
@@ -775,8 +802,10 @@ function FixedCostRow({
         type="number"
         min={0}
         value={amount}
+        disabled={readOnly || busy}
         onChange={(e) => setAmount(e.target.value)}
         onBlur={() => {
+          if (readOnly) return;
           const n = Math.max(0, Number(amount) || 0);
           if (n !== entry.amount) onSave({ ...entry, amount: n });
         }}
@@ -784,7 +813,7 @@ function FixedCostRow({
       <select
         className="h-9 max-w-[11rem] rounded-lg border border-input bg-background px-2 text-sm"
         value={entry.location_id || ""}
-        disabled={busy}
+        disabled={readOnly || busy}
         aria-label="Sede del gasto"
         onChange={(e) => onSave({ ...entry, label: label.trim() || entry.label, location_id: e.target.value || null })}
       >
@@ -800,7 +829,7 @@ function FixedCostRow({
         size="icon"
         variant="ghost"
         className="h-9 w-9 text-destructive"
-        disabled={busy}
+        disabled={readOnly || busy}
         title="Eliminar"
         onClick={onDelete}
       >
@@ -866,6 +895,7 @@ function PnlLine({
 
 function MesTab({ yearMonth, locationId }: { yearMonth: string; locationId: string | null }) {
   const q = useQuery(monthFinanceQuery(yearMonth, locationId));
+  const [pdfBusy, setPdfBusy] = useState(false);
   const d = q.data;
   const sm = d?.service_margins;
   const costs = d?.cost_breakdown;
@@ -901,13 +931,43 @@ function MesTab({ yearMonth, locationId }: { yearMonth: string; locationId: stri
 
   return (
     <>
-      <p className="text-xs text-muted-foreground">
-        Cómo cierra el mes: las citas se imputan al día de agenda (no al día de cierre). Cobrado en
-        servicios − insumos − comisión de groomer = margen de citas. Luego extras de vitrina,
-        mostrador, gastos fijos, la tarifa del medio (costo) y el cargo a cliente por canales
-        (ingreso). El margen de canales = cargo − tarifa. El prorrateo de fijos por cita es solo un
-        indicador.
-      </p>
+      <div className="flex flex-wrap items-center gap-2">
+        <p className="text-xs text-muted-foreground flex-1 min-w-[16rem]">
+          Cómo cierra el mes: las citas se imputan al día de agenda (no al día de cierre). Cobrado en
+          servicios − insumos − comisión de groomer = margen de citas. Luego extras de vitrina,
+          mostrador, gastos fijos, la tarifa del medio (costo) y el cargo a cliente por canales
+          (ingreso). El margen de canales = cargo − tarifa. El prorrateo de fijos por cita es solo un
+          indicador.
+        </p>
+        {d?.closed ? (
+          <span className="rounded-full bg-secondary px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+            Cerrado
+          </span>
+        ) : (
+          <span className="rounded-full bg-emerald-500/15 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-emerald-700 dark:text-emerald-400">
+            Abierto
+          </span>
+        )}
+        <Button
+          type="button"
+          variant="outline"
+          className="h-9 rounded-xl"
+          disabled={pdfBusy || q.isLoading}
+          onClick={async () => {
+            setPdfBusy(true);
+            try {
+              await downloadMonthFinancePdf(yearMonth, locationId, "download");
+              toast.success("PDF descargado");
+            } catch (e) {
+              toast.error((e as Error)?.message || "No se pudo generar el PDF");
+            } finally {
+              setPdfBusy(false);
+            }
+          }}
+        >
+          Descargar PDF del mes
+        </Button>
+      </div>
       {locationId ? (
         <p className="rounded-2xl border border-border bg-secondary/40 px-4 py-3 text-sm text-muted-foreground">
           {d?.indicators.note ||
@@ -1127,6 +1187,205 @@ function MesTab({ yearMonth, locationId }: { yearMonth: string; locationId: stri
           </SectionCard>
         </>
       ) : null}
+    </>
+  );
+}
+
+function CierreTab({
+  yearMonth,
+  locationId,
+}: {
+  yearMonth: string;
+  locationId: string | null;
+}) {
+  const qc = useQueryClient();
+  const monthQ = useQuery(monthFinanceQuery(yearMonth, locationId));
+  const historyQ = useQuery(monthClosesQuery());
+  const [confirm, setConfirm] = useState(false);
+  const [pdfBusy, setPdfBusy] = useState(false);
+
+  const closed = !!monthQ.data?.closed;
+  const sm = monthQ.data?.service_margins;
+  const sales = monthQ.data?.sales;
+  const fijos = monthQ.data?.fixed_costs?.total ?? 0;
+
+  const closeMut = useMutation({
+    mutationFn: () =>
+      closeFinanceMonth(yearMonth, {
+        location_id: locationId,
+        notes: null,
+      }),
+    onSuccess: async () => {
+      setConfirm(false);
+      await qc.invalidateQueries({ queryKey: ["finance-month"] });
+      await qc.invalidateQueries({ queryKey: ["finance-month-closes"] });
+      await qc.invalidateQueries({ queryKey: ["finance-month-close-status"] });
+      await qc.invalidateQueries({ queryKey: ["finance-fixed-costs", yearMonth] });
+      toast.success(`Mes ${yearMonth} cerrado`);
+    },
+    onError: (e: Error) => toast.error(e.message || "No se pudo cerrar el mes"),
+  });
+
+  const downloadPdf = async () => {
+    setPdfBusy(true);
+    try {
+      await downloadMonthFinancePdf(yearMonth, locationId, "download");
+      toast.success("PDF descargado");
+    } catch (e) {
+      toast.error((e as Error)?.message || "No se pudo generar el PDF");
+    } finally {
+      setPdfBusy(false);
+    }
+  };
+
+  return (
+    <>
+      <p className="text-xs text-muted-foreground">
+        Cerrar el mes guarda un snapshot de las reglas de medios y del resultado. Después, los
+        cambios en Configuración no reescriben este periodo. La nómina de staff sigue en Personal.
+      </p>
+
+      <div className="flex flex-wrap items-center gap-2">
+        {closed ? (
+          <span className="rounded-full bg-secondary px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+            Cerrado
+          </span>
+        ) : (
+          <span className="rounded-full bg-emerald-500/15 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-emerald-700 dark:text-emerald-400">
+            Abierto
+          </span>
+        )}
+        <Button
+          type="button"
+          variant="outline"
+          className="h-9 rounded-xl"
+          disabled={pdfBusy}
+          onClick={() => void downloadPdf()}
+        >
+          Descargar PDF del mes
+        </Button>
+      </div>
+
+      <div className="grid gap-4 sm:grid-cols-3">
+        <StatCard
+          icon={DollarSign}
+          label="Ingresos citas"
+          value={cop(Number(sales?.cita ?? 0))}
+          tone="accent"
+        />
+        <StatCard
+          icon={Scissors}
+          label="Labor (agenda)"
+          value={cop(Number(sm?.labor_cost ?? 0))}
+          tone="primary"
+        />
+        <StatCard icon={Wallet} label="Gastos fijos" value={cop(Number(fijos))} tone="gold" />
+      </div>
+
+      <SectionCard title={`Checklist — ${yearMonth}`}>
+        <ul className="space-y-2 text-sm">
+          <li>✓ Revisá gastos del mes en la pestaña Gastos</li>
+          <li>✓ Revisá margen / resultado del mes</li>
+          <li>✓ Se guardará snapshot de reglas de medios vigentes</li>
+          <li className="flex items-start gap-2">
+            <input
+              id="confirm-close"
+              type="checkbox"
+              className="mt-1"
+              checked={confirm}
+              disabled={closed || closeMut.isPending}
+              onChange={(e) => setConfirm(e.target.checked)}
+            />
+            <label htmlFor="confirm-close" className="leading-snug">
+              Entiendo que no se aplicarán cambios futuros de medios a este mes
+            </label>
+          </li>
+        </ul>
+        <div className="mt-4 flex flex-wrap gap-2">
+          <Button
+            type="button"
+            className="rounded-xl"
+            disabled={closed || !confirm || closeMut.isPending}
+            onClick={() => closeMut.mutate()}
+          >
+            {closed ? `Mes ${yearMonth} ya cerrado` : `Cerrar ${yearMonth}`}
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            className="rounded-xl"
+            disabled={pdfBusy}
+            onClick={() => void downloadPdf()}
+          >
+            Descargar PDF del mes
+          </Button>
+        </div>
+        {monthQ.data?.close?.closed_at ? (
+          <p className="mt-3 text-xs text-muted-foreground">
+            Cerrado el {shortDate(monthQ.data.close.closed_at)}
+            {monthQ.data.close.closed_by_email
+              ? ` · ${monthQ.data.close.closed_by_email}`
+              : ""}
+          </p>
+        ) : null}
+      </SectionCard>
+
+      <SectionCard title="Historial de cierres">
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[28rem] text-left text-sm">
+            <thead className="text-xs text-muted-foreground">
+              <tr>
+                <th className="py-2 pr-3 font-medium">Mes</th>
+                <th className="py-2 pr-3 font-medium">Estado</th>
+                <th className="py-2 pr-3 font-medium">Cerrado por</th>
+                <th className="py-2 pr-3 font-medium">PDF</th>
+              </tr>
+            </thead>
+            <tbody>
+              {(historyQ.data?.items ?? []).map((row) => (
+                <tr key={row.year_month} className="border-t border-border/60">
+                  <td className="py-2 pr-3 tabular-nums">{row.year_month}</td>
+                  <td className="py-2 pr-3">
+                    <span className="rounded-full bg-secondary px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                      Cerrado
+                    </span>
+                  </td>
+                  <td className="py-2 pr-3 text-muted-foreground">
+                    {row.closed_by_email || "—"}
+                    {row.closed_at ? (
+                      <span className="block text-xs">{shortDate(row.closed_at)}</span>
+                    ) : null}
+                  </td>
+                  <td className="py-2 pr-3">
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="h-8 rounded-lg"
+                      onClick={async () => {
+                        try {
+                          await downloadMonthFinancePdf(row.year_month, locationId, "download");
+                        } catch (e) {
+                          toast.error((e as Error)?.message || "PDF no disponible");
+                        }
+                      }}
+                    >
+                      PDF
+                    </Button>
+                  </td>
+                </tr>
+              ))}
+              {!historyQ.isLoading && !(historyQ.data?.items ?? []).length ? (
+                <tr>
+                  <td colSpan={4} className="py-3 text-sm text-muted-foreground">
+                    Todavía no hay meses cerrados.
+                  </td>
+                </tr>
+              ) : null}
+            </tbody>
+          </table>
+        </div>
+      </SectionCard>
     </>
   );
 }
