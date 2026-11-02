@@ -2741,9 +2741,21 @@ export type FixedCostTemplate = {
   sort_order: number;
 };
 
+export type FinanceMonthClose = {
+  year_month: string;
+  closed_at: string | null;
+  closed_by?: string | null;
+  closed_by_email?: string | null;
+  payment_methods_snapshot?: unknown[];
+  finance_snapshot?: Record<string, unknown>;
+  notes?: string | null;
+};
+
 export type MonthFinanceSummary = {
   year_month: string;
   location_id?: string | null;
+  closed?: boolean;
+  close?: FinanceMonthClose | null;
   service_margins: ServiceMarginsResponse["summary"];
   sales: { cita: number; mostrador: number; mostrador_cost?: number; mostrador_margin?: number; total: number };
   fixed_costs: {
@@ -2868,6 +2880,46 @@ export function monthFinanceQuery(yearMonth: string, locationId?: string | null)
       return api<MonthFinanceSummary>(`/finance/month/${yearMonth}${q}`);
     },
   });
+}
+
+export function monthClosesQuery() {
+  return queryOptions({
+    queryKey: ["finance-month-closes"],
+    queryFn: () => api<{ items: FinanceMonthClose[] }>("/finance/month-closes"),
+  });
+}
+
+export function monthCloseStatusQuery(yearMonth: string) {
+  return queryOptions({
+    queryKey: ["finance-month-close-status", yearMonth],
+    queryFn: () =>
+      api<{ year_month: string; closed: boolean; close: FinanceMonthClose | null }>(
+        `/finance/month/${encodeURIComponent(yearMonth)}/close-status`,
+      ),
+  });
+}
+
+export async function closeFinanceMonth(
+  yearMonth: string,
+  body?: { notes?: string | null; location_id?: string | null },
+) {
+  return api<FinanceMonthClose>(`/finance/month/${encodeURIComponent(yearMonth)}/close`, {
+    method: "POST",
+    body: body ?? {},
+  });
+}
+
+export async function downloadMonthFinancePdf(
+  yearMonth: string,
+  locationId?: string | null,
+  mode: "view" | "download" = "download",
+) {
+  const loc = financeLocationParam(locationId);
+  const q = loc ? `?location_id=${encodeURIComponent(loc)}` : "";
+  const { blob, filename } = await fetchAuthPdf(
+    `/finance/month/${encodeURIComponent(yearMonth)}/pdf${q}`,
+  );
+  return openPdfBlob(blob, filename || `informe-financiero-${yearMonth}.pdf`, mode);
 }
 
 export function fixedCostsQuery(yearMonth: string) {
