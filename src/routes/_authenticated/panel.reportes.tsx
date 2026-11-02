@@ -22,8 +22,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
-  salesQuery,
-  appointmentsQuery,
   petsQuery,
   ownersQuery,
   serviceMarginsQuery,
@@ -54,7 +52,7 @@ import {
   Package,
 } from "lucide-react";
 import { requirePathAccess } from "@/lib/route-access";
-import { isActiveSale, permissionsFor } from "@/lib/roles";
+import { permissionsFor } from "@/lib/roles";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 
@@ -154,7 +152,11 @@ function Reportes() {
         </TabsList>
 
         <TabsContent value="resumen" className="space-y-6">
-          <ResumenTab canFinance={canFinance} locationId={scopedLocationId} />
+          <ResumenTab
+            canFinance={canFinance}
+            yearMonth={yearMonth}
+            locationId={scopedLocationId}
+          />
         </TabsContent>
         <TabsContent value="margen" className="space-y-6">
           {canFinance ? (
@@ -184,76 +186,90 @@ function Reportes() {
 
 function ResumenTab({
   canFinance,
+  yearMonth,
   locationId,
 }: {
   canFinance: boolean;
+  yearMonth: string;
   locationId: string | null;
 }) {
-  const sales = useQuery({
-    ...salesQuery,
+  const range = useMemo(() => monthStartEnd(yearMonth), [yearMonth]);
+  const monthQ = useQuery({
+    ...monthFinanceQuery(yearMonth, locationId),
     enabled: canFinance,
   });
-  const appts = useQuery(appointmentsQuery);
+  const marginsQ = useQuery({
+    ...serviceMarginsQuery(range.from, range.to, locationId),
+    enabled: canFinance,
+  });
   const pets = useQuery(petsQuery);
   const owners = useQuery(ownersQuery);
 
-  const all = (sales.data ?? []).filter(
-    (s) => isActiveSale(s.status) && (!locationId || s.location_id === locationId),
-  );
-  const trend = Array.from({ length: 14 }).map((_, idx) => {
-    const d = new Date();
-    d.setDate(d.getDate() - (13 - idx));
-    const key = dayKey(d);
-    return {
-      day: shortDate(d.toISOString()),
-      total: all
-        .filter((s) => dayKey(new Date(s.sold_at)) === key)
-        .reduce((a, s) => a + Number(s.total), 0),
-    };
-  });
+  const salesTotal = Number(monthQ.data?.sales?.total ?? 0);
+  const apptCount = Number(marginsQ.data?.summary?.appointments ?? 0);
 
-  const scopedAppts = (appts.data ?? []).filter(
-    (a) => !locationId || a.location_id === locationId,
-  );
-  const byService = new Map<string, number>();
-  for (const a of scopedAppts) {
-    const n = a.services?.name ?? "Otro";
-    byService.set(n, (byService.get(n) ?? 0) + Number(a.price));
-  }
-  const pie = [...byService.entries()].map(([name, value]) => ({ name, value })).slice(0, 5);
+  const trend = useMemo(() => {
+    const lines = marginsQ.data?.lines ?? [];
+    const byDay = new Map<string, number>();
+    for (const line of lines) {
+      const iso = line.starts_at || line.closed_at;
+      if (!iso) continue;
+      const key = dayKey(new Date(iso));
+      byDay.set(key, (byDay.get(key) ?? 0) + Number(line.revenue || 0));
+    }
+    const days: { day: string; total: number }[] = [];
+    const cursor = new Date(`${range.from}T12:00:00`);
+    const end = new Date(`${range.to}T12:00:00`);
+    while (cursor <= end) {
+      const key = dayKey(cursor);
+      days.push({
+        day: shortDate(cursor.toISOString()),
+        total: byDay.get(key) ?? 0,
+      });
+      cursor.setDate(cursor.getDate() + 1);
+    }
+    return days;
+  }, [marginsQ.data?.lines, range.from, range.to]);
+
+  const pie = useMemo(() => {
+    return (marginsQ.data?.by_service ?? [])
+      .map((s) => ({ name: s.service_name, value: Number(s.revenue || 0) }))
+      .filter((s) => s.value > 0)
+      .slice(0, 5);
+  }, [marginsQ.data?.by_service]);
 
   return (
     <>
       <p className="text-xs text-muted-foreground">
-        Vista rápida de actividad. El <strong className="font-medium text-foreground">margen</strong>{" "}
-        (cobrado − insumos − comisión del groomer) y los{" "}
-        <strong className="font-medium text-foreground">gastos fijos del mes</strong> están en las
-        otras pestañas.
+        Vista del mes seleccionado (citas por día de agenda). El{" "}
+        <strong className="font-medium text-foreground">margen</strong> y los{" "}
+        <strong className="font-medium text-foreground">gastos fijos</strong> están en las otras
+        pestañas. Mascotas y clientes son totales del spa, no del mes.
       </p>
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard
           icon={DollarSign}
-          label="Ingresos ventas"
-          value={canFinance ? cop(all.reduce((a, s) => a + Number(s.total), 0)) : "—"}
+          label={`Ingresos ${yearMonth}`}
+          value={canFinance ? (monthQ.isLoading ? "…" : cop(salesTotal)) : "—"}
           tone="accent"
         />
         <StatCard
           icon={CalendarCheck}
-          label="Citas registradas"
-          value={scopedAppts.length}
+          label={`Citas finalizadas ${yearMonth}`}
+          value={canFinance ? (marginsQ.isLoading ? "…" : apptCount) : "—"}
           tone="primary"
         />
-        <StatCard icon={Dog} label="Mascotas activas" value={(pets.data ?? []).length} tone="mint" />
-        <StatCard icon={Users} label="Clientes" value={(owners.data ?? []).length} tone="gold" />
+        <StatCard icon={Dog} label="Mascotas (total)" value={(pets.data ?? []).length} tone="mint" />
+        <StatCard icon={Users} label="Clientes (total)" value={(owners.data ?? []).length} tone="gold" />
       </div>
 
       <div className="grid gap-6 lg:grid-cols-[1.5fr_1fr]">
-        <SectionCard title="Ingresos por fecha de cierre (14 días)">
+        <SectionCard title={`Ingresos por día de agenda (${yearMonth})`}>
           <div className="h-64">
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={trend}>
                 <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-                <XAxis dataKey="day" tick={{ fontSize: 11 }} />
+                <XAxis dataKey="day" tick={{ fontSize: 11 }} interval="preserveStartEnd" />
                 <YAxis tick={{ fontSize: 11 }} />
                 <Tooltip formatter={(v) => cop(Number(v))} />
                 <Line type="monotone" dataKey="total" stroke="var(--primary)" strokeWidth={2} />
@@ -261,19 +277,25 @@ function ResumenTab({
             </ResponsiveContainer>
           </div>
         </SectionCard>
-        <SectionCard title="Ingresos por servicio (agenda)">
+        <SectionCard title={`Ingresos por servicio (${yearMonth})`}>
           <div className="h-64">
-            <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
-                <Pie data={pie} dataKey="value" nameKey="name" outerRadius={80} label>
-                  {pie.map((_, i) => (
-                    <Cell key={i} fill={COLORS[i % COLORS.length]} />
-                  ))}
-                </Pie>
-                <Tooltip formatter={(v) => cop(Number(v))} />
-                <Legend />
-              </PieChart>
-            </ResponsiveContainer>
+            {pie.length === 0 ? (
+              <p className="flex h-full items-center justify-center text-sm text-muted-foreground">
+                Sin citas finalizadas en este mes.
+              </p>
+            ) : (
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie data={pie} dataKey="value" nameKey="name" outerRadius={80} label>
+                    {pie.map((_, i) => (
+                      <Cell key={i} fill={COLORS[i % COLORS.length]} />
+                    ))}
+                  </Pie>
+                  <Tooltip formatter={(v) => cop(Number(v))} />
+                  <Legend />
+                </PieChart>
+              </ResponsiveContainer>
+            )}
           </div>
         </SectionCard>
       </div>
